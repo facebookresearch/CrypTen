@@ -14,7 +14,7 @@ import torch.nn.functional as F
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
-from crypten.common import AverageMeter
+from examples import AverageMeter
 from torchvision import datasets, transforms
 
 
@@ -74,23 +74,22 @@ def run_tfe_benchmarks(
 
     # Loading MNIST. Normalizing per pytorch/examples/blob/master/mnist/main.py
     def preprocess_data():
-        with PublicDownloader():
-            mnist_train = datasets.MNIST(
-                "/tmp",
-                download=True,
-                train=True,
-                transform=transforms.Compose(
-                    [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-                ),
-            )
-            mnist_test = datasets.MNIST(
-                "/tmp",
-                download=True,
-                train=False,
-                transform=transforms.Compose(
-                    [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-                ),
-            )
+        mnist_train = datasets.MNIST(
+            "/tmp",
+            download=True,
+            train=True,
+            transform=transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+            ),
+        )
+        mnist_test = datasets.MNIST(
+            "/tmp",
+            download=True,
+            train=False,
+            transform=transforms.Compose(
+                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+            ),
+        )
         train_loader = torch.utils.data.DataLoader(
             mnist_train, batch_size=batch_size, shuffle=True
         )
@@ -108,7 +107,7 @@ def run_tfe_benchmarks(
         if not skip_plaintext:
             logging.info("===== Evaluating plaintext benchmark network =====")
             validate(val_loader, model, criterion, print_freq, flatten=flatten)
-        private_model = create_private_benchmark_model(model, network)
+        private_model = create_private_benchmark_model(model)
         logging.info("===== Evaluating Private benchmark network =====")
         validate(val_loader, private_model, criterion, print_freq, flatten=flatten)
         # validate_side_by_side(val_loader, model, private_model, flatten=flatten)
@@ -236,7 +235,15 @@ def validate(val_loader, model, criterion, print_freq=10, flatten=False):
             # compute output
             if flatten:
                 input = input.view(input.size(0), -1)
+            if isinstance(model, crypten.nn.Module) and not isinstance(
+                input, crypten.MPCTensor
+            ):
+                input = crypten.MPCTensor(input)
+
             output = model(input)
+
+            if isinstance(output, crypten.MPCTensor):
+                output = output.get_plain_text()
             loss = criterion(output, target)
 
             # measure accuracy and record loss
@@ -319,15 +326,11 @@ def create_benchmark_model(benchmark):
         raise RuntimeError("Invalid benchmark network")
 
 
-def create_private_benchmark_model(model, benchmark):
-    if benchmark == "A":
-        return Private_NetworkA(model)
-    elif benchmark == "B":
-        return Private_NetworkB(model)
-    elif benchmark == "C":
-        return Private_NetworkC(model)
-    else:
-        raise RuntimeError("Invalid benchmark network")
+def create_private_benchmark_model(model):
+    dummy_input = torch.rand((1, 1, 28, 28))
+    private_model = crypten.nn.from_pytorch(model, dummy_input)
+    private_model.encrypt()
+    return private_model
 
 
 class NetworkA(nn.Module):
@@ -348,31 +351,6 @@ class NetworkA(nn.Module):
         out = F.relu(out)
         out = self.fc3(out)
         return out
-
-
-class Private_NetworkA(nn.Module):
-    def __init__(self, net, tensor_type=crypten.MPCTensor):
-        super(Private_NetworkA, self).__init__()
-        self.fc1 = crypten.pnn.encrypt(net.fc1)
-        self.fc2 = crypten.pnn.encrypt(net.fc2)
-        self.fc3 = crypten.pnn.encrypt(net.fc3)
-        self.relu = crypten.pnn.ReLU()
-        self.batchnorm1 = crypten.pnn.encrypt(net.batchnorm1)
-        self.batchnorm2 = crypten.pnn.encrypt(net.batchnorm2)
-
-    def __call__(self, x):
-        out = self.fc1(x)
-        out = self.batchnorm1(out)
-        out = self.relu(out)
-        out = self.fc2(out)
-        out = self.batchnorm2(out)
-        out = self.relu(out)
-        out = self.fc3(out)
-        return out.get_plain_text()
-
-    # To circumvent an error in validate
-    def eval(self):
-        pass
 
 
 class NetworkB(nn.Module):
@@ -403,35 +381,6 @@ class NetworkB(nn.Module):
         return out
 
 
-class Private_NetworkB(nn.Module):
-    def __init__(self, net, tensor_type=crypten.MPCTensor):
-        self.conv1 = crypten.pnn.encrypt(net.conv1)
-        self.conv2 = crypten.pnn.encrypt(net.conv2)
-        self.fc1 = crypten.pnn.encrypt(net.fc1)
-        self.fc2 = crypten.pnn.encrypt(net.fc2)
-        self.pool = crypten.pnn.AvgPool2d(2)
-        self.relu = crypten.pnn.ReLU()
-        self.batchnorm1 = crypten.pnn.encrypt(net.batchnorm1)
-        self.batchnorm2 = crypten.pnn.encrypt(net.batchnorm2)
-        self.batchnorm3 = crypten.pnn.encrypt(net.batchnorm3)
-
-    def __call__(self, x):
-        out = self.conv1(x)
-        out = self.batchnorm1(out)
-        out = self.pool(self.relu(out))
-        out = self.conv2(out)
-        out = self.batchnorm2(out)
-        out = self.pool(self.relu(out))
-        out = self.fc1(out)
-        out = self.batchnorm3(out)
-        out = self.relu(out)
-        out = self.fc2(out)
-        return out.get_plain_text()
-
-    def eval(self):
-        pass
-
-
 class NetworkC(nn.Module):
     def __init__(self):
         super(NetworkC, self).__init__()
@@ -458,52 +407,3 @@ class NetworkC(nn.Module):
         out = F.relu(out)
         out = self.fc2(out)
         return out
-
-
-class Private_NetworkC(nn.Module):
-    def __init__(self, net, tensor_type=crypten.MPCTensor):
-        super(Private_NetworkC, self).__init__()
-        self.conv1 = crypten.pnn.encrypt(net.conv1)
-        self.conv2 = crypten.pnn.encrypt(net.conv2)
-        self.fc1 = crypten.pnn.encrypt(net.fc1)
-        self.fc2 = crypten.pnn.encrypt(net.fc2)
-        self.relu = crypten.pnn.ReLU()
-        self.pool = crypten.pnn.AvgPool2d(2)
-        self.batchnorm1 = crypten.pnn.encrypt(net.batchnorm1)
-        self.batchnorm2 = crypten.pnn.encrypt(net.batchnorm2)
-        self.batchnorm3 = crypten.pnn.encrypt(net.batchnorm3)
-
-    def __call__(self, x):
-        out = self.conv1(x)
-        out = self.batchnorm1(out)
-        out = self.pool(self.relu(out))
-        out = self.conv2(out)
-        out = self.batchnorm2(out)
-        out = self.pool(self.relu(out))
-        out = self.fc1(out)
-        out = self.batchnorm3(out)
-        out = self.relu(out)
-        out = self.fc2(out)
-        return out.get_plain_text()
-
-    def eval(self):
-        pass
-
-
-class PublicDownloader(object):
-    """
-    Context manager allowing downloading data from the public internet.
-    """
-
-    def __enter__(self):
-        os.environ["HTTP_PROXY"] = "http://fwdproxy:8080"
-        os.environ["HTTPS_PROXY"] = "https://fwdproxy:8080"
-        os.environ["http_proxy"] = "fwdproxy:8080"
-        os.environ["https_proxy"] = "fwdproxy:8080"
-        return self
-
-    def __exit__(self, type, value, traceback):
-        del os.environ["HTTP_PROXY"]
-        del os.environ["HTTPS_PROXY"]
-        del os.environ["http_proxy"]
-        del os.environ["https_proxy"]
