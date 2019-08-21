@@ -16,7 +16,7 @@ def share(secret, num_parties=2):
     return (shares0, *share(shares1, num_parties=(num_parties - 1)))
 
 
-def xor_share(secret, bitlength=constants.K, num_parties=2):
+def xor_share(secret, bitlength=constants.BITS, num_parties=2):
     """Create a boolean (xor) sharing from a secret"""
     # For single process, do not encrypt (for debugging purposes)
     if num_parties < 2:
@@ -28,5 +28,5 @@ def xor_share(secret, bitlength=constants.K, num_parties=2):
         return shares0, shares1
     return (
         shares0,
-        *xor_share(shares1, bitlength=constants.K, num_parties=(num_parties - 1)),
+        *xor_share(shares1, bitlength=constants.BITS, num_parties=(num_parties - 1)),
     )

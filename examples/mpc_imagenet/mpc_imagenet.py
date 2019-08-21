@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-import crypten
 import logging
 import tempfile
+
+import crypten
 import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
-
 from examples.meters import AccuracyMeter
 from examples.util import NoopContextManager
 
@@ -32,18 +32,17 @@ def run_experiment(
     with context_manager:
         model = getattr(models, model_name)(pretrained=True)
         model.eval()
-        dataset = datasets.ImageNet(
-            imagenet_folder, split="val", download=download,
-        )
+        dataset = datasets.ImageNet(imagenet_folder, split="val", download=download)
 
     # apply appropriate transforms:
-    transform = transforms.Compose([
-        transforms.Scale(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                              std=[0.229, 0.224, 0.225]),
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.Scale(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
 
     # encrypt model:
     encrypted_model = crypten.nn.from_pytorch(model, dummy_input=dataset[0][0])

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import crypten.common.constants as constants
 import torch
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.sharing import share
@@ -36,10 +35,10 @@ class TrustedThirdParty:
         return stacked[0], stacked[1]
 
     @staticmethod
-    def generate_xor_triple(size, bitlength=constants.K):
+    def generate_xor_triple(size):
         """Send xor triples of given size to the parties"""
-        a = generate_kbit_random_tensor(size, bitlength=bitlength)
-        b = generate_kbit_random_tensor(size, bitlength=bitlength)
+        a = generate_kbit_random_tensor(size)
+        b = generate_kbit_random_tensor(size)
         c = a & b
 
         # Stack to vectorize scatter function

@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-import crypten.common.bitwise as bitwise
-
 # ==============================================================================
 #
 # This file contains a simple PyTorch implementations of all binary circuits used
@@ -17,9 +15,8 @@ import torch
 # [1] -> 001000100010....0010  =                     0010 x 16
 # [2] -> 000010000000....0010  =                 00001000 x  8
 # [n] -> [2^n 0s, 1, (2^n -1) 0s] x (32 / (2^n))
-MASKS = [
-    torch.LongTensor([x])
-    for x in [
+MASKS = torch.LongTensor(
+    [
         6148914691236517205,
         2459565876494606882,
         578721382704613384,
@@ -27,7 +24,7 @@ MASKS = [
         140737488388096,
         2147483648,
     ]
-]
+)
 
 
 class Circuit:
@@ -63,17 +60,15 @@ class Circuit:
         """
         import crypten
 
-        for i in range(constants.LOG_K):
+        for i in range(constants.LOG_BITS):
             in_mask = MASKS[i]
             out_mask = Circuit.__fan(in_mask, i)
-            not_out_mask = bitwise.invert(out_mask)
+            not_out_mask = out_mask ^ -1
 
             # Set up S0, S1, P0, and P1
-            S0 = S & out_mask
-            S1 = Circuit.__fan(S & in_mask, i)
-
             P0 = P & out_mask
             P1 = Circuit.__fan(P & in_mask, i)
+            S1 = Circuit.__fan(S & in_mask, i)
 
             # Vectorize private AND calls to reduce rounds:
             P0P0 = crypten.BinarySharedTensor.stack([P0, P0])
@@ -81,8 +76,8 @@ class Circuit:
             update = P0P0 & S1P1
 
             # Update S and P
-            S = (S & not_out_mask) ^ S0 ^ update[0]
-            P = (P & not_out_mask) ^ update[1]
+            S ^= update[0]  # S ^= (P0 & S1)
+            P = (P & not_out_mask) ^ update[1]  # P1 = P0 & P1
         return S, P
 
     @staticmethod
@@ -92,29 +87,3 @@ class Circuit:
         P = x ^ y
         carry, _ = Circuit.__SPK_circuit(S, P)
         return P ^ (carry << 1)
-
-    @staticmethod
-    def lt(x, y):
-        """Returns 1 if x < y from BinarySharedTensors `x` and `y`"""
-        if torch.is_tensor(x):
-            S = y & bitwise.invert(x)
-            P = ~(y ^ x)
-        else:
-            S = ~x & y
-            P = ~(x ^ y)
-
-        # Swap MSB of S and K to account for 2's complement
-        msb_swap = ~(S ^ P)
-        S = S.set_bit(constants.K - 1, msb_swap.get_bit(constants.K - 1))
-
-        S, _ = Circuit.__SPK_circuit(S, P)
-        return S.get_bit(constants.K - 1)
-
-    @staticmethod
-    def eq(x, y):
-        """Returns 1 if x == y from BinarySharedTensors `x` and `y`"""
-        S = x ^ y
-        P = ~S
-
-        _, P = Circuit.__SPK_circuit(S, P)
-        return P.get_bit(constants.K - 1)

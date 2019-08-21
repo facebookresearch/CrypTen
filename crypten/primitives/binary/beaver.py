@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import crypten.common.constants as constants
 from crypten import comm
 
 
@@ -11,13 +10,11 @@ class Beaver:
     """
 
     @staticmethod
-    def AND(x, y, bits=constants.K):
+    def AND(x, y):
         """Performs Beaver AND protocol for BinarySharedTensor tensors x and y"""
         import crypten
 
-        a, b, c = crypten.TrustedThirdParty.generate_xor_triple(
-            x.size(), bitlength=bits
-        )
+        a, b, c = crypten.TrustedThirdParty.generate_xor_triple(x.size())
 
         # Stack to vectorize reveal
         eps_del = crypten.BinarySharedTensor.stack([x ^ a, y ^ b]).reveal()
@@ -44,7 +41,7 @@ class Beaver:
         import crypten
 
         if comm.get_world_size() < 2:
-            return crypten.ArithmeticSharedTensor(xB._tensor, src=0)
+            return crypten.ArithmeticSharedTensor(xB._tensor, precision=0, src=0)
 
         rA, rB = crypten.TrustedThirdParty.B2A_rng(xB.size())
 

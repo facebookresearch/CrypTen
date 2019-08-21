@@ -41,10 +41,14 @@ class EncryptedTensor:
         raise NotImplementedError("add is not implemented")
 
     def __add__(self, tensor):
+        """Adds tensor to this tensor."""
         return self.add(tensor)
 
     __radd__ = __add__
-    __iadd__ = __add__
+
+    def __iadd__(self, tensor):
+        """Adds tensor to this tensor (in-place)."""
+        return self.add_(tensor)
 
     def sub_(self, tensor):
         """Subtracts tensor from this tensor (in-place)."""
@@ -55,12 +59,15 @@ class EncryptedTensor:
         raise NotImplementedError("sub is not implemented")
 
     def __sub__(self, tensor):
+        """Subtracts tensor from this tensor."""
         return self.sub(tensor)
 
     def __rsub__(self, tensor):
+        """Subtracts self from tensor."""
         return -self + tensor
 
     def __isub__(self, tensor):
+        """Subtracts tensor from this tensor (in-place)."""
         return self.sub_(tensor)
 
     def mul_(self, tensor):

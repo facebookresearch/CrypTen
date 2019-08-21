@@ -10,7 +10,7 @@ def generate_random_ring_element(size, ring_size=(2 ** 64)):
     )
 
 
-def generate_kbit_random_tensor(size, bitlength=crypten.common.constants.K):
+def generate_kbit_random_tensor(size, bitlength=crypten.common.constants.BITS):
     """Helper function to generate a random k-bit number"""
     if bitlength == 64:
         return generate_random_ring_element(size)

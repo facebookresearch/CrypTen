@@ -160,13 +160,13 @@ class TestAdditive(MultiProcessTestCase):
         self._check(encrypted_out, reference, "right mul failed")
 
     def test_sum(self):
-        tensor = get_random_test_tensor(size=(100, 100), is_float=True)
+        tensor = get_random_test_tensor(size=(5, 100, 100), is_float=True)
         encrypted = ArithmeticSharedTensor(tensor)
         self._check(encrypted.sum(), tensor.sum(), "sum failed")
 
-        for dim in [0, 1]:
+        for dim in [0, 1, 2]:
             reference = tensor.sum(dim)
-            with self.benchmark(type="sum", float=float, dim=dim) as bench:
+            with self.benchmark(type="sum", dim=dim) as bench:
                 for _ in bench.iters:
                     encrypted_out = encrypted.sum(dim)
             self._check(encrypted_out, reference, "sum failed")

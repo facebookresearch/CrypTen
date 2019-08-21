@@ -168,7 +168,7 @@ class MPCTensor(EncryptedTensor):
     @mode(BinarySharedTensor)
     def _ltz(self):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
-        return (self >> constants.K - 1).arithmetic()
+        return (self >> constants.BITS - 1).arithmetic()
 
     @mode(ArithmeticSharedTensor)
     def ge(self, y):

@@ -5,8 +5,6 @@ import logging
 import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
-import torch
-
 
 BinarySharedTensor, is_int_tensor = None, None
 
@@ -143,136 +141,54 @@ class TestBinary(MultiProcessTestCase):
                     encrypted_out = encrypted_tensor & encrypted_tensor2
             self._check(encrypted_out, reference, "%s AND failed" % tensor_type)
 
-    def test_comparators(self):
-        """Test circuit functions on BinarySharedTensor"""
+    def test_OR(self):
+        """Test bitwise-OR function on BinarySharedTensor"""
         for tensor_type in [lambda x: x, BinarySharedTensor]:
-            for func in ["add", "gt", "ge", "lt", "le", "eq", "ne"]:
-                tensor = get_random_test_tensor(is_float=False)
-                tensor2 = get_random_test_tensor(is_float=False)
-                reference = getattr(tensor, func)(tensor2).long()
-
-                encrypted_tensor = BinarySharedTensor(tensor)
-                encrypted_tensor2 = tensor_type(tensor2)
-
-                with self.benchmark(
-                    niters=10, tensor_type=tensor_type.__name__, func=func
-                ) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = getattr(encrypted_tensor, func)(
-                            encrypted_tensor2
-                        )
-
-                self._check(
-                    encrypted_out,
-                    reference,
-                    "%s binary %s failed" % (type(tensor2), func),
-                )
-
-    # TODO: Fix implementations for BinarySharedTensor
-    @unittest.skip
-    def test_max_min(self):
-        """Test max and min"""
-        sizes = [
-            (1,),
-            (5,),
-            (1, 1),
-            (1, 5),
-            (5, 5),
-            (5, 1),
-            (1, 1, 1),
-            (1, 5, 1),
-            (1, 1, 5),
-            (1, 5, 5),
-            (5, 1, 1),
-            (5, 5, 5),
-            (1, 1, 1, 1),
-            (5, 1, 1, 1),
-            (5, 5, 1, 1),
-            (1, 5, 5, 5),
-            (5, 5, 5, 5),
-        ]
-        test_cases = [torch.LongTensor([[1, 1, 2, 1, 4, 1, 3, 4]])] + [
-            get_random_test_tensor(size=size, is_float=False) for size in sizes
-        ]
-
-        # TODO: Fix implementations for BinarySharedTensor
-        for tensor in test_cases:
+            tensor = get_random_test_tensor(is_float=False)
+            tensor2 = get_random_test_tensor(is_float=False)
+            reference = tensor | tensor2
             encrypted_tensor = BinarySharedTensor(tensor)
-            for comp in ["max", "min"]:
-                reference = getattr(tensor, comp)()
-                with self.benchmark(niters=10, comp=comp, dim=None) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = getattr(encrypted_tensor, comp)()
-                self._check(encrypted_out, reference, "%s reduction failed" % comp)
+            encrypted_tensor2 = tensor_type(tensor2)
+            with self.benchmark(tensor_type=tensor_type.__name__) as bench:
+                for _ in bench.iters:
+                    encrypted_out = encrypted_tensor | encrypted_tensor2
+            self._check(encrypted_out, reference, "%s OR failed" % tensor_type)
 
-                for dim in range(tensor.dim()):
-                    reference = getattr(tensor, comp)(dim=dim)[0]
-                    with self.benchmark(niters=10, comp=comp, dim=dim) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = getattr(encrypted_tensor, comp)(dim=dim)
+    def test_invert(self):
+        """Test bitwise-invert function on BinarySharedTensor"""
+        tensor = get_random_test_tensor(is_float=False)
+        encrypted_tensor = BinarySharedTensor(tensor)
+        reference = ~tensor
+        with self.benchmark() as bench:
+            for _ in bench.iters:
+                encrypted_out = ~encrypted_tensor
+        self._check(encrypted_out, reference, "invert failed")
 
-                    self._check(encrypted_out, reference, "%s reduction failed" % comp)
-
-    # TODO: Fix implementations for BinarySharedTensor
-    @unittest.skip
-    def test_argmax_argmin(self):
-        """Test argmax and argmin"""
-        sizes = [
-            (1,),
-            (5,),
-            (1, 1),
-            (1, 5),
-            (5, 5),
-            (5, 1),
-            (1, 1, 1),
-            (1, 5, 1),
-            (1, 1, 5),
-            (1, 5, 5),
-            (5, 1, 1),
-            (5, 5, 5),
-            (1, 1, 1, 1),
-            (5, 1, 1, 1),
-            (5, 5, 1, 1),
-            (1, 5, 5, 5),
-            (5, 5, 5, 5),
-        ]
-        test_cases = [torch.LongTensor([[1, 1, 2, 1, 4, 1, 3, 4]])] + [
-            get_random_test_tensor(size=size, is_float=False) for size in sizes
-        ]
-
-        # TODO: Fix implementations for BinarySharedTensor
-        for tensor in test_cases:
+    def test_add(self):
+        """Tests add using binary shares"""
+        for tensor_type in [lambda x: x, BinarySharedTensor]:
+            tensor = get_random_test_tensor(is_float=False)
+            tensor2 = get_random_test_tensor(is_float=False)
+            reference = tensor + tensor2
             encrypted_tensor = BinarySharedTensor(tensor)
-            for comp in ["argmax", "argmin"]:
-                cmp = comp[3:]
+            encrypted_tensor2 = tensor_type(tensor2)
+            with self.benchmark(tensor_type=tensor_type.__name__) as bench:
+                for _ in bench.iters:
+                    encrypted_out = encrypted_tensor + encrypted_tensor2
+            self._check(encrypted_out, reference, "%s AND failed" % tensor_type)
 
-                # Compute one-hot argmax/min reference in plaintext
-                values = getattr(tensor, cmp)()
-                indices = (tensor == values).float()
+    def test_sum(self):
+        """Tests sum using binary shares"""
+        tensor = get_random_test_tensor(size=(5, 5, 5), is_float=False)
+        encrypted = BinarySharedTensor(tensor)
+        self._check(encrypted.sum(), tensor.sum(), "sum failed")
 
-                with self.benchmark(niters=10, comp=comp, dim=None) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = getattr(encrypted_tensor, comp)()
-
-                decrypted_out = encrypted_out.get_plain_text()
-                self.assertTrue(decrypted_out.sum() == 1)
-                self.assertTrue(decrypted_out.mul(indices).sum() == 1)
-
-                for dim in range(tensor.dim()):
-
-                    # Compute one-hot argmax/min reference in plaintext
-                    values = getattr(tensor, cmp)(dim=dim)[0]
-                    values = values.unsqueeze(dim)
-                    indices = (tensor == values).float()
-
-                    with self.benchmark(niters=10, comp=comp, dim=dim) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = getattr(encrypted_tensor, comp)(dim=dim)
-                    decrypted_out = encrypted_out.get_plain_text()
-                    self.assertTrue((decrypted_out.sum(dim=dim) == 1).all())
-                    self.assertTrue(
-                        (decrypted_out.mul(indices).sum(dim=dim) == 1).all()
-                    )
+        for dim in [0, 1, 2]:
+            reference = tensor.sum(dim)
+            with self.benchmark(type="sum", dim=dim) as bench:
+                for _ in bench.iters:
+                    encrypted_out = encrypted.sum(dim)
+            self._check(encrypted_out, reference, "sum failed")
 
     def test_get_set(self):
         for tensor_type in [lambda x: x, BinarySharedTensor]:
@@ -312,6 +228,57 @@ class TestBinary(MultiProcessTestCase):
                 self._check(
                     encrypted_out, reference, "%s setitem failed" % type(encrypted2)
                 )
+
+    def test_inplace(self):
+        """Test inplace vs. out-of-place functions"""
+        for op in ["__xor__", "__and__", "__or__"]:
+            for tensor_type in [lambda x: x, BinarySharedTensor]:
+                tensor1 = get_random_test_tensor(is_float=False)
+                tensor2 = get_random_test_tensor(is_float=False)
+
+                reference = getattr(tensor1, op)(tensor2)
+
+                encrypted1 = BinarySharedTensor(tensor1)
+                encrypted2 = tensor_type(tensor2)
+
+                input_plain_id = id(encrypted1._tensor)
+                input_encrypted_id = id(encrypted1)
+
+                # Test that out-of-place functions do not modify the input
+                private = isinstance(encrypted2, BinarySharedTensor)
+                encrypted_out = getattr(encrypted1, op)(encrypted2)
+                self._check(
+                    encrypted1,
+                    tensor1,
+                    "%s out-of-place %s modifies input"
+                    % ("private" if private else "public", op),
+                )
+                self._check(
+                    encrypted_out,
+                    reference,
+                    "%s out-of-place %s produces incorrect output"
+                    % ("private" if private else "public", op),
+                )
+                self.assertFalse(id(encrypted_out._tensor) == input_plain_id)
+                self.assertFalse(id(encrypted_out) == input_encrypted_id)
+
+                # Test that in-place functions modify the input
+                inplace_op = op[:2] + "i" + op[2:]
+                encrypted_out = getattr(encrypted1, inplace_op)(encrypted2)
+                self._check(
+                    encrypted1,
+                    reference,
+                    "%s in-place %s does not modify input"
+                    % ("private" if private else "public", inplace_op),
+                )
+                self._check(
+                    encrypted_out,
+                    reference,
+                    "%s in-place %s produces incorrect output"
+                    % ("private" if private else "public", inplace_op),
+                )
+                self.assertTrue(id(encrypted_out._tensor) == input_plain_id)
+                self.assertTrue(id(encrypted_out) == input_encrypted_id)
 
 
 # This code only runs when executing the file outside the test harness (e.g.

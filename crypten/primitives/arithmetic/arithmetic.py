@@ -47,8 +47,9 @@ class ArithmeticSharedTensor(EncryptedTensor):
                     tensor = torch.FloatTensor(tensor)
                 if is_int_tensor(tensor):
                     precision = 0  # FIXME(brianknott)
-                    assert precision == 0, \
-                        "Input must be a FloatTensor or precision must be zero"
+                    assert (
+                        precision == 0
+                    ), "Input must be a FloatTensor or precision must be zero"
 
                 assert torch.is_tensor(tensor) or isinstance(
                     tensor, (int, float)

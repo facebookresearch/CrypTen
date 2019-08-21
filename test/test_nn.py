@@ -69,7 +69,7 @@ class TestNN(MultiProcessTestCase):
         Tests the global average pool module with fixed 4-d test tensors
         """
 
-        #construct basic input
+        # construct basic input
         base_tensor = torch.Tensor([[2, 1], [3, 0]])
         all_init = []
         for i in range(-2, 3):
@@ -78,11 +78,11 @@ class TestNN(MultiProcessTestCase):
         init_tensor = init_tensor.unsqueeze(-1)
         reference = base_tensor.unsqueeze(-1).unsqueeze(-1)
 
-        #create module
+        # create module
         encr_module = crypten.nn.GlobalAveragePool().encrypt()
         self.assertTrue(encr_module.encrypted, "module not encrypted")
 
-        #check correctness for a variety of input sizes
+        # check correctness for a variety of input sizes
         for i in range(1, 10):
             input = init_tensor.repeat(1, 1, i, i)
             encr_input = MPCTensor(input)

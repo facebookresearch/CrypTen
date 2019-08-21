@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import crypten.common.bitwise as bitwise
-import crypten.common.constants as constants
 
 # dependencies:
 import torch
@@ -64,7 +63,7 @@ class BinarySharedTensor(EncryptedTensor):
         return result
 
     def XOR_(self, y):
-        """Bitwise XOR operator (element-wise)"""
+        """Bitwise XOR operator (element-wise) in place"""
         if torch.is_tensor(y) or isinstance(y, int):
             if self._rank == 0:
                 self._tensor ^= y
@@ -78,43 +77,35 @@ class BinarySharedTensor(EncryptedTensor):
         """Bitwise XOR operator (element-wise)"""
         return self.clone().XOR_(y)
 
-    def AND_(self, y, bits=constants.K):
+    def AND_(self, y):
+        """Bitwise AND operator (element-wise) in place"""
         if torch.is_tensor(y) or isinstance(y, int):
             self._tensor &= y
         elif isinstance(y, BinarySharedTensor):
-            self = Beaver.AND(self, y, bits=bits)
+            self._tensor.data = Beaver.AND(self, y)._tensor.data
         else:
             raise TypeError("Cannot AND %s with %s." % (type(y), type(self)))
         return self
 
-    def AND(self, y, bits=constants.K):
+    def AND(self, y):
         """Bitwise AND operator (element-wise)"""
-        return self.clone().AND_(y, bits=bits)
+        return self.clone().AND_(y)
 
-    def OR_(self, y, bits=constants.K):
-        self = self.AND(y, bits=bits) ^ self ^ y
-        return self
+    def OR_(self, y):
+        """Bitwise OR operator (element-wise) in place"""
+        xor_result = self ^ y
+        return self.AND_(y).XOR_(xor_result)
 
-    def OR(self, y, bits=constants.K):
-        return self.AND(y, bits=bits) ^ self ^ y
+    def OR(self, y):
+        """Bitwise OR operator (element-wise)"""
+        return self.AND(y) ^ self ^ y
 
-    def neg_(self):
-        self = Circuit.add(~self, 1)
-        return self
-
-    def neg(self):
-        """Returns -self"""
-        return Circuit.add(~self, 1)
-
-    def invert_(self):
+    def __invert__(self):
         """Bitwise NOT operator (element-wise)"""
-        if self._rank == 0:
-            self._tensor ^= -1
-        return self
-
-    def invert(self):
-        """Bitwise NOT operator (element-wise)"""
-        return self.clone().invert_()
+        result = self.clone()
+        if result._rank == 0:
+            result._tensor ^= -1
+        return result
 
     def lshift_(self, value):
         """Left shift elements by `value` bits"""
@@ -160,107 +151,6 @@ class BinarySharedTensor(EncryptedTensor):
         """Compute [self] + [y] for xor-sharing"""
         return Circuit.add(self, y)
 
-    def lt(self, y):
-        """Compute [self] < [y] for xor-sharing"""
-        result = Circuit.lt(self, y)
-        return result
-
-    def eq(self, y):
-        """Compute [self] == [y] for xor-sharing"""
-        result = Circuit.eq(self, y)
-        return result
-
-    def gt(self, y):
-        """Compute [self] > [y] for xor-sharing"""
-        result = Circuit.lt(y, self)
-        return result
-
-    def le(self, y):
-        """Compute [self] <= [y] for xor-sharing"""
-        return self.gt(y) ^ 1
-
-    def ge(self, y):
-        """Compute [self] >= [y] for xor-sharing"""
-        return self.lt(y) ^ 1
-
-    def ne(self, y):
-        """Compute [self] != [y] for xor-sharing"""
-        return self.eq(y) ^ 1
-
-    # TODO: Correct the implementations for min, max, argmin, argmax
-    '''
-    def argmax(self):
-        """Returns 1 for the element that has the highest value"""
-        assert self.dim() == 1, 'Argmax only implemented for 1D tensors'
-
-        def _toeplitz(vector):
-            size = len(vector)
-            matrix = vector.repeat(size, 1)
-            for i in range(1, size):
-                matrix[i] = matrix[i].roll(i)
-
-            return matrix
-
-        a = self.clone()
-        b = a.clone()
-
-        a._tensor = a._tensor.repeat(len(a._tensor) - 1, 1)
-        b._tensor = _toeplitz(b._tensor)[1:]
-
-        result = a.ge(b)
-
-        # Compute an AND along each column
-        def _fold_and(x):
-            rows = x.size(0)
-            half_rows = (rows + 1) // 2
-            if rows % 2 == 1:
-                y = x._tensor[0].unsqueeze(0)
-                x0 = x[1:half_rows]
-                x1 = x[half_rows:]
-            else:
-                y = None
-                x0 = x[:half_rows]
-                x1 = x[half_rows:]
-
-            result = x0.AND(x1, bits=1)
-            if y is not None:
-                result._tensor = BaseTensor.cat([y, result._tensor])
-            return result
-
-        while result.size(0) > 1:
-            result = _fold_and(result)
-
-        result._tensor = result._tensor.squeeze()
-        return result
-
-    def argmin(self):
-        """Returns 1 for the element that has the lowest value"""
-        return (-self).argmax()
-
-    def max(self):
-        """Compute the max of a tensor's elements (or along a given dimension)"""
-        amax = self.argmax() >> constants.PRECISION
-        amax._tensor *= -1  # turns 00...01 into 11...11
-        result = self.AND(amax).xor_sum()
-        return result
-
-    def min(self, **kwargs):
-        """Compute the min of a tensor's elements (or along a given dimension)"""
-        amax = self.argmin() >> constants.PRECISION
-        amax._tensor *= -1  # turns 00...01 into 11...11
-        result = self.AND(amax).xor_sum()
-        return result
-
-    def xor_sum(self):
-        result = BaseTensor([0])
-        x = self.clone()
-        x._tensor = x._tensor.flatten()
-        for elem in x._tensor:
-            result ^= elem
-        x._tensor = result
-        return x
-    '''
-
     def __setitem__(self, index, value):
         """Set tensor values by index"""
         if torch.is_tensor(value) or isinstance(value, list):
@@ -286,7 +176,7 @@ class BinarySharedTensor(EncryptedTensor):
     def sum(self, dim=None):
         """Add all tensors along a given dimension using a log-reduction"""
         if dim is None:
-            x = self.view(-1)
+            x = self.flatten()
         else:
             x = self.transpose(0, dim)
 
@@ -305,7 +195,7 @@ class BinarySharedTensor(EncryptedTensor):
         if dim is None:
             x = x.squeeze()
         else:
-            x = x.squeeze(0)
+            x = x.transpose(0, dim).squeeze(dim)
         return x
 
     def cumsum(self, *args, **kwargs):
@@ -326,24 +216,23 @@ class BinarySharedTensor(EncryptedTensor):
         """Decrypt the tensor"""
         return self.reveal()
 
+    # Bitwise operators
     __xor__ = XOR
-    __ixor__ = XOR_
-    __or__ = OR
     __and__ = AND
-    __iand__ = AND_
-    __invert__ = invert
+    __or__ = OR
     __lshift__ = lshift
     __rshift__ = rshift
-    __ge__ = ge
-    __gt__ = gt
-    __le__ = le
-    __lt__ = lt
-    __eq__ = eq
-    __ne__ = ne
 
-    # Add reversed boolean operations
-    __rand__ = __and__
+    # In-place bitwise operators
+    __ixor__ = XOR_
+    __iand__ = AND_
+    __ior__ = OR_
+    __ilshift__ = lshift_
+    __irshift__ = rshift_
+
+    # Reversed boolean operations
     __rxor__ = __xor__
+    __rand__ = __and__
     __ror__ = __or__
 
     @staticmethod
