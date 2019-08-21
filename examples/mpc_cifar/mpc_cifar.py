@@ -102,7 +102,8 @@ def run_mpc_cifar(
         if not skip_plaintext:
             logging.info("===== Evaluating plaintext LeNet network =====")
             validate(val_loader, model, criterion, print_freq)
-        private_model = crypten.nn.Module.from_pytorch(model)
+        dummy_input = torch.rand((1, 3, 32, 32))
+        private_model = crypten.nn.from_pytorch(model, dummy_input).encrypt()
         logging.info("===== Evaluating Private LeNet network =====")
         validate(val_loader, private_model, criterion, print_freq)
         return
@@ -215,10 +216,14 @@ def validate(val_loader, model, criterion, print_freq=10):
     with torch.no_grad():
         end = time.time()
         for i, (input, target) in enumerate(val_loader):
+            if isinstance(model, crypten.nn.Module) and not isinstance(
+                input, crypten.MPCTensor
+            ):
+                input = crypten.MPCTensor(input)
             # compute output
             output = model(input)
-            if isinstance(output, crypten.EncryptedTensor):
-                output = output.get_plaintext()
+            if isinstance(output, crypten.MPCTensor):
+                output = output.get_plain_text()
             loss = criterion(output, target)
 
             # measure accuracy and record loss
@@ -286,6 +291,15 @@ def accuracy(output, target, topk=(1,)):
         return res
 
 
+class Reshape(nn.Module):
+    def __init__(self, *args):
+        super(Reshape, self).__init__()
+        self.shape = args
+
+    def forward(self, x):
+        return x.view(self.shape)
+
+
 class LeNet(nn.Sequential):
     """
     Adaptation of LeNet that uses ReLU activations.
@@ -302,6 +316,7 @@ class LeNet(nn.Sequential):
             nn.Conv2d(6, 16, 5),
             nn.ReLU(),
             nn.AvgPool2d(2),
+            Reshape(-1, 16 * 5 * 5),
             nn.Linear(16 * 5 * 5, 120),
             nn.ReLU(),
             nn.Linear(120, 84),
