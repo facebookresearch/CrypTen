@@ -72,7 +72,7 @@ def _logging(func):
     def logging_wrapper(self, *args, **kwargs):
 
         # hack the inputs into some of the functions:
-        if self.state["world_size"] < 2:
+        if self.get_world_size() < 2:
             if func.__name__ in ["gather", "all_gather"]:
                 return [args[0]]
             else:

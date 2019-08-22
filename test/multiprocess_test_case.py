@@ -24,7 +24,7 @@ class BenchmarkRun(NamedTuple):
 
 def get_random_test_tensor(max_value=6, size=(1, 5), is_float=False):
     if is_float:
-        tensor = (2 * torch.rand(*size) - 1) * max_value
+        tensor = (2 * torch.rand(torch.Size(size)) - 1) * max_value
     else:
         tensor = torch.randint(
             -max_value, max_value, torch.Size(size), dtype=torch.int64

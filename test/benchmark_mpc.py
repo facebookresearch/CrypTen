@@ -68,7 +68,9 @@ class MPCBenchmark(MultiProcessTestCase):
         self.sizes = self.sizes + self.sizes
 
         super().setUp()
-        import_crypten()
+        # We don't want the main process (rank -1) to initialize the communcator
+        if self.rank >= 0:
+            import_crypten()
 
     @staticmethod
     def is_float(tensor):

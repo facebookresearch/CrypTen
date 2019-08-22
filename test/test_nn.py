@@ -61,8 +61,10 @@ class TestNN(MultiProcessTestCase):
         self.assertTrue(test_passed, msg=msg)
 
     def setUp(self):
-        super(TestNN, self).setUp()
-        import_crypten()
+        super().setUp()
+        # We don't want the main process (rank -1) to initialize the communcator
+        if self.rank >= 0:
+            import_crypten()
 
     def test_global_avg_pool_module(self):
         """

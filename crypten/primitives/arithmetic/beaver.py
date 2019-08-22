@@ -89,11 +89,9 @@ class Beaver:
         Since [eta_xr] = 0 with probability |x| / Q for modulus Q, we can make
         the assumption that [eta_xr] = 0 with high probability.
         """
-        comm.initialize()  # For unit testing
         import crypten
 
         r, theta_r = crypten.TrustedThirdParty.wrap_rng(x.size(), comm.get_world_size())
-
         beta_xr = theta_r.clone()
         beta_xr._tensor = count_wraps([x._tensor, r._tensor])
 

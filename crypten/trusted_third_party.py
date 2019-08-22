@@ -53,10 +53,6 @@ class TrustedThirdParty:
         """Send random shared tensor of given size and its wraps to the parties"""
         r = generate_random_ring_element(size)
         r = share(r, num_parties=num_parties)
-
-        if num_parties == 1:
-            r = [r]
-
         theta_r = count_wraps(r)
 
         import crypten
@@ -107,7 +103,9 @@ class TrustedThirdParty:
 
         tensor_len = tensor_size[-1]
         nperms = int(torch.tensor(tensor_size[:-1]).prod().item())
-        random_permutation = torch.stack(
-            [torch.randperm(tensor_len) + 1 for _ in range(nperms)]
-        ).view(tensor_size)
-        return crypten.ArithmeticSharedTensor(random_permutation, precision=0, src=0)
+        random_permutation = (
+            torch.stack([torch.randperm(tensor_len) + 1 for _ in range(nperms)])
+            .view(tensor_size)
+            .float()
+        )
+        return crypten.ArithmeticSharedTensor(random_permutation, src=0)

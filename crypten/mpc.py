@@ -240,6 +240,8 @@ class MPCTensor(EncryptedTensor):
         then ties will be broken (randomly) if one_hot_required is True.
         Otherwise, all indices with maximal inputs will be return a 1.
         """
+        if self.dim() == 0:
+            return MPCTensor(torch.zeros(())) + 1
         if dim is None:
             input = self.flatten()
         else:

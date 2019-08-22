@@ -39,7 +39,9 @@ class TestMPC(MultiProcessTestCase):
 
     def setUp(self):
         super().setUp()
-        import_crypten()
+        # We don't want the main process (rank -1) to initialize the communcator
+        if self.rank >= 0:
+            import_crypten()
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
@@ -68,6 +70,7 @@ class TestMPC(MultiProcessTestCase):
             and negative values.
         """
         sizes = [
+            (),
             (1,),
             (5,),
             (1, 1),
@@ -335,7 +338,7 @@ class TestMPC(MultiProcessTestCase):
                         self._check(encrypted_conv, reference, "conv2d failed")
 
     def test_pooling(self):
-        """Test avgPool of encrypted tensor."""
+        """Test avg_pool, sum_pool, max_pool of encrypted tensor."""
         for func in ["avg_pool2d", "sum_pool2d", "max_pool2d"]:
             for width in range(2, 5):
                 for width2 in range(1, width):
@@ -403,6 +406,7 @@ class TestMPC(MultiProcessTestCase):
     def test_max_min(self):
         """Test max and min"""
         sizes = [
+            (),
             (1,),
             (5,),
             (1, 1),
@@ -445,6 +449,7 @@ class TestMPC(MultiProcessTestCase):
     def test_argmax_argmin(self):
         """Test argmax and argmin"""
         sizes = [
+            (),
             (1,),
             (5,),
             (1, 1),
@@ -485,7 +490,6 @@ class TestMPC(MultiProcessTestCase):
                 self.assertTrue(decrypted_out.mul(indices).sum() == 1)
 
                 for dim in range(tensor.dim()):
-
                     # Compute one-hot argmax/min reference in plaintext
                     values = getattr(tensor, cmp)(dim=dim)[0]
                     values = values.unsqueeze(dim)
@@ -537,7 +541,6 @@ class TestMPC(MultiProcessTestCase):
             self._check(encrypted_out, reference, "pow failed with %s power" % power)
 
     def test_norm(self):
-
         # Test 2-norm
         tensor = get_random_test_tensor(is_float=True)
         reference = tensor.norm()
@@ -661,24 +664,20 @@ class TestMPC(MultiProcessTestCase):
             (1,),
             (5,),
             (1, 1),
-            (1, 5),
-            (5, 1),
             (5, 5),
-            (1, 5, 5),
-            (5, 1, 5),
-            (5, 5, 1),
             (5, 5, 5),
-            (1, 3, 32, 32),
             (5, 3, 32, 32),
         ]
-        pads = (
-            [(0, 0, 0, 0), (1, 1, 1, 1), (2, 2, 2, 2)]
-            + [tuple(p) for p in itertools.permutations([1, 0, 0, 0])]
-            + [tuple(p) for p in itertools.permutations([1, 1, 0, 0])]
-            + [tuple(p) for p in itertools.permutations([2, 0, 0, 0])]
-            + [tuple(p) for p in itertools.permutations([2, 2, 0, 0])]
-            + [tuple(p) for p in itertools.permutations([2, 2, 1, 1])]
-        )
+        pads = [
+            (0, 0, 0, 0),
+            (1, 0, 0, 0),
+            (0, 1, 0, 0),
+            (0, 0, 1, 0),
+            (0, 0, 0, 1),
+            (1, 1, 1, 1),
+            (2, 2, 1, 1),
+            (2, 2, 2, 2),
+        ]
 
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
@@ -701,9 +700,8 @@ class TestMPC(MultiProcessTestCase):
     def test_broadcast(self):
         """Test broadcast functionality."""
         arithmetic_functions = ["add", "sub", "mul", "div"]
-
-        # TODO: Fix get_random_test_tensor to allow empty tuples for 0-d test
         arithmetic_sizes = [
+            (),
             (1,),
             (2,),
             (1, 1),

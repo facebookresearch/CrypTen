@@ -281,9 +281,15 @@ class ArithmeticSharedTensor(EncryptedTensor):
         # Truncate protocol for dividing by public integers:
         if isinstance(y, int):
             if comm.get_world_size() > 2:
+                if y == 1:
+                    return self
+
                 wraps = self.wraps()
                 self._tensor /= y
-                self -= wraps * int((2 ** 64) / y)
+                if y == 2:  # Deal with overflow when unpacking long
+                    self -= wraps * int(2 ** 62) * 2
+                else:
+                    self -= wraps * int((2 ** 64) / y)
             else:
                 self._tensor /= y
             return self

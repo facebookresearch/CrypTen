@@ -35,7 +35,9 @@ class TestBinary(MultiProcessTestCase):
 
     def setUp(self):
         super().setUp()
-        import_crypten()
+        # We don't want the main process (rank -1) to initialize the communcator
+        if self.rank >= 0:
+            import_crypten()
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
@@ -61,6 +63,7 @@ class TestBinary(MultiProcessTestCase):
             and negative values.
         """
         sizes = [
+            (),
             (1,),
             (5,),
             (1, 1),

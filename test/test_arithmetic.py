@@ -32,7 +32,7 @@ def import_crypten():
     is_float_tensor = _is_float_tensor
 
 
-class TestAdditive(MultiProcessTestCase):
+class TestArithmetic(MultiProcessTestCase):
     """
         This class tests all functions of the ArithmeticSharedTensor.
     """
@@ -41,7 +41,9 @@ class TestAdditive(MultiProcessTestCase):
 
     def setUp(self):
         super().setUp()
-        import_crypten()
+        # We don't want the main process (rank -1) to initialize the communcator
+        if self.rank >= 0:
+            import_crypten()
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
@@ -70,6 +72,7 @@ class TestAdditive(MultiProcessTestCase):
             and negative values.
         """
         sizes = [
+            (),
             (1,),
             (5,),
             (1, 1),
@@ -517,24 +520,20 @@ class TestAdditive(MultiProcessTestCase):
             (1,),
             (5,),
             (1, 1),
-            (1, 5),
-            (5, 1),
             (5, 5),
-            (1, 5, 5),
-            (5, 1, 5),
-            (5, 5, 1),
             (5, 5, 5),
-            (1, 3, 32, 32),
             (5, 3, 32, 32),
         ]
-        pads = (
-            [(0, 0, 0, 0), (1, 1, 1, 1), (2, 2, 2, 2)]
-            + [tuple(p) for p in itertools.permutations([1, 0, 0, 0])]
-            + [tuple(p) for p in itertools.permutations([1, 1, 0, 0])]
-            + [tuple(p) for p in itertools.permutations([2, 0, 0, 0])]
-            + [tuple(p) for p in itertools.permutations([2, 2, 0, 0])]
-            + [tuple(p) for p in itertools.permutations([2, 2, 1, 1])]
-        )
+        pads = [
+            (0, 0, 0, 0),
+            (1, 0, 0, 0),
+            (0, 1, 0, 0),
+            (0, 0, 1, 0),
+            (0, 0, 0, 1),
+            (1, 1, 1, 1),
+            (2, 2, 1, 1),
+            (2, 2, 2, 2),
+        ]
 
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
@@ -557,9 +556,8 @@ class TestAdditive(MultiProcessTestCase):
     def test_broadcast(self):
         """Test broadcast functionality."""
         arithmetic_functions = ["add", "sub", "mul", "div"]
-
-        # TODO: Fix get_random_test_tensor to allow empty tuples for 0-d test
         arithmetic_sizes = [
+            (),
             (1,),
             (2,),
             (1, 1),
@@ -686,5 +684,5 @@ class TestAdditive(MultiProcessTestCase):
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)
 if __name__ == "__main__":
-    TestAdditive.benchmarks_enabled = True
+    TestArithmetic.benchmarks_enabled = True
     unittest.main()

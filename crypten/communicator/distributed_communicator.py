@@ -21,38 +21,37 @@ class DistributedCommunicator(Communicator):
 
     def __init__(self):
 
-        # get configuration variables from environmens:
-        self.state = {}
-        for key in ["distributed_backend", "rendezvous", "world_size", "rank"]:
-            key = key.upper()
-            if key not in os.environ:
-                raise ValueError("Environment variable %s must be set." % key)
-            self.state[key.lower()] = os.environ[key]
-
-        # make sure world size and rank are integers; comms stats are reset:
-        self.state["world_size"] = int(self.state["world_size"])
-        self.state["rank"] = int(self.state["rank"])
-        self.reset_communication_stats()
-
         # no need to do anything if we already initialized the communicator:
         if not dist.is_initialized():
+            # get configuration variables from environmens:
+            state = {}
+            for key in ["distributed_backend", "rendezvous", "world_size", "rank"]:
+                key = key.upper()
+                if key not in os.environ:
+                    raise ValueError("Environment variable %s must be set." % key)
+                state[key.lower()] = os.environ[key]
+
+            # make sure world size and rank are integers; comms stats are reset:
+            state["world_size"] = int(state["world_size"])
+            state["rank"] = int(state["rank"])
+            self.reset_communication_stats()
 
             # logging:
             level = logging.getLogger().level
             logging.getLogger().setLevel(logging.INFO)
             logging.info("==================")
-            logging.info("DistributedCommunicator with rank %d" % self.state["rank"])
+            logging.info("DistributedCommunicator with rank %d" % state["rank"])
             logging.info("==================")
-            logging.getLogger().setLevel(level)
 
             # initialize process group:
             dist.init_process_group(
-                backend=self.state["distributed_backend"],
-                init_method=self.state["rendezvous"],
-                world_size=self.state["world_size"],
-                rank=self.state["rank"],
+                backend=state["distributed_backend"],
+                init_method=state["rendezvous"],
+                world_size=state["world_size"],
+                rank=state["rank"],
             )
-            logging.info("World size = %d" % self.state["world_size"])
+            logging.info("World size = %d" % dist.get_world_size())
+            logging.getLogger().setLevel(level)
 
     @_logging
     def send(self, tensor, dst):
@@ -71,13 +70,13 @@ class DistributedCommunicator(Communicator):
     def scatter(self, scatter_list, src, size=None, async_op=False):
         """Scatters a list of tensors to all parties."""
         assert dist.is_initialized(), "initialize the communicator first"
-        if src != self.state["rank"]:
+        if src != self.get_rank():
             if size is None:
-                size = scatter_list[self.state["rank"]].size()
+                size = scatter_list[self.get_rank()].size()
             tensor = torch.empty(size=size, dtype=torch.long)
             dist.scatter(tensor, [], src, async_op=async_op)
         else:
-            tensor = scatter_list[self.state["rank"]]
+            tensor = scatter_list[self.get_rank()]
             dist.scatter(tensor, [t for t in scatter_list], src, async_op=async_op)
         return tensor
 
@@ -99,9 +98,9 @@ class DistributedCommunicator(Communicator):
     def gather(self, tensor, dst, async_op=False):
         """Gathers a list of tensors in a single party."""
         assert dist.is_initialized(), "initialize the communicator first"
-        if self.state["rank"] == dst:
+        if self.get_rank() == dst:
             result = []
-            for _ in range(self.state["world_size"]):
+            for _ in range(self.get_world_size()):
                 result.append(torch.empty(size=tensor.size(), dtype=torch.long))
             dist.gather(tensor, result, dst, async_op=async_op)
             return result
@@ -112,7 +111,7 @@ class DistributedCommunicator(Communicator):
         """Gathers tensors from all parties in a list."""
         assert dist.is_initialized(), "initialize the communicator first"
         result = []
-        for _ in range(self.state["world_size"]):
+        for _ in range(self.get_world_size()):
             result.append(torch.empty(size=tensor.size(), dtype=torch.long))
         dist.all_gather(result, tensor, async_op=async_op)
         return result
@@ -127,30 +126,30 @@ class DistributedCommunicator(Communicator):
     def get_world_size(self):
         """Returns the size of the world."""
         assert dist.is_initialized(), "initialize the communicator first"
-        return self.state["world_size"]
+        return dist.get_world_size()
 
     def get_rank(self):
         """Returns the rank of the current process."""
         assert dist.is_initialized(), "initialize the communicator first"
-        return self.state["rank"]
+        return dist.get_rank()
 
     def get_distributed_backend(self):
         """Returns name of torch.distributed backend used."""
         assert dist.is_initialized(), "initialize the communicator first"
-        return self.state["distributed_backend"]
+        return dist.get_backend()
 
     def reset_communication_stats(self):
         """Resets communication statistics."""
-        self.state["comm_rounds"] = 0
-        self.state["comm_bytes"] = 0
+        self.comm_rounds = 0
+        self.comm_bytes = 0
 
     def print_communication_stats(self):
         """Prints communication statistics."""
         logging.info("====Communication Stats====")
-        logging.info("Rounds: %d" % self.state["comm_rounds"])
-        logging.info("Bytes : %d" % self.state["comm_bytes"])
+        logging.info("Rounds: %d" % self.comm_rounds)
+        logging.info("Bytes : %d" % self.comm_bytes)
 
     def _log_communication(self, nelement):
         """Updates log of communication statistics."""
-        self.state["comm_rounds"] += 1
-        self.state["comm_bytes"] += nelement * self.BYTES_PER_ELEMENT
+        self.comm_rounds += 1
+        self.comm_bytes += nelement * self.BYTES_PER_ELEMENT
