@@ -14,7 +14,7 @@ import torch.nn.functional as F
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
-from crypten.common import AverageMeter
+from examples.meters import AverageMeter
 
 
 def run_mpc_cifar(
@@ -156,9 +156,9 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq=10):
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output, target, topk=(1, 5))
-        losses.update(loss.item(), input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        losses.add(loss.item(), input.size(0))
+        top1.add(prec1[0], input.size(0))
+        top5.add(prec5[0], input.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -166,23 +166,24 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq=10):
         optimizer.step()
 
         # measure elapsed time
-        batch_time.update(time.time() - end)
+        current_batch_time = time.time() - end
+        batch_time.add(current_batch_time)
         end = time.time()
 
         if i % print_freq == 0:
             logging.info(
-                "Epoch: [{0}][{1}/{2}]\t"
-                "Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t"
-                "Loss {loss.val:.4f} ({loss.avg:.4f})\t"
-                "Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t"
-                "Prec@5 {top5.val:.3f} ({top5.avg:.3f})".format(
+                "Epoch: [{}][{}/{}]\t"
+                "Time {:.3f} ({:.3f})\t"
+                "Loss {:.4f} ({:.4f})\t"
+                "Prec@1 {:.3f} ({:.3f})\t"
+                "Prec@5 {:.3f} ({:.3f})".format(
                     epoch,
                     i,
                     len(train_loader),
-                    batch_time=batch_time,
-                    loss=losses,
-                    top1=top1,
-                    top5=top5,
+                    current_batch_time, batch_time.value(),
+                    losses.item(), losses.value(),
+                    prec1[0], top1.value(),
+                    prec5[0], top5.value(),
                 )
             )
 
@@ -228,37 +229,38 @@ def validate(val_loader, model, criterion, print_freq=10):
 
             # measure accuracy and record loss
             prec1, prec5 = accuracy(output, target, topk=(1, 5))
-            losses.update(loss.item(), input.size(0))
-            top1.update(prec1[0], input.size(0))
-            top5.update(prec5[0], input.size(0))
+            losses.add(loss.item(), input.size(0))
+            top1.add(prec1[0], input.size(0))
+            top5.add(prec5[0], input.size(0))
 
             # measure elapsed time
-            batch_time.update(time.time() - end)
+            current_batch_time = time.time() - end
+            batch_time.add(current_batch_time)
             end = time.time()
 
             if (i + 1) % print_freq == 0:
                 logging.info(
-                    "\nTest: [{0}/{1}]\t"
-                    "Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t"
-                    "Loss {loss.val:.4f} ({loss.avg:.4f})\t"
-                    "Prec@1 {top1.val:.3f} ({top1.avg:.3f})   \t"
-                    "Prec@5 {top5.val:.3f} ({top5.avg:.3f})".format(
+                    "\nTest: [{}/{}]\t"
+                    "Time {:.3f} ({:.3f})\t"
+                    "Loss {:.4f} ({:.4f})\t"
+                    "Prec@1 {:.3f} ({:.3f})   \t"
+                    "Prec@5 {:.3f} ({:.3f})".format(
                         i + 1,
                         len(val_loader),
-                        batch_time=batch_time,
-                        loss=losses,
-                        top1=top1,
-                        top5=top5,
+                        current_batch_time, batch_time.value(),
+                        loss.item(), losses.value(),
+                        prec1[0], top1.value(),
+                        prec5[0], top5.value(),
                     )
                 )
 
         logging.info(
-            " * Prec@1 {top1.avg:.3f} Prec@5 {top5.avg:.3f}".format(
-                top1=top1, top5=top5
+            " * Prec@1 {:.3f} Prec@5 {:.3f}".format(
+                top1.value(), top5.value()
             )
         )
 
-    return top1.avg
+    return top1.value()
 
 
 def save_checkpoint(state, is_best, filename="checkpoint.pth.tar"):
