@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import crypten
 import torch
 from crypten.common import EncryptedTensor, constants
 from crypten.common.util import pool_reshape
@@ -47,12 +48,12 @@ class MPCTensor(EncryptedTensor):
         result.ptype = self.ptype
         return result
 
-    def to(self, ptype):
+    def to(self, ptype, **kwargs):
         """Converts self._tensor to the given ptype"""
         retval = self.clone()
         if retval.ptype == ptype:
             return retval
-        retval._tensor = convert(self._tensor, ptype)
+        retval._tensor = convert(self._tensor, ptype, **kwargs)
         retval.ptype = ptype
         return retval
 
@@ -74,101 +75,15 @@ class MPCTensor(EncryptedTensor):
             value = MPCTensor(value, ptype=self.ptype)
         self._tensor.__setitem__(index, value._tensor)
 
-    # TODO: Move static functions into EncryptedTensor
-    @staticmethod
-    def cat(tensors, *args, **kwargs):
-        """Perform matrix concatenation"""
-        assert isinstance(tensors, list), "cat input must be a list"
-        assert len(tensors) > 0, "expected a non-empty list of MPCTensors"
-        ptype = None
-        for tensor in tensors:
-            if isinstance(tensor, MPCTensor):
-                ptype = tensor.ptype
-                break
-        if ptype is None:
-            ptype = ArithmeticSharedTensor
-        for i, tensor in enumerate(tensors):
-            if torch.is_tensor(tensor):
-                tensors[i] = MPCTensor(tensor, ptype=ptype)
-            assert isinstance(
-                tensors[i], MPCTensor
-            ), "Cannot cat %s with MPCTensor" % type(tensor)
-            assert (
-                tensors[i].ptype == ptype
-            ), "Cannot cat MPCTensors with different ptypes"
-
-        result = tensors[0].shallow_copy()
-        result._tensor = result.ptype.cat(
-            [tensor._tensor for tensor in tensors], *args, **kwargs
-        )
-        return result
-
-    @staticmethod
-    def stack(tensors, *args, **kwargs):
-        assert isinstance(tensors, list), "stack input must be a list"
-        assert len(tensors) > 0, "expected a non-empty list of MPCTensors"
-        ptype = None
-        for tensor in tensors:
-            if isinstance(tensor, MPCTensor):
-                ptype = tensor.ptype
-                break
-        if ptype is None:
-            ptype = ArithmeticSharedTensor
-        for i, tensor in enumerate(tensors):
-            if torch.is_tensor(tensor):
-                tensors[i] = MPCTensor(tensor)
-            assert isinstance(
-                tensors[i], MPCTensor
-            ), "Can't stack %s with MPCTensor" % type(tensor)
-            assert (
-                tensors[i].ptype == ptype
-            ), "Cannot cat MPCTensors with different ptypes"
-
-        result = tensors[0].shallow_copy()
-        result._tensor = result.ptype.stack(
-            [tensor._tensor for tensor in tensors], *args, **kwargs
-        )
-        return result
-
-    @staticmethod
-    def bernoulli(tensor):
-        """
-        Returns a tensor with elements in {0, 1}. The i-th element of the
-        output will be 1 with probability according to the i-th value of the
-        input tensor.
-        """
-        result = MPCTensor(None)
-        result.ptype = ArithmeticSharedTensor
-        result._tensor = ArithmeticSharedTensor.bernoulli(tensor)
-        return result
-
-    @staticmethod
-    def rand(*sizes):
-        """
-        Returns a tensor with elements uniformly sampled in [0, 1) using the
-        trusted third party.
-        """
-        result = MPCTensor(None)
-        result.ptype = ArithmeticSharedTensor
-        result._tensor = ArithmeticSharedTensor.rand(*sizes)
-        return result
-
-    @staticmethod
-    def randperm(size):
-        """
-            Generate an MPCTensor with rows that contain values [1, 2, ... n]
-            where `n` is the length of each row (size[-1])
-        """
-        result = MPCTensor(None)
-        result.ptype = ArithmeticSharedTensor
-        result._tensor = ArithmeticSharedTensor.randperm(size)
-        return result
+    def bernoulli(self):
+        """Draws a random tensor of {0, 1} with given probabilities"""
+        return self > crypten.rand(self.size())
 
     # Comparators
     @mode(BinarySharedTensor)
     def _ltz(self):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
-        return (self >> constants.BITS - 1).arithmetic()
+        return (self >> constants.BITS - 1).to(ArithmeticSharedTensor, bits=1)
 
     @mode(ArithmeticSharedTensor)
     def ge(self, y):
@@ -187,7 +102,7 @@ class MPCTensor(EncryptedTensor):
 
     @mode(ArithmeticSharedTensor)
     def lt(self, y):
-        """Returns self > y"""
+        """Returns self < y"""
         return (self - y)._ltz()
 
     @mode(ArithmeticSharedTensor)
@@ -214,7 +129,7 @@ class MPCTensor(EncryptedTensor):
     def relu(self):
         """Compute a Rectified Linear function on the input tensor.
         """
-        return self * (self > 0).to(ArithmeticSharedTensor)
+        return self * (self > 0)
 
     # max / min-related functions
     def _argmax_helper(self):
@@ -225,7 +140,7 @@ class MPCTensor(EncryptedTensor):
         a = self.expand(row_length - 1, *self.size())
 
         # Generate cyclic permutations for each row
-        b = MPCTensor.stack([self.roll(i + 1, dims=-1) for i in range(row_length - 1)])
+        b = crypten.stack([self.roll(i + 1, dims=-1) for i in range(row_length - 1)])
 
         # Sum of columns with all 1s will have value equal to (length - 1).
         # Using >= since it requires 1-fewer comparrison than !=
@@ -251,7 +166,7 @@ class MPCTensor(EncryptedTensor):
 
         # Multiply by a random permutation to give each maximum a random priority
         if one_hot_required:
-            result *= MPCTensor.randperm(input.size())
+            result *= crypten.randperm(input.size())
             result = result._argmax_helper()
 
         if dim is None:

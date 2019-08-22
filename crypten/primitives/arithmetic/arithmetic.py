@@ -82,23 +82,6 @@ class ArithmeticSharedTensor(EncryptedTensor):
         result._tensor = self._tensor
         return result
 
-    @staticmethod
-    def rand(*sizes):
-        """
-        Returns a tensor with elements uniformly sampled in [0, 1) using the
-        trusted third party.
-        """
-        return TrustedThirdParty.rand(sizes)
-
-    @staticmethod
-    def bernoulli(tensor):
-        """
-        Returns a tensor with elements in {0, 1}. The i-th element of the
-        output will be 1 with probability according to the i-th value of the
-        input tensor.
-        """
-        return TrustedThirdParty.bernoulli(tensor)
-
     def __repr__(self):
         return "[%s] ArithmeticSharedTensor" % self.size()
 
@@ -143,22 +126,6 @@ class ArithmeticSharedTensor(EncryptedTensor):
                 "Cannot pad ArithmeticSharedTensor with a %s value" % type(value)
             )
 
-        return result
-
-    @staticmethod
-    def cat(tensors, *args, **kwargs):
-        """Perform tensor concatenation"""
-        for i, tensor in enumerate(tensors):
-            if torch.is_tensor(tensor):
-                tensors[i] = ArithmeticSharedTensor(tensor)
-            assert isinstance(
-                tensors[i], ArithmeticSharedTensor
-            ), "Can't cat %s with ArithmeticSharedTensor" % type(tensor)
-
-        result = tensors[0].shallow_copy()
-        result._tensor = torch.cat(
-            [tensor._tensor for tensor in tensors], *args, **kwargs
-        )
         return result
 
     @staticmethod
@@ -507,15 +474,3 @@ class ArithmeticSharedTensor(EncryptedTensor):
         """Computer an outer product between two vectors"""
         assert self.dim() == 1 and y.dim() == 1, "Outer product must be on 1D tensors"
         return self.view((-1, 1)).matmul(y.view((1, -1)))
-
-    @staticmethod
-    def randperm(size):
-        return TrustedThirdParty.randperm(size)
-
-    @staticmethod
-    def print_communication_stats():
-        comm.print_communication_stats()
-
-    @staticmethod
-    def reset_communication_stats():
-        comm.reset_communication_stats()

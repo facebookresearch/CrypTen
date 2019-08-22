@@ -42,9 +42,6 @@ class TestNN(MultiProcessTestCase):
             tolerance = getattr(self, "default_tolerance", 0.05)
         tensor = encrypted_tensor.get_plain_text()
 
-        if self.rank != 0:  # Do not check for non-0 rank
-            return
-
         # Check sizes match
         self.assertTrue(tensor.size() == reference.size(), msg)
 
@@ -243,9 +240,15 @@ class TestNN(MultiProcessTestCase):
                         encr_param = getattr(encr_module, key)
 
                     # compare with reference:
+
+                    # NOTE: Because some parameters are initialized randomly
+                    # with different values on each process, we only want to
+                    # check that they are consistent with source parameter value
                     reference = getattr(module, key)
+                    src_reference = crypten.comm.broadcast(reference, src=0)
+
                     msg = "parameter %s in %s incorrect" % (key, module_name)
-                    self._check(encr_param, reference, msg)
+                    self._check(encr_param, src_reference, msg)
             self.assertFalse(encr_module.training, "training value incorrect")
 
             # compare model outputs:

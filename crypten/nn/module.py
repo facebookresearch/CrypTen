@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import crypten
 import numpy
 import torch.nn
 
@@ -334,7 +335,7 @@ class Concat(Module):
     def forward(self, input):
         assert isinstance(input, (list, tuple)), "input needs to be a list or tuple"
         assert len(input) >= 1, "need at least one tensor to concatenate"
-        return MPCTensor.cat(input, self.dimension)
+        return crypten.cat(input, self.dimension)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):

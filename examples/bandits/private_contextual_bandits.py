@@ -10,8 +10,6 @@ import torch
 def get_tensor_type(backend="mpc"):
     if backend == "mpc":
         Tensor = crypten.MPCTensor
-    elif backend == "he":
-        Tensor = crypten.EIVHETensor
     else:
         raise ValueError("Unknown backend: %s" % backend)
     return Tensor
@@ -38,7 +36,7 @@ def online_learner(
     Args:
         sampler: An iterator that returns one sample at a time. Samples are
             assumed to be `dict`s with a `'context'` and a `'rewards'` field.
-        backend: Which privacy protocol to use ('mpc' or 'he').
+        backend: Which privacy protocol to use (default 'mpc').
         score_func: A closure that can be used to plug in exploration mechanisms.
         monitor_func: A closure that does logging.
         checkpoint_func: A closure that does checkpointing.
@@ -156,12 +154,10 @@ def epsilon_greedy(
 
     set_precision(precision)
 
-    Tensor = get_tensor_type(backend)
-
     # define scoring function
     def score_func(scores, A_inv, b, context):
-        explore = Tensor.bernoulli(torch.Tensor([epsilon]))
-        rand_scores = Tensor.rand(*scores.size())
+        explore = crypten.bernoulli(torch.Tensor([epsilon]))
+        rand_scores = crypten.rand(*scores.size())
         scores.mul_(1 - explore).add_(rand_scores.mul(explore))
 
     # run online learner:

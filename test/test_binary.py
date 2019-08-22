@@ -44,9 +44,6 @@ class TestBinary(MultiProcessTestCase):
             tolerance = getattr(self, "default_tolerance", 0.05)
         tensor = encrypted_tensor.get_plain_text()
 
-        if self.rank != 0:  # Do not check for non-0 rank
-            return
-
         # Check sizes match
         self.assertTrue(tensor.size() == reference.size(), msg)
 

@@ -234,11 +234,3 @@ class BinarySharedTensor(EncryptedTensor):
     __rxor__ = __xor__
     __rand__ = __and__
     __ror__ = __or__
-
-    @staticmethod
-    def print_communication_stats():
-        comm.print_communication_stats()
-
-    @staticmethod
-    def reset_communication_stats():
-        comm.reset_communication_stats()

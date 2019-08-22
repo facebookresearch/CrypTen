@@ -30,13 +30,12 @@ def _B2A(binary_tensor, bits=constants.BITS):
     return arithmetic_tensor
 
 
-def convert(tensor, ptype):
+def convert(tensor, ptype, bits=constants.BITS):
     if isinstance(tensor, ptype):
         return tensor
     if isinstance(tensor, ArithmeticSharedTensor) and ptype == BinarySharedTensor:
         return _A2B(tensor)
     elif isinstance(tensor, BinarySharedTensor) and ptype == ArithmeticSharedTensor:
-        # Assuming GMW results are always 1-bit
-        return _B2A(tensor, bits=1)
+        return _B2A(tensor, bits=bits)
     else:
         raise TypeError("Cannot convert %s to %s" % (type(tensor), ptype.__name__))

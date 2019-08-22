@@ -32,7 +32,7 @@ def import_crypten():
 
 class TestMPC(MultiProcessTestCase):
     """
-        This class tests all functions of the SPDZ tensors.
+        This class tests all functions of MPCTensor.
     """
 
     benchmarks_enabled = False
@@ -47,9 +47,6 @@ class TestMPC(MultiProcessTestCase):
         if tolerance is None:
             tolerance = getattr(self, "default_tolerance", 0.05)
         tensor = encrypted_tensor.get_plain_text()
-
-        if self.rank != 0:  # Do not check for non-0 rank
-            return
 
         # Check sizes match
         self.assertTrue(tensor.size() == reference.size(), msg)
@@ -156,13 +153,14 @@ class TestMPC(MultiProcessTestCase):
         self._check(encrypted_out, reference, "right mul failed")
 
     def test_sum(self):
+        """Tests sum reduction on encrypted tensor."""
         tensor = get_random_test_tensor(size=(100, 100), is_float=True)
         encrypted = MPCTensor(tensor)
         self._check(encrypted.sum(), tensor.sum(), "sum failed")
 
         for dim in [0, 1]:
             reference = tensor.sum(dim)
-            with self.benchmark(type="sum", float=float, dim=dim) as bench:
+            with self.benchmark(type="sum", dim=dim) as bench:
                 for _ in bench.iters:
                     encrypted_out = encrypted.sum(dim)
             self._check(encrypted_out, reference, "sum failed")
@@ -575,37 +573,18 @@ class TestMPC(MultiProcessTestCase):
                     encrypted_out = getattr(encrypted_tensor, func)()
             self._check(encrypted_out, reference, "%s failed" % func)
 
-    def test_rand(self):
-        for size in [(10,), (10, 10), (10, 10, 10)]:
-            with self.benchmark(size=size) as bench:
-                for _ in bench.iters:
-                    randvec = MPCTensor.rand(*size)
-            self.assertTrue(randvec.size() == size, "Incorrect size")
-            tensor = randvec.get_plain_text()
-            self.assertTrue(
-                (tensor >= 0).all() and (tensor < 1).all(), "Invalid values"
-            )
-
-        randvec = MPCTensor.rand(int(1e6)).get_plain_text()
-        mean = torch.mean(randvec)
-        var = torch.var(randvec)
-        self.assertTrue(torch.isclose(mean, torch.Tensor([0.5]), rtol=1e-3, atol=1e-3))
-        self.assertTrue(
-            torch.isclose(var, torch.Tensor([1.0 / 12]), rtol=1e-3, atol=1e-3)
-        )
-
     def test_bernoulli(self):
         for size in [(10,), (10, 10), (10, 10, 10)]:
-            probs = torch.rand(size)
+            probs = MPCTensor(torch.rand(size))
             with self.benchmark(size=size) as bench:
                 for _ in bench.iters:
-                    randvec = MPCTensor.bernoulli(probs)
+                    randvec = probs.bernoulli()
             self.assertTrue(randvec.size() == size, "Incorrect size")
             tensor = randvec.get_plain_text()
             self.assertTrue(((tensor == 0) + (tensor == 1)).all(), "Invalid values")
 
-        probs = torch.Tensor(int(1e6)).fill_(0.2)
-        randvec = MPCTensor.bernoulli(probs).get_plain_text()
+        probs = MPCTensor(torch.Tensor(int(1e6)).fill_(0.2))
+        randvec = probs.bernoulli().get_plain_text()
         frac_zero = float((randvec == 0).sum()) / randvec.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.8, rel_tol=1e-3, abs_tol=1e-3))
 

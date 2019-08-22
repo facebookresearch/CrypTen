@@ -100,10 +100,7 @@ def parse_args(hostname):
         "--plaintext", action="store_true", help="use a non-private algorithm"
     )
     parser.add_argument(
-        "--backend",
-        default="mpc",
-        type=str,
-        help="crypten backend: mpc (default) or he",
+        "--backend", default="mpc", type=str, help="crypten backend: mpc (default)"
     )
     parser.add_argument(
         "--learner",
