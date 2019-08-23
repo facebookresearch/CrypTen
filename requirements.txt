@@ -1,4 +1,4 @@
 onnx
-torch>=1.1.0
+torch>=1.2.0
 torchvision>=0.3
 visdom>=0.1.8.8
