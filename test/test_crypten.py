@@ -12,7 +12,7 @@ import torch
 
 # placeholders for class references, to be filled later by import_crypten():
 MPCTensor, is_float_tensor, crypten = None, None, None
-
+ArithmeticSharedTensor, BinarySharedTensor = None, None
 
 def import_crypten():
     """
@@ -21,6 +21,8 @@ def import_crypten():
     all test functions.
     """
     global MPCTensor, is_float_tensor, crypten
+    global ArithmeticSharedTensor, BinarySharedTensor
+
     from crypten import MPCTensor as _MPCTensor
     from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
     import crypten as _crypten
@@ -28,6 +30,8 @@ def import_crypten():
     MPCTensor = _MPCTensor
     is_float_tensor = _is_float_tensor
     crypten = _crypten
+    ArithmeticSharedTensor = crypten.primitives.arithmetic.ArithmeticSharedTensor
+    BinarySharedTensor = crypten.primitives.binary.BinarySharedTensor
 
 
 class TestCrypten(MultiProcessTestCase):
@@ -123,6 +127,15 @@ class TestCrypten(MultiProcessTestCase):
         frac_zero = float((randvec == 0).sum()) / randvec.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.8, rel_tol=1e-3, abs_tol=1e-3))
 
+    def test_ptype(self):
+        """Test that ptype attribute creates the correct type of encrypted tensor"""
+        import crypten
+        ptype_values = [crypten.arithmetic, crypten.binary]
+        tensor_types = [ArithmeticSharedTensor, BinarySharedTensor]
+        for i, curr_ptype in enumerate(ptype_values):
+            tensor = get_random_test_tensor(is_float=False)
+            encr_tensor = MPCTensor(tensor, ptype=curr_ptype)
+            assert isinstance(encr_tensor._tensor, tensor_types[i]), "ptype test failed"
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)

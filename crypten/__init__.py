@@ -24,6 +24,7 @@ def communicator():
 # initialize communicator:
 comm = communicator()
 
+
 import crypten.nn  # noqa: F401
 import torch
 
@@ -33,7 +34,11 @@ from .mpc import MPCTensor
 from .multiprocessing_pdb import pdb
 from .primitives import *
 from .trusted_third_party import TrustedThirdParty
+from .ptype import ptype
 
+#the different private type attributes of an encrypted tensor
+arithmetic = ptype.arithmetic
+binary = ptype.binary
 
 # expose classes and functions in package:
 __all__ = ["MPCTensor", "EncryptedTensor", "TrustedThirdParty", "pdb", "nn"]
@@ -51,9 +56,7 @@ def __cat_stack_helper(op, tensors, *args, **kwargs):
             if isinstance(tensor, MPCTensor):
                 ptype = tensor.ptype
                 break
-        from .primitives.arithmetic.arithmetic import ArithmeticSharedTensor
-
-        ptype = ArithmeticSharedTensor if ptype is None else ptype
+    ptype = arithmetic
 
     # Make all inputs MPCTensors of given ptype
     for i, tensor in enumerate(tensors):
@@ -89,8 +92,7 @@ def rand(*sizes):
     """
     rand = MPCTensor(None)
     rand._tensor = TrustedThirdParty.rand(*sizes)
-    # TODO: Change this once ptypes are registered properly in crypten
-    rand.ptype = type(rand._tensor)
+    rand.ptype = arithmetic
     return rand
 
 
@@ -110,8 +112,7 @@ def randperm(size):
     """
     result = MPCTensor(None)
     result._tensor = TrustedThirdParty.randperm(size)
-    # TODO: Change this once ptypes are registered properly in crypten
-    result.ptype = type(result._tensor)
+    result.ptype = arithmetic
     return result
 
 

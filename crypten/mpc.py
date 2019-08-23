@@ -5,8 +5,8 @@ import torch
 from crypten.common import EncryptedTensor, constants
 from crypten.common.util import pool_reshape
 from crypten.primitives.arithmetic.arithmetic import ArithmeticSharedTensor
-from crypten.primitives.binary.binary import BinarySharedTensor
 from crypten.primitives.converters import convert
+from .ptype import ptype as Ptype
 
 
 def mode(ptype, inplace=False):
@@ -35,10 +35,11 @@ def mode(ptype, inplace=False):
 
 # TODO: Implement ptype class like torch.dtype
 class MPCTensor(EncryptedTensor):
-    def __init__(self, input, ptype=ArithmeticSharedTensor, *args, **kwargs):
+    def __init__(self, input, ptype=Ptype.arithmetic, *args, **kwargs):
         if input is None:
             return
-        self._tensor = ptype(input, *args, **kwargs)
+        tensor_name = ptype.to_tensor()
+        self._tensor = tensor_name(input, *args, **kwargs)
         self.ptype = ptype
 
     def shallow_copy(self):
@@ -59,11 +60,11 @@ class MPCTensor(EncryptedTensor):
 
     def arithmetic(self):
         """Converts self._tensor to arithmetic secret sharing"""
-        return self.to(ArithmeticSharedTensor)
+        return self.to(Ptype.arithmetic)
 
     def binary(self):
         """Converts self._tensor to binary secret sharing"""
-        return self.to(BinarySharedTensor)
+        return self.to(Ptype.binary)
 
     def get_plain_text(self):
         """Decrypt the tensor"""
@@ -80,52 +81,52 @@ class MPCTensor(EncryptedTensor):
         return self > crypten.rand(self.size())
 
     # Comparators
-    @mode(BinarySharedTensor)
+    @mode(Ptype.binary)
     def _ltz(self):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
-        return (self >> constants.BITS - 1).to(ArithmeticSharedTensor, bits=1)
+        return (self >> constants.BITS - 1).to(Ptype.arithmetic, bits=1)
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def ge(self, y):
         """Returns self >= y"""
         return 1 - self.lt(y)
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def gt(self, y):
         """Returns self > y"""
         return (-self + y)._ltz()
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def le(self, y):
         """Returns self <= y"""
         return 1 - self.gt(y)
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def lt(self, y):
         """Returns self < y"""
         return (self - y)._ltz()
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def eq(self, y):
         """Returns self == y"""
         return self.ge(y) - self.gt(y)
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def ne(self, y):
         """Returns self != y"""
         return 1 - self.eq(y)
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def sign(self):
         """Computes the sign value of a tensor (0 is considered positive)"""
         return 2 * (self >= 0) - 1
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def abs(self):
         """Computes the absolute value of a tensor"""
         return self * self.sign()
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def relu(self):
         """Compute a Rectified Linear function on the input tensor.
         """
@@ -147,7 +148,7 @@ class MPCTensor(EncryptedTensor):
         result = (a >= b).sum(dim=0)
         return result >= (row_length - 1)
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def argmax(self, dim=None, one_hot_required=True):
         """Returns a one-hot vector with a 1 entry at a maximum value.
 
@@ -174,13 +175,13 @@ class MPCTensor(EncryptedTensor):
         else:
             return result.transpose(dim, -1)
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def argmin(self, **kwargs):
         """Returns a one-hot vector with a 1 entry at a minimum value. If multiple
         values are equal to the minimum, it will choose one randomly"""
         return (-self).argmax(**kwargs)
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def max(self, dim=None, **kwargs):
         """Compute the max of a tensor's elements (or along a given dimension)"""
         if dim is None:
@@ -189,12 +190,12 @@ class MPCTensor(EncryptedTensor):
             result = self * self.argmax(dim=dim, **kwargs)
             return result.sum(dim=dim)
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def min(self, **kwargs):
         """Compute the min of a tensor's elements (or along a given dimension)"""
         return -((-self).max(**kwargs))
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def max_pool2d(self, kernel_size, padding=None, stride=None):
         """Perform a max pooling on each 2D matrix of the given tensor"""
         max_input = self.shallow_copy()
@@ -213,7 +214,7 @@ class MPCTensor(EncryptedTensor):
         return result
 
     # Logistic Functions
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def sigmoid(self, reciprocal_method="log"):
         """Computes the sigmoid function on the input value
                 sigmoid(x) = (1 + exp(-x))^{-1}
@@ -226,14 +227,14 @@ class MPCTensor(EncryptedTensor):
         result = (1 + (-x).exp()).reciprocal(method=reciprocal_method, log_iters=2)
         return (result - 0.5) * sign + 0.5
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def tanh(self, reciprocal_method="log"):
         """Computes tanh from the sigmoid function:
             tanh(x) = 2 * sigmoid(2 * x) - 1
         """
         return (self * 2).sigmoid(reciprocal_method=reciprocal_method) * 2 - 1
 
-    @mode(ArithmeticSharedTensor)
+    @mode(Ptype.arithmetic)
     def pad(self, pad, mode="constant", value=0):
         result = self.shallow_copy()
         if isinstance(value, MPCTensor):
@@ -266,63 +267,63 @@ class MPCTensor(EncryptedTensor):
 
 
 OOP_UNARY_FUNCTIONS = {
-    "avg_pool2d": ArithmeticSharedTensor,
-    "sum_pool2d": ArithmeticSharedTensor,
-    "softmax": ArithmeticSharedTensor,
-    "exp": ArithmeticSharedTensor,
-    "log": ArithmeticSharedTensor,
-    "pow": ArithmeticSharedTensor,
-    "reciprocal": ArithmeticSharedTensor,
-    "sqrt": ArithmeticSharedTensor,
-    "square": ArithmeticSharedTensor,
-    "norm": ArithmeticSharedTensor,
-    "mean": ArithmeticSharedTensor,
-    "__neg__": ArithmeticSharedTensor,
-    "cos": ArithmeticSharedTensor,
-    "sin": ArithmeticSharedTensor,
-    "invert": BinarySharedTensor,
-    "lshift": BinarySharedTensor,
-    "rshift": BinarySharedTensor,
-    "__invert__": BinarySharedTensor,
-    "__lshift__": BinarySharedTensor,
-    "__rshift__": BinarySharedTensor,
-    "__rand__": BinarySharedTensor,
-    "__rxor__": BinarySharedTensor,
-    "__ror__": BinarySharedTensor,
+    "avg_pool2d": Ptype.arithmetic,
+    "sum_pool2d": Ptype.arithmetic,
+    "softmax": Ptype.arithmetic,
+    "exp": Ptype.arithmetic,
+    "log": Ptype.arithmetic,
+    "pow": Ptype.arithmetic,
+    "reciprocal": Ptype.arithmetic,
+    "sqrt": Ptype.arithmetic,
+    "square": Ptype.arithmetic,
+    "norm": Ptype.arithmetic,
+    "mean": Ptype.arithmetic,
+    "__neg__": Ptype.arithmetic,
+    "cos": Ptype.arithmetic,
+    "sin": Ptype.arithmetic,
+    "invert": Ptype.binary,
+    "lshift": Ptype.binary,
+    "rshift": Ptype.binary,
+    "__invert__": Ptype.binary,
+    "__lshift__": Ptype.binary,
+    "__rshift__": Ptype.binary,
+    "__rand__": Ptype.binary,
+    "__rxor__": Ptype.binary,
+    "__ror__": Ptype.binary,
 }
 
 OOP_BINARY_FUNCTIONS = {
-    "add": ArithmeticSharedTensor,
-    "sub": ArithmeticSharedTensor,
-    "mul": ArithmeticSharedTensor,
-    "matmul": ArithmeticSharedTensor,
-    "conv2d": ArithmeticSharedTensor,
-    "dot": ArithmeticSharedTensor,
-    "ger": ArithmeticSharedTensor,
-    "XOR": BinarySharedTensor,
-    "AND": BinarySharedTensor,
-    "OR": BinarySharedTensor,
-    "__xor__": BinarySharedTensor,
-    "__or__": BinarySharedTensor,
-    "__and__": BinarySharedTensor,
+    "add": Ptype.arithmetic,
+    "sub": Ptype.arithmetic,
+    "mul": Ptype.arithmetic,
+    "matmul": Ptype.arithmetic,
+    "conv2d": Ptype.arithmetic,
+    "dot": Ptype.arithmetic,
+    "ger": Ptype.arithmetic,
+    "XOR": Ptype.binary,
+    "AND": Ptype.binary,
+    "OR": Ptype.binary,
+    "__xor__": Ptype.binary,
+    "__or__": Ptype.binary,
+    "__and__": Ptype.binary,
 }
 
 INPLACE_UNARY_FUNCTIONS = {
-    "neg_": ArithmeticSharedTensor,
-    "invert_": BinarySharedTensor,
-    "lshift_": BinarySharedTensor,
-    "rshift_": BinarySharedTensor,
+    "neg_": Ptype.arithmetic,
+    "invert_": Ptype.binary,
+    "lshift_": Ptype.binary,
+    "rshift_": Ptype.binary,
 }
 
 INPLACE_BINARY_FUNCTIONS = {
-    "add_": ArithmeticSharedTensor,
-    "sub_": ArithmeticSharedTensor,
-    "mul_": ArithmeticSharedTensor,
-    "XOR_": BinarySharedTensor,
-    "AND_": BinarySharedTensor,
-    "OR_": BinarySharedTensor,
-    "__ixor__": BinarySharedTensor,
-    "__iand__": BinarySharedTensor,
+    "add_": Ptype.arithmetic,
+    "sub_": Ptype.arithmetic,
+    "mul_": Ptype.arithmetic,
+    "XOR_": Ptype.binary,
+    "AND_": Ptype.binary,
+    "OR_": Ptype.binary,
+    "__ixor__": Ptype.binary,
+    "__iand__": Ptype.binary,
 }
 
 

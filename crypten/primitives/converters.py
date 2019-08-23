@@ -6,6 +6,8 @@ from crypten.common import constants
 from .arithmetic import ArithmeticSharedTensor
 from .binary import Beaver, BinarySharedTensor
 
+from crypten.ptype import ptype as Ptype
+
 
 def _A2B(arithmetic_tensor):
     binary_tensor = BinarySharedTensor.stack(
@@ -31,11 +33,12 @@ def _B2A(binary_tensor, bits=constants.BITS):
 
 
 def convert(tensor, ptype, bits=constants.BITS):
-    if isinstance(tensor, ptype):
+    tensor_name = ptype.to_tensor()
+    if isinstance(tensor, tensor_name):
         return tensor
-    if isinstance(tensor, ArithmeticSharedTensor) and ptype == BinarySharedTensor:
+    if isinstance(tensor, ArithmeticSharedTensor) and ptype == Ptype.binary:
         return _A2B(tensor)
-    elif isinstance(tensor, BinarySharedTensor) and ptype == ArithmeticSharedTensor:
+    elif isinstance(tensor, BinarySharedTensor) and ptype == Ptype.arithmetic:
         return _B2A(tensor, bits=bits)
     else:
         raise TypeError("Cannot convert %s to %s" % (type(tensor), ptype.__name__))
