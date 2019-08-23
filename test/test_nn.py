@@ -136,7 +136,17 @@ class TestNN(MultiProcessTestCase):
             "Gather": torch.tensor([[1, 2], [0, 3]]),
             "Reshape": torch.tensor([2, 2]),
         }
-
+        module_attributes = {
+            "Add": [],
+            "Concat": [("axis", int)],
+            "Constant": [("value", int)],
+            "Gather": [("axis", int)],
+            "Reshape": [],
+            "Shape": [],
+            "Sub": [],
+            "Squeeze": [("axes", list)],
+            "Unsqueeze": [("axes", list)],
+        }
         # loop over all modules:
         for module_name in module_args.keys():
 
@@ -169,6 +179,21 @@ class TestNN(MultiProcessTestCase):
             # compare model outputs:
             reference = module_lambdas[module_name](inputs)
             encr_output = encr_module(encr_inputs)
+            self._check(encr_output, reference, "%s failed" % module_name)
+
+            # create attributes for static from_onnx function
+            local_attr = {}
+            for i, attr_tuple in enumerate(module_attributes[module_name]):
+                attr_name, attr_type = attr_tuple
+                if attr_type == list:
+                    local_attr[attr_name] = [module_args[module_name][i]]
+                else:
+                    local_attr[attr_name] = module_args[module_name][i]
+
+            # compare model outputs using the from_onnx static function
+            module = getattr(crypten.nn, module_name).from_onnx(attributes=local_attr)
+            encr_module_onnx = module.encrypt()
+            encr_output = encr_module_onnx(encr_inputs)
             self._check(encr_output, reference, "%s failed" % module_name)
 
     def test_pytorch_modules(self):
