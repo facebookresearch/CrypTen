@@ -79,7 +79,7 @@ class TestBinary(MultiProcessTestCase):
             with self.benchmark(tensor_type="BinarySharedTensor") as bench:
                 for _ in bench.iters:
                     encrypted_tensor = BinarySharedTensor(reference)
-                    self._check(encrypted_tensor, reference, "en/decryption failed")
+            self._check(encrypted_tensor, reference, "en/decryption failed")
 
     def test_transpose(self):
         sizes = [

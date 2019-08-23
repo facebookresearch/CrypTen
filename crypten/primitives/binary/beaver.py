@@ -22,7 +22,7 @@ class Beaver:
         delta = eps_del[1]
 
         c._tensor ^= (epsilon & b._tensor) ^ (a._tensor & delta)
-        if c._rank == 0:
+        if c.rank == 0:
             c._tensor ^= epsilon & delta
 
         return c
@@ -47,6 +47,6 @@ class Beaver:
 
         z = (xB ^ rB).reveal()
         rA._tensor = rA._tensor * (1 - z) - rA._tensor * z
-        if rA._rank == 0:
+        if rA.rank == 0:
             rA._tensor += z
         return rA

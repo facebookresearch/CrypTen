@@ -33,10 +33,10 @@ class FixedPointEncoder:
         elif isinstance(x, int) or isinstance(x, float):
             # Squeeze in order to get a 0-dim tensor with value `x`
             return torch.LongTensor([self._scale * x]).squeeze()
+        elif isinstance(x, list):
+            return torch.FloatTensor(x).mul_(self._scale).long()
         elif is_float_tensor(x):
             return (self._scale * x).long()
-        elif isinstance(x, np.ndarray):
-            return self._scale * torch.from_numpy(x).long()
         # For integer types cast to long prior to scaling to avoid overflow.
         elif is_int_tensor(x):
             return self._scale * x.long()

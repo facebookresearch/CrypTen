@@ -6,7 +6,7 @@ import crypten.common.bitwise as bitwise
 import torch
 from crypten import comm
 from crypten.common import EncryptedTensor, FixedPointEncoder
-from crypten.common.sharing import xor_share
+from crypten.common.rng import generate_kbit_random_tensor
 from crypten.common.tensor_types import is_int_tensor
 
 from .beaver import Beaver
@@ -30,34 +30,51 @@ class BinarySharedTensor(EncryptedTensor):
         if src == SENTINEL:
             return
 
-        # _rank indicates the rank of the current processes
-        # _src indicates the rank of the source process that will provide data shares
-        self._rank = comm.get_rank()
-        self._src = src
+        assert is_int_tensor(tensor), "input must be an integer tensor"
 
         #  Assume 0 bits of precision unless encoder is set outside of init
         self.encoder = FixedPointEncoder(precision_bits=0)
-
-        if self._rank == self._src:
-            assert tensor is not None, "Data source must supply an input tensor."
-            if isinstance(tensor, (list, int)):
-                tensor = torch.LongTensor(tensor)
-
-            assert is_int_tensor(tensor), "input must be an integer tensor"
-            shares = xor_share(tensor, num_parties=comm.get_world_size())
-            self._tensor = comm.scatter(shares, src)
-        else:
-            # TODO: Remove this adapt tests to use size arg
-            if isinstance(tensor, int):
-                tensor = torch.LongTensor(tensor)
+        if tensor is not None:
+            tensor = self.encoder.encode(tensor)
             size = tensor.size()
-            self._tensor = comm.scatter(None, src, size=size)
+
+        # Generate Psuedo-random Sharing of Zero and add source's tensor
+        self._tensor = BinarySharedTensor.PRZS(size)._tensor
+        if self.rank == src:
+            assert tensor is not None, "Source must provide a data tensor"
+            self._tensor ^= tensor
+
+    @staticmethod
+    def from_shares(share, src=0):
+        """Generate an AdditiveSharedTensor from a share from each party"""
+        result = BinarySharedTensor(src=SENTINEL)
+        result._tensor = share
+        result.encoder = FixedPointEncoder(precision_bits=0)
+        return result
+
+    @staticmethod
+    def PRZS(*size):
+        """
+        Generate a Pseudo-random Sharing of Zero (using arithmetic shares)
+
+        This function does so by generating `n` numbers across `n` parties with
+        each number being held by exactly 2 parties. Therefore, each party holds
+        two numbes. A zero sharing is found by having each party xor their two
+        numbers together.
+        """
+        tensor = BinarySharedTensor(src=SENTINEL)
+        current_share = generate_kbit_random_tensor(*size, generator=comm.g0)
+        next_share = generate_kbit_random_tensor(*size, generator=comm.g1)
+        tensor._tensor = current_share ^ next_share
+        return tensor
+
+    @property
+    def rank(self):
+        return comm.get_rank()
 
     def shallow_copy(self):
         """Create a shallow copy"""
         result = BinarySharedTensor(src=SENTINEL)
-        result._rank = self._rank
-        result._src = self._src
         result.encoder = self.encoder
         result._tensor = self._tensor
         return result
@@ -65,7 +82,7 @@ class BinarySharedTensor(EncryptedTensor):
     def XOR_(self, y):
         """Bitwise XOR operator (element-wise) in place"""
         if torch.is_tensor(y) or isinstance(y, int):
-            if self._rank == 0:
+            if self.rank == 0:
                 self._tensor ^= y
         elif isinstance(y, BinarySharedTensor):
             self._tensor ^= y._tensor
@@ -103,7 +120,7 @@ class BinarySharedTensor(EncryptedTensor):
     def __invert__(self):
         """Bitwise NOT operator (element-wise)"""
         result = self.clone()
-        if result._rank == 0:
+        if result.rank == 0:
             result._tensor ^= -1
         return result
 

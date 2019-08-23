@@ -87,7 +87,7 @@ class TestArithmetic(MultiProcessTestCase):
             with self.benchmark(tensor_type="ArithmeticSharedTensor") as bench:
                 for _ in bench.iters:
                     encrypted_tensor = ArithmeticSharedTensor(reference)
-                    self._check(encrypted_tensor, reference, "en/decryption failed")
+            self._check(encrypted_tensor, reference, "en/decryption failed")
 
     def test_arithmetic(self):
         """Tests arithmetic functions on encrypted tensor."""
@@ -203,6 +203,7 @@ class TestArithmetic(MultiProcessTestCase):
     def test_wraps(self):
         from crypten.common.util import count_wraps
         from crypten.common.sharing import share
+        from crypten import comm
 
         num_parties = int(self.world_size)
         tensor = get_random_test_tensor(is_float=False)
@@ -211,7 +212,10 @@ class TestArithmetic(MultiProcessTestCase):
         # Note: This test relies on count_wraps function being correct
         reference = count_wraps(shares)
 
-        encrypted_tensor = ArithmeticSharedTensor.from_shares(shares)
+        # Sync shares between parties
+        share = comm.scatter(shares, 0)
+
+        encrypted_tensor = ArithmeticSharedTensor.from_shares(share)
         encrypted_wraps = encrypted_tensor.wraps()
 
         test_passed = (
@@ -416,7 +420,7 @@ class TestArithmetic(MultiProcessTestCase):
         self._check(encrypted_out, reference, "2-norm failed", tolerance=0.5)
 
     def test_cos_sin(self):
-        tensor = torch.tensor([0.01 * i for i in range(-1000, 1001, 1)])
+        tensor = torch.tensor([0.01 * i for i in range(-800, 801, 1)])
         encrypted_tensor = ArithmeticSharedTensor(tensor)
 
         cases = ["cos", "sin"]

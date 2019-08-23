@@ -53,6 +53,48 @@ class DistributedCommunicator(Communicator):
             logging.info("World size = %d" % dist.get_world_size())
             logging.getLogger().setLevel(level)
 
+            self.setup_shared_rng()
+
+    def setup_shared_rng(self):
+        """
+            Generate shared random seeds to generate pseudo-random sharings of
+            zero. The random seeds are shared such that each process shares
+            one seed with the previous rank process and one with the next rank.
+            This allows for the generation of `n` random values, each known to
+            exactly two of the `n` parties.
+
+            For arithmetic sharing, one of theseparties will add the number
+            while the other subtracts it, allowing for the generation of a
+            pseudo-random sharing of zero. (This can be done for binary
+            sharing using bitwise-xor rather than addition / subtraction)
+        """
+        # Initialize RNG Generators
+        self.g0 = torch.Generator()
+        self.g1 = torch.Generator()
+
+        # Generate random seeds for Generators
+        # NOTE: Chosen seed can be any number, but it chooses as a random 64-bit
+        # integer so other parties cannot guess its value.
+        next_seed = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,))
+        prev_seed = torch.LongTensor([0])       # placeholder
+
+        # Send random seed to next party, receive random seed from prev party
+        if dist.get_world_size() >= 2:  # Otherwise sending seeds will segfault.
+            next_rank = (dist.get_rank() + 1) % dist.get_world_size()
+            prev_rank = (next_rank - 2) % dist.get_world_size()
+
+            req0 = dist.isend(tensor=next_seed, dst=next_rank)
+            req1 = dist.irecv(tensor=prev_seed, src=prev_rank)
+
+            req0.wait()
+            req1.wait()
+        else:
+            prev_seed = next_seed
+
+        # Seed Generators
+        self.g0.manual_seed(next_seed.item())
+        self.g1.manual_seed(prev_seed.item())
+
     @_logging
     def send(self, tensor, dst):
         """Sends the specified tensor to the destination dst."""

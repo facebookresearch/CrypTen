@@ -7,7 +7,7 @@ import crypten.common.constants as constants
 import torch
 from crypten import comm
 from crypten.common import EncryptedTensor, FixedPointEncoder
-from crypten.common.sharing import share
+from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 from crypten.trusted_third_party import TrustedThirdParty
 
@@ -28,56 +28,53 @@ class ArithmeticSharedTensor(EncryptedTensor):
     """
 
     # constructors:
-    def __init__(
-        self, tensor=None, shares=None, size=None, precision=constants.PRECISION, src=0
-    ):
+    def __init__(self, tensor=None, size=None, precision=constants.PRECISION, src=0):
         if src == SENTINEL:
             return
 
-        # _rank indicates the rank of the current processes
-        # _src indicates the rank of the source process that will provide data shares
-        self._rank = comm.get_rank()
-        self._src = src
         self.encoder = FixedPointEncoder(precision_bits=precision)
+        if tensor is not None:
+            if is_int_tensor(tensor) and precision != 0:
+                tensor = tensor.float()
+            tensor = self.encoder.encode(tensor)
+            size = tensor.size()
 
-        if self._rank == self._src:
-            # encrypt tensor into private pair:
-            if tensor is not None:
-                if isinstance(tensor, list):
-                    tensor = torch.FloatTensor(tensor)
-                if is_int_tensor(tensor):
-                    precision = 0  # FIXME(brianknott)
-                    assert (
-                        precision == 0
-                    ), "Input must be a FloatTensor or precision must be zero"
-
-                assert torch.is_tensor(tensor) or isinstance(
-                    tensor, (int, float)
-                ), "Input must be a tensor, int, or float"
-                encoded_tensor = self.encoder.encode(tensor)
-                shares = share(encoded_tensor, num_parties=comm.get_world_size())
-
-            assert shares is not None, "Data source must supply an input tensor."
-            self._tensor = comm.scatter(shares, src)
-        else:
-            # TODO: Remove this & adapt tests to use size arg
-            if tensor is not None:
-                if isinstance(tensor, (int, float)):
-                    tensor = self.encoder.encode(tensor)
-                size = tensor.size()
-            else:
-                size = shares[0].size()
-            self._tensor = comm.scatter(None, src, size=size)
+        # Generate psuedo-random sharing of zero (PRZS) and add source's tensor
+        self._tensor = ArithmeticSharedTensor.PRZS(size)._tensor
+        if self.rank == src:
+            assert tensor is not None, "Source must provide a data tensor"
+            self._tensor += tensor
 
     @staticmethod
-    def from_shares(shares, src=0):
-        return ArithmeticSharedTensor(shares=shares, src=src)
+    def from_shares(share, precision=constants.PRECISION, src=0):
+        """Generate an AdditiveSharedTensor from a share from each party"""
+        result = ArithmeticSharedTensor(src=SENTINEL)
+        result._tensor = share
+        result.encoder = FixedPointEncoder(precision_bits=precision)
+        return result
+
+    @staticmethod
+    def PRZS(*size):
+        """
+        Generate a Pseudo-random Sharing of Zero (using arithmetic shares)
+
+        This function does so by generating `n` numbers across `n` parties with
+        each number being held by exactly 2 parties. One of these parties adds
+        this number while the other subtracts this number.
+        """
+        tensor = ArithmeticSharedTensor(src=SENTINEL)
+        current_share = generate_random_ring_element(*size, generator=comm.g0)
+        next_share = generate_random_ring_element(*size, generator=comm.g1)
+        tensor._tensor = current_share - next_share
+        return tensor
+
+    @property
+    def rank(self):
+        return comm.get_rank()
 
     def shallow_copy(self):
         """Create a shallow copy"""
         result = ArithmeticSharedTensor(src=SENTINEL)
-        result._rank = self._rank
-        result._src = self._src
         result.encoder = self.encoder
         result._tensor = self._tensor
         return result
@@ -105,7 +102,7 @@ class ArithmeticSharedTensor(EncryptedTensor):
         result = self.shallow_copy()
         if isinstance(value, (int, float)):
             value = self.encoder.encode(value).item()
-            if result._rank == 0:
+            if result.rank == 0:
                 result._tensor = torch.nn.functional.pad(
                     result._tensor, pad, mode=mode, value=value
                 )
@@ -180,7 +177,7 @@ class ArithmeticSharedTensor(EncryptedTensor):
             y = result.encoder.encode(y)
 
             if additive_func:  # ['add', 'sub']
-                if result._rank == 0:
+                if result.rank == 0:
                     result._tensor = getattr(result._tensor, op)(y)
                 else:
                     result._tensor = torch.broadcast_tensors(result._tensor, y)[0]
@@ -246,17 +243,14 @@ class ArithmeticSharedTensor(EncryptedTensor):
     def div_(self, y):
         """Divide two tensors element-wise"""
         # Truncate protocol for dividing by public integers:
-        if isinstance(y, int):
+        if isinstance(y, int) or is_int_tensor(y):
             if comm.get_world_size() > 2:
-                if y == 1:
-                    return self
-
                 wraps = self.wraps()
                 self._tensor /= y
-                if y == 2:  # Deal with overflow when unpacking long
-                    self -= wraps * int(2 ** 62) * 2
-                else:
-                    self -= wraps * int((2 ** 64) / y)
+                # NOTE: The multiplication here must be split into two parts
+                # to avoid long out-of-bounds when y <= 2 since (2 ** 63) is
+                # larger than the largest long integer.
+                self -= wraps * 4 * (int(2 ** 62) // y)
             else:
                 self._tensor /= y
             return self

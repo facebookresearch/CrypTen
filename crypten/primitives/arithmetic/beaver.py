@@ -41,7 +41,7 @@ class Beaver:
 
         result._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
         result._tensor += getattr(torch, op)(a._tensor, delta, *args, **kwargs)
-        if result._rank == 0:
+        if result.rank == 0:
             result._tensor += getattr(torch, op)(epsilon, delta, *args, **kwargs)
 
         return c
@@ -70,7 +70,7 @@ class Beaver:
 
         epsilon = (x - r).reveal()
         result._tensor += r._tensor.mul_(epsilon).mul_(2)
-        if result._rank == 0:
+        if result.rank == 0:
             result._tensor += epsilon.mul_(epsilon)
 
         return result
@@ -100,7 +100,7 @@ class Beaver:
         theta_x = beta_xr - theta_r
 
         # TODO: Incorporate eta_xr
-        if x._rank == 0:
+        if x.rank == 0:
             theta_z = count_wraps(theta_z)
             theta_x._tensor += theta_z
         return theta_x

@@ -57,7 +57,8 @@ class TrustedThirdParty:
 
         import crypten
 
-        r = crypten.ArithmeticSharedTensor.from_shares(r, src=0)
+        shares = crypten.comm.scatter(r, src=0)
+        r = crypten.ArithmeticSharedTensor.from_shares(shares, precision=0)
         theta_r = crypten.ArithmeticSharedTensor(theta_r, precision=0, src=0)
 
         return r, theta_r
