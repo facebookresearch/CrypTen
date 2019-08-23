@@ -180,10 +180,14 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq=10):
                     epoch,
                     i,
                     len(train_loader),
-                    current_batch_time, batch_time.value(),
-                    losses.item(), losses.value(),
-                    prec1[0], top1.value(),
-                    prec5[0], top5.value(),
+                    current_batch_time,
+                    batch_time.value(),
+                    losses.item(),
+                    losses.value(),
+                    prec1[0],
+                    top1.value(),
+                    prec5[0],
+                    top5.value(),
                 )
             )
 
@@ -247,17 +251,19 @@ def validate(val_loader, model, criterion, print_freq=10):
                     "Prec@5 {:.3f} ({:.3f})".format(
                         i + 1,
                         len(val_loader),
-                        current_batch_time, batch_time.value(),
-                        loss.item(), losses.value(),
-                        prec1[0], top1.value(),
-                        prec5[0], top5.value(),
+                        current_batch_time,
+                        batch_time.value(),
+                        loss.item(),
+                        losses.value(),
+                        prec1[0],
+                        top1.value(),
+                        prec5[0],
+                        top5.value(),
                     )
                 )
 
         logging.info(
-            " * Prec@1 {:.3f} Prec@5 {:.3f}".format(
-                top1.value(), top5.value()
-            )
+            " * Prec@1 {:.3f} Prec@5 {:.3f}".format(top1.value(), top5.value())
         )
 
     return top1.value()

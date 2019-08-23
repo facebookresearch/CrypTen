@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 from enum import IntEnum
+
 from .primitives.arithmetic import ArithmeticSharedTensor
 from .primitives.binary import BinarySharedTensor
 
 
 class ptype(IntEnum):
     """Enumeration defining the private type attributes of encrypted tensors"""
+
     arithmetic = 0
     binary = 1
 

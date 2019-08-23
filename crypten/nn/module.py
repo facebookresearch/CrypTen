@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import crypten
-import numpy
 import torch.nn
 
 from ..mpc import MPCTensor
@@ -366,7 +365,6 @@ class Gather(Module):
     Module that gathers elements from tensor according to indices.
     """
 
-    # FIXME(shobha): Use torch.gather()/take() rather than numpy.take().
     def __init__(self, dimension):
         super().__init__()
         self.dimension = dimension
@@ -378,14 +376,7 @@ class Gather(Module):
         # indices are not data so we can get plain text:
         if isinstance(indices, MPCTensor):
             indices = indices.get_plain_text().long()
-        # FIXME(shoba): Do not make assumptions about underlying code.
-        x = tensor._tensor._tensor
-        y = x.numpy().take(indices.numpy(), axis=self.dimension)
-        if not isinstance(y, numpy.ndarray):
-            y = numpy.asarray(y)
-        result = tensor.shallow_copy()
-        # FIXME(shoba): Do not make assumptions about underlying code.
-        result._tensor._tensor = torch.from_numpy(y)
+        result = tensor.onnx_gather(indices, self.dimension)
         return result
 
     @staticmethod
@@ -659,7 +650,6 @@ class GlobalAveragePool(Module):
     Module that implements GlobalAveragePool of ONNX.
     """
 
-    # FIXME(shobha): Add unit tests.
     def forward(self, input):
         assert input.dim() > 2, "input needs to have more than two dimensions"
 

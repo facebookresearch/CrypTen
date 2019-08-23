@@ -76,7 +76,7 @@ class DistributedCommunicator(Communicator):
         # NOTE: Chosen seed can be any number, but it chooses as a random 64-bit
         # integer so other parties cannot guess its value.
         next_seed = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,))
-        prev_seed = torch.LongTensor([0])       # placeholder
+        prev_seed = torch.LongTensor([0])  # placeholder
 
         # Send random seed to next party, receive random seed from prev party
         if dist.get_world_size() >= 2:  # Otherwise sending seeds will segfault.

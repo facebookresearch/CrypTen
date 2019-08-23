@@ -6,6 +6,7 @@ from crypten.common import EncryptedTensor, constants
 from crypten.common.util import pool_reshape
 from crypten.primitives.arithmetic.arithmetic import ArithmeticSharedTensor
 from crypten.primitives.converters import convert
+
 from .ptype import ptype as Ptype
 
 
@@ -270,6 +271,7 @@ OOP_UNARY_FUNCTIONS = {
     "avg_pool2d": Ptype.arithmetic,
     "sum_pool2d": Ptype.arithmetic,
     "softmax": Ptype.arithmetic,
+    "onnx_gather": Ptype.arithmetic,
     "exp": Ptype.arithmetic,
     "log": Ptype.arithmetic,
     "pow": Ptype.arithmetic,

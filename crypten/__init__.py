@@ -33,10 +33,11 @@ from .common.encrypted_tensor import EncryptedTensor
 from .mpc import MPCTensor
 from .multiprocessing_pdb import pdb
 from .primitives import *
-from .trusted_third_party import TrustedThirdParty
 from .ptype import ptype
+from .trusted_third_party import TrustedThirdParty
 
-#the different private type attributes of an encrypted tensor
+
+# the different private type attributes of an encrypted tensor
 arithmetic = ptype.arithmetic
 binary = ptype.binary
 
@@ -45,7 +46,7 @@ __all__ = ["MPCTensor", "EncryptedTensor", "TrustedThirdParty", "pdb", "nn"]
 
 
 def __cat_stack_helper(op, tensors, *args, **kwargs):
-    assert op in ['cat', 'stack'], 'Unsupported op for helper function'
+    assert op in ["cat", "stack"], "Unsupported op for helper function"
     assert isinstance(tensors, list), "%s input must be a list" % op
     assert len(tensors) > 0, "expected a non-empty list of MPCTensors"
 
@@ -62,10 +63,13 @@ def __cat_stack_helper(op, tensors, *args, **kwargs):
     for i, tensor in enumerate(tensors):
         if torch.is_tensor(tensor):
             tensors[i] = MPCTensor(tensor)
-        assert isinstance(tensors[i], MPCTensor), \
-            "Can't %s %s with MPCTensor" % (op, type(tensor))
-        assert tensors[i].ptype == ptype, \
+        assert isinstance(tensors[i], MPCTensor), "Can't %s %s with MPCTensor" % (
+            op,
+            type(tensor),
+        )
+        assert tensors[i].ptype == ptype, (
             "Cannot %s MPCTensors with different ptypes" % op
+        )
 
     # Operate on all input tensors
     result = tensors[0].clone()
@@ -77,12 +81,12 @@ def __cat_stack_helper(op, tensors, *args, **kwargs):
 
 def cat(tensors, *args, **kwargs):
     """Perform matrix concatenation"""
-    return __cat_stack_helper('cat', tensors, *args, **kwargs)
+    return __cat_stack_helper("cat", tensors, *args, **kwargs)
 
 
 def stack(tensors, *args, **kwargs):
     """Perform tensor stacking"""
-    return __cat_stack_helper('stack', tensors, *args, **kwargs)
+    return __cat_stack_helper("stack", tensors, *args, **kwargs)
 
 
 def rand(*sizes):

@@ -325,6 +325,14 @@ class ArithmeticSharedTensor(EncryptedTensor):
         correction = (-correction).exp()
         return result * correction
 
+    def onnx_gather(self, index, dimension):
+        """Gather entries of tensor along a dimension according to indices """
+        result = self.shallow_copy()
+        all_indices = [slice(0, x) for x in self.size()]
+        all_indices[dimension] = index
+        result._tensor = self._tensor[all_indices]
+        return result
+
     # negation and reciprocal:
     def neg_(self):
         """Negate the tensor's values"""

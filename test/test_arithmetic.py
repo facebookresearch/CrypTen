@@ -442,6 +442,17 @@ class TestArithmetic(MultiProcessTestCase):
                 encrypted_out = encrypted_tensor.softmax()
         self._check(encrypted_out, reference, "softmax failed")
 
+    def test_onnx_gather(self):
+        """Tests onnx_gather function of encrypted tensor"""
+        tensor_size = [5, 5, 5, 5]
+        index = torch.tensor([[[1, 2], [3, 4]], [[4, 2], [1, 3]]], dtype=torch.long)
+        tensor = get_random_test_tensor(size=tensor_size, is_float=True)
+        for dimension in range(0, 4):
+            reference = torch.from_numpy(tensor.numpy().take(index, dimension))
+            encrypted_tensor = ArithmeticSharedTensor(tensor)
+            encrypted_out = encrypted_tensor.onnx_gather(index, dimension)
+            self._check(encrypted_out, reference, "onnx_gather function failed")
+
     def test_get_set(self):
         for tensor_type in [lambda x: x, ArithmeticSharedTensor]:
             for size in range(1, 5):
@@ -482,14 +493,7 @@ class TestArithmetic(MultiProcessTestCase):
                 )
 
     def test_pad(self):
-        sizes = [
-            (1,),
-            (5,),
-            (1, 1),
-            (5, 5),
-            (5, 5, 5),
-            (5, 3, 32, 32),
-        ]
+        sizes = [(1,), (5,), (1, 1), (5, 5), (5, 5, 5), (5, 3, 32, 32)]
         pads = [
             (0, 0, 0, 0),
             (1, 0, 0, 0),

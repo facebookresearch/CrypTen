@@ -184,6 +184,10 @@ class EncryptedTensor:
         """Perform (weighted) inner product with plain or cipher text."""
         raise NotImplementedError("dot is not implemented")
 
+    def onnx_gather(self, index, dimension):
+        """Gather entries of tensor along a dimension according to indices"""
+        raise NotImplementedError("onnx_gather is not implemented")
+
 
 REGULAR_FUNCTIONS = [
     "clone",

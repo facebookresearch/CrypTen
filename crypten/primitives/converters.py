@@ -2,11 +2,10 @@
 
 from crypten import comm
 from crypten.common import constants
+from crypten.ptype import ptype as Ptype
 
 from .arithmetic import ArithmeticSharedTensor
 from .binary import Beaver, BinarySharedTensor
-
-from crypten.ptype import ptype as Ptype
 
 
 def _A2B(arithmetic_tensor):
