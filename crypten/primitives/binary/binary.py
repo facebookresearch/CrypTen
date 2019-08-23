@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-import crypten.common.bitwise as bitwise
-
 # dependencies:
 import torch
 from crypten import comm
@@ -143,25 +141,6 @@ class BinarySharedTensor(EncryptedTensor):
     def rshift(self, value):
         """Right shift elements by `value` bits"""
         return self.clone().rshift_(value)
-
-    def get_bit(self, index):
-        """Get an individual bit of each value"""
-        result = self.shallow_copy()
-        result._tensor = (result._tensor >> index) & 1
-        return result
-
-    def set_bit(self, index, value):
-        """Set an individual bit of each value"""
-        if torch.is_tensor(value):
-            if self.rank == 0:
-                self._tensor = bitwise.set_bit(self._tensor, index, value)
-            else:
-                self._tensor = bitwise.set_bit(self._tensor, index, 0)
-        elif isinstance(value, BinarySharedTensor):
-            self._tensor = bitwise.set_bit(self._tensor, index, value._tensor)
-        else:
-            raise TypeError("Cannot set_bit with type: %s" % type(value))
-        return self
 
     # Circuits
     def add(self, y):
