@@ -9,7 +9,6 @@ import crypten
 import torch
 from crypten.common import EncryptedTensor, constants
 from crypten.common.util import pool_reshape
-from crypten.primitives.arithmetic.arithmetic import ArithmeticSharedTensor
 from crypten.primitives.converters import convert
 
 from .ptype import ptype as Ptype
@@ -134,8 +133,7 @@ class MPCTensor(EncryptedTensor):
 
     @mode(Ptype.arithmetic)
     def relu(self):
-        """Compute a Rectified Linear function on the input tensor.
-        """
+        """Compute a Rectified Linear function on the input tensor."""
         return self * (self > 0)
 
     # max / min-related functions

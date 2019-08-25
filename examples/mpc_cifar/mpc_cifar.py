@@ -16,7 +16,6 @@ import crypten
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
@@ -188,7 +187,7 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq=10):
                     len(train_loader),
                     current_batch_time,
                     batch_time.value(),
-                    losses.item(),
+                    loss.item(),
                     losses.value(),
                     prec1[0],
                     top1.value(),
