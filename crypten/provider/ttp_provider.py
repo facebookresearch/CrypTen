@@ -7,7 +7,6 @@
 
 import torch
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
-from crypten.common.sharing import share
 from crypten.common.util import count_wraps
 from crypten.primitives import ArithmeticSharedTensor, BinarySharedTensor
 from crypten import comm
@@ -53,8 +52,7 @@ class TrustedThirdParty:
     @staticmethod
     def wrap_rng(size, num_parties):
         """Generate random shared tensor of given size and sharing of its wraps"""
-        r = generate_random_ring_element(size)
-        r = share(r, num_parties=num_parties)
+        r = [generate_random_ring_element(size) for _ in range(num_parties)]
         theta_r = count_wraps(r)
 
         shares = comm.scatter(r, src=0)

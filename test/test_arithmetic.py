@@ -205,12 +205,18 @@ class TestArithmetic(MultiProcessTestCase):
 
     def test_wraps(self):
         from crypten.common.util import count_wraps
-        from crypten.common.sharing import share
+        from crypten.common.rng import generate_random_ring_element
         from crypten import comm
 
         num_parties = int(self.world_size)
-        tensor = get_random_test_tensor(is_float=False)
-        shares = share(tensor, num_parties=num_parties)
+
+        size = (5, 5)
+
+        # Generate random sharing with internal value get_random_test_tensor()
+        zero_shares = generate_random_ring_element((num_parties, *size))
+        zero_shares = zero_shares - zero_shares.roll(1, dims=0)
+        shares = list(zero_shares.unbind(0))
+        shares[0] += get_random_test_tensor(size=size, is_float=False)
 
         # Note: This test relies on count_wraps function being correct
         reference = count_wraps(shares)
