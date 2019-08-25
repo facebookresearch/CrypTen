@@ -5,12 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-# ==============================================================================
-#
-# This file contains a simple PyTorch implementations of all binary circuits used
-# by the BinarySharedTensor object.
-#
-# ==============================================================================
 import crypten.common.constants as constants
 import torch
 
@@ -63,7 +57,7 @@ class Circuit:
             P <- P0 & P1
             K <- K0 ^ (P0 & K1) <- don't need K since it is implied by S and P
         """
-        import crypten
+        from crypten.primitives import BinarySharedTensor
 
         for i in range(constants.LOG_BITS):
             in_mask = MASKS[i]
@@ -76,8 +70,8 @@ class Circuit:
             S1 = Circuit.__fan(S & in_mask, i)
 
             # Vectorize private AND calls to reduce rounds:
-            P0P0 = crypten.BinarySharedTensor.stack([P0, P0])
-            S1P1 = crypten.BinarySharedTensor.stack([S1, P1])
+            P0P0 = BinarySharedTensor.stack([P0, P0])
+            S1P1 = BinarySharedTensor.stack([S1, P1])
             update = P0P0 & S1P1
 
             # Update S and P

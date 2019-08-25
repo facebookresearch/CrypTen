@@ -23,12 +23,10 @@ def import_crypten():
     """
     global BinarySharedTensor, ArithmeticSharedTensor
     global is_float_tensor, is_int_tensor
-    from crypten.primitives.binary.binary import (
-        BinarySharedTensor as _BinarySharedTensor,
-    )
-    from crypten.primitives.arithmetic.arithmetic import (
+    from crypten.primitives import (
         ArithmeticSharedTensor as _ArithmeticSharedTensor,
     )
+    from crypten.primitives import BinarySharedTensor as _BinarySharedTensor
     from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
     from crypten.common.tensor_types import is_int_tensor as _is_int_tensor
 

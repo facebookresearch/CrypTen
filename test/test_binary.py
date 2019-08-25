@@ -21,9 +21,7 @@ def import_crypten():
     """
     global BinarySharedTensor
     global is_int_tensor
-    from crypten.primitives.binary.binary import (
-        BinarySharedTensor as _BinarySharedTensor,
-    )
+    from crypten.primitives import BinarySharedTensor as _BinarySharedTensor
     from crypten.common.tensor_types import is_int_tensor as _is_int_tensor
 
     BinarySharedTensor = _BinarySharedTensor

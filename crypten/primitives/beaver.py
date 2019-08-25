@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
+import crypten
 from crypten import comm
 from crypten.common.util import count_wraps
 
@@ -28,16 +29,17 @@ class Beaver:
         result = x.shallow_copy()
 
         assert op in ["mul", "matmul", "conv2d"]
-        import crypten
 
-        a, b, c = crypten.TrustedThirdParty.generate_additive_triple(
+        provider = crypten.get_default_provider()
+        a, b, c = provider.generate_additive_triple(
             x.size(), y.size(), op, *args, **kwargs
         )
         result._tensor = c._tensor
 
         # Stack to vectorize reveal if possible
         if x.size() == y.size():
-            eps_del = crypten.ArithmeticSharedTensor.stack([x - a, y - b]).reveal()
+            from .arithmetic import ArithmeticSharedTensor
+            eps_del = ArithmeticSharedTensor.stack([x - a, y - b]).reveal()
             epsilon = eps_del[0]
             delta = eps_del[1]
         else:
@@ -68,9 +70,8 @@ class Beaver:
         # Clone the input to make result's attributes consistent with the input
         result = x.clone()
 
-        import crypten
-
-        r, r2 = crypten.TrustedThirdParty.square(x.size())
+        provider = crypten.get_default_provider()
+        r, r2 = provider.square(x.size())
         result._tensor = r2._tensor
 
         epsilon = (x - r).reveal()
@@ -94,9 +95,8 @@ class Beaver:
         Since [eta_xr] = 0 with probability |x| / Q for modulus Q, we can make
         the assumption that [eta_xr] = 0 with high probability.
         """
-        import crypten
-
-        r, theta_r = crypten.TrustedThirdParty.wrap_rng(x.size(), comm.get_world_size())
+        provider = crypten.get_default_provider()
+        r, theta_r = provider.wrap_rng(x.size(), comm.get_world_size())
         beta_xr = theta_r.clone()
         beta_xr._tensor = count_wraps([x._tensor, r._tensor])
 
@@ -109,3 +109,46 @@ class Beaver:
             theta_z = count_wraps(theta_z)
             theta_x._tensor += theta_z
         return theta_x
+
+    @staticmethod
+    def AND(x, y):
+        """Performs Beaver AND protocol for BinarySharedTensor tensors x and y"""
+        from .binary import BinarySharedTensor
+
+        provider = crypten.get_default_provider()
+        a, b, c = provider.generate_xor_triple(x.size())
+
+        # Stack to vectorize reveal
+        eps_del = BinarySharedTensor.stack([x ^ a, y ^ b]).reveal()
+        epsilon = eps_del[0]
+        delta = eps_del[1]
+
+        c._tensor ^= (epsilon & b._tensor) ^ (a._tensor & delta)
+        if c.rank == 0:
+            c._tensor ^= epsilon & delta
+
+        return c
+
+    @staticmethod
+    def B2A_single_bit(xB):
+        """Converts a single-bit BinarySharedTensor xB into an
+            ArithmeticSharedTensor. This is done by:
+
+        1. Generate ArithmeticSharedTensor [rA] and BinarySharedTensor =rB= with
+            a common 1-bit value r.
+        2. Hide xB with rB and open xB ^ rB
+        3. If xB ^ rB = 0, then return [rA], otherwise return 1 - [rA]
+            Note: This is an arithmetic xor of a single bit.
+        """
+        if comm.get_world_size() < 2:
+            from crypten.primitives import ArithmeticSharedTensor
+            return ArithmeticSharedTensor(xB._tensor, precision=0, src=0)
+
+        provider = crypten.get_default_provider()
+        rA, rB = provider.B2A_rng(xB.size())
+
+        z = (xB ^ rB).reveal()
+        rA._tensor = rA._tensor * (1 - z) - rA._tensor * z
+        if rA.rank == 0:
+            rA._tensor += z
+        return rA

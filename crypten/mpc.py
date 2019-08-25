@@ -7,10 +7,10 @@
 
 import crypten
 import torch
-from crypten.common import EncryptedTensor, constants
-from crypten.common.util import pool_reshape
-from crypten.primitives.converters import convert
 
+from .common import EncryptedTensor, constants
+from .common.util import pool_reshape
+from .primitives.converters import convert
 from .ptype import ptype as Ptype
 
 
@@ -38,7 +38,6 @@ def mode(ptype, inplace=False):
     return function_wrapper
 
 
-# TODO: Implement ptype class like torch.dtype
 class MPCTensor(EncryptedTensor):
     def __init__(self, input, ptype=Ptype.arithmetic, *args, **kwargs):
         if input is None:

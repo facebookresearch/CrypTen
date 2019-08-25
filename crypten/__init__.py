@@ -29,17 +29,16 @@ def communicator():
 # initialize communicator:
 comm = communicator()
 
-
 import crypten.nn  # noqa: F401
+import crypten.primitives  # noqa: F401
+import crypten.provider  # noqa: F401
 import torch
 
 # other imports:
 from .common.encrypted_tensor import EncryptedTensor
 from .mpc import MPCTensor
 from .multiprocessing_pdb import pdb
-from .primitives import *
 from .ptype import ptype
-from .trusted_third_party import TrustedThirdParty
 
 
 # the different private type attributes of an encrypted tensor
@@ -47,7 +46,14 @@ arithmetic = ptype.arithmetic
 binary = ptype.binary
 
 # expose classes and functions in package:
-__all__ = ["MPCTensor", "EncryptedTensor", "TrustedThirdParty", "pdb", "nn"]
+__all__ = [
+    "MPCTensor",
+    "EncryptedTensor",
+    "primitives",
+    "pdb",
+    "provider",
+    "nn"
+]
 
 
 def __cat_stack_helper(op, tensors, *args, **kwargs):
@@ -62,19 +68,18 @@ def __cat_stack_helper(op, tensors, *args, **kwargs):
             if isinstance(tensor, MPCTensor):
                 ptype = tensor.ptype
                 break
-    ptype = arithmetic
+    if ptype is None:
+        ptype = arithmetic
 
     # Make all inputs MPCTensors of given ptype
     for i, tensor in enumerate(tensors):
         if torch.is_tensor(tensor):
-            tensors[i] = MPCTensor(tensor)
+            tensors[i] = MPCTensor(tensor, ptype=ptype)
         assert isinstance(tensors[i], MPCTensor), "Can't %s %s with MPCTensor" % (
-            op,
-            type(tensor),
+            op, type(tensor),
         )
-        assert tensors[i].ptype == ptype, (
-            "Cannot %s MPCTensors with different ptypes" % op
-        )
+        if tensors[i].ptype != ptype:
+            tensors[i] = tensors[i].to(ptype)
 
     # Operate on all input tensors
     result = tensors[0].clone()
@@ -100,7 +105,7 @@ def rand(*sizes):
     trusted third party.
     """
     rand = MPCTensor(None)
-    rand._tensor = TrustedThirdParty.rand(*sizes)
+    rand._tensor = crypten.provider.TrustedThirdParty.rand(*sizes)
     rand.ptype = arithmetic
     return rand
 
@@ -120,7 +125,7 @@ def randperm(size):
         where `n` is the length of each row (size[-1])
     """
     result = MPCTensor(None)
-    result._tensor = TrustedThirdParty.randperm(size)
+    result._tensor = crypten.provider.TrustedThirdParty.randperm(size)
     result.ptype = arithmetic
     return result
 
@@ -131,3 +136,22 @@ def print_communication_stats():
 
 def reset_communication_stats():
     comm.reset_communication_stats()
+
+
+# Set provider
+__SUPPORTRED_PROVIDERS = [
+    crypten.provider.TrustedThirdParty,
+    crypten.provider.HomomorphicProvider,
+]
+__default_provider = __SUPPORTRED_PROVIDERS[0]
+
+
+def set_default_provider(new_default_provider):
+    global __default_provider
+    assert new_default_provider in __SUPPORTRED_PROVIDERS, \
+        "Provider %s is not supported" % new_default_provider
+    __default_provider = new_default_provider
+
+
+def get_default_provider():
+    return __default_provider

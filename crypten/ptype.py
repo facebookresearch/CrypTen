@@ -7,8 +7,8 @@
 
 from enum import IntEnum
 
-from .primitives.arithmetic import ArithmeticSharedTensor
-from .primitives.binary import BinarySharedTensor
+from .primitives import ArithmeticSharedTensor
+from .primitives import BinarySharedTensor
 
 
 class ptype(IntEnum):

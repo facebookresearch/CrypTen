@@ -28,7 +28,6 @@ def _A2B(arithmetic_tensor):
 def _B2A(binary_tensor, bits=constants.BITS):
     arithmetic_tensor = 0
     for i in range(bits):
-        # TODO: Move Beaver.B2A_single_bit to a more appropriate location
         binary_bit = binary_tensor & 1
         arithmetic_bit = Beaver.B2A_single_bit(binary_bit)
         arithmetic_tensor += arithmetic_bit * (2 ** i)

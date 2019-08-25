@@ -5,10 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from .beaver import Beaver
-from .binary import BinarySharedTensor
-from .circuit import Circuit
+from .ttp_provider import TrustedThirdParty
+from .homomorphic_provider import HomomorphicProvider
 
-
-# expose classes and functions in package:
-__all__ = ["Beaver", "Circuit", "BinarySharedTensor"]
+__all__ = ['TrustedThirdParty', 'HomomorphicProvider']
