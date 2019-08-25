@@ -74,7 +74,7 @@ def online_learner(
 
             # initialize accumulators for linear least squares:
             A_inv = [torch.eye(num_features).unsqueeze(0) for _ in range(num_arms)]
-            A_inv = Tensor.cat([Tensor(A) for A in A_inv])
+            A_inv = crypten.cat([Tensor(A) for A in A_inv])
             b = Tensor(torch.zeros(num_arms, num_features))
 
             # compute initial weights for all arms:

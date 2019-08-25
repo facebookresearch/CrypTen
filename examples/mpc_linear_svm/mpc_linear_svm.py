@@ -10,7 +10,7 @@ import time
 
 import crypten
 import torch
-from crypten.common import AverageMeter
+from examples.meters import AverageMeter
 
 
 def run_mpc_linear_svm(
@@ -61,8 +61,9 @@ def run_mpc_linear_svm(
             w = w - w_grad * lr
             b = b - b_grad * lr
 
-            pt_time.update(time.time() - end)
-            logging.info("    Time %.6f (%.6f)" % (pt_time.val, pt_time.avg))
+            iter_time = time.time() - end
+            pt_time.add(iter_time)
+            logging.info("    Time %.6f (%.6f)" % (iter_time, pt_time.value()))
             end = time.time()
 
         w_torch = w
@@ -109,8 +110,9 @@ def run_mpc_linear_svm(
         w = w - w_grad * lr
         b = b - b_grad * lr
 
-        batch_time.update(time.time() - end)
-        logging.info("    Time %.6f (%.6f)" % (batch_time.val, batch_time.avg))
+        iter_time = time.time() - end
+        batch_time.add(iter_time)
+        logging.info("    Time %.6f (%.6f)" % (iter_time, batch_time.value()))
         end = time.time()
 
     if not skip_plaintext:
