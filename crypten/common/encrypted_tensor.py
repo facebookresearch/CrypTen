@@ -206,7 +206,6 @@ REGULAR_FUNCTIONS = [
     "repeat",
     "expand",
     "roll",
-    "fold",
     "unfold",
     "take",
     "flip",

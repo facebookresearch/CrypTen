@@ -6,7 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from crypten import comm
-from crypten.common import constants
+from crypten.common import constants, FixedPointEncoder
 from crypten.ptype import ptype as Ptype
 
 from .arithmetic import ArithmeticSharedTensor
@@ -25,25 +25,31 @@ def _A2B(arithmetic_tensor):
     return binary_tensor
 
 
-def _B2A(binary_tensor, bits=constants.BITS):
+def _B2A(binary_tensor, precision=constants.PRECISION, bits=constants.BITS):
     arithmetic_tensor = 0
     for i in range(bits):
         binary_bit = binary_tensor & 1
         arithmetic_bit = Beaver.B2A_single_bit(binary_bit)
-        arithmetic_tensor += arithmetic_bit * (2 ** i)
+        # avoids long integer overflow since 2 ** 63 is out of range
+        # (aliases to -2 ** 63)
+        if i == 63:
+            arithmetic_tensor += arithmetic_bit * (-2 ** 63)
+        else:
+            arithmetic_tensor += arithmetic_bit * (2 ** i)
         binary_tensor >>= 1
-    arithmetic_tensor.encoder = binary_tensor.encoder
-    arithmetic_tensor *= arithmetic_tensor.encoder._scale
+    arithmetic_tensor.encoder = FixedPointEncoder(precision_bits=precision)
+    scale = arithmetic_tensor.encoder._scale // binary_tensor.encoder._scale
+    arithmetic_tensor *= scale
     return arithmetic_tensor
 
 
-def convert(tensor, ptype, bits=constants.BITS):
+def convert(tensor, ptype, **kwargs):
     tensor_name = ptype.to_tensor()
     if isinstance(tensor, tensor_name):
         return tensor
     if isinstance(tensor, ArithmeticSharedTensor) and ptype == Ptype.binary:
         return _A2B(tensor)
     elif isinstance(tensor, BinarySharedTensor) and ptype == Ptype.arithmetic:
-        return _B2A(tensor, bits=bits)
+        return _B2A(tensor, **kwargs)
     else:
         raise TypeError("Cannot convert %s to %s" % (type(tensor), ptype.__name__))

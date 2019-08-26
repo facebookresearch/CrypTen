@@ -88,7 +88,8 @@ class MPCTensor(EncryptedTensor):
     @mode(Ptype.binary)
     def _ltz(self):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
-        return (self >> constants.BITS - 1).to(Ptype.arithmetic, bits=1)
+        result = (self >> constants.BITS - 1).to(Ptype.arithmetic, bits=1)
+        return result * result._tensor.encoder._scale
 
     @mode(Ptype.arithmetic)
     def ge(self, y):

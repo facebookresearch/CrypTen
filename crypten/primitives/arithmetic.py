@@ -85,7 +85,7 @@ class ArithmeticSharedTensor(EncryptedTensor):
         return result
 
     def __repr__(self):
-        return "[%s] ArithmeticSharedTensor" % self.size()
+        return "[%s] ArithmeticSharedTensor" % str(self.size())
 
     def __setitem__(self, index, value):
         """Set tensor values by index"""

@@ -82,6 +82,9 @@ class BinarySharedTensor(EncryptedTensor):
         result._tensor = self._tensor
         return result
 
+    def __repr__(self):
+        return "[%s] BinarySharedTensor" % str(self.size())
+
     def XOR_(self, y):
         """Bitwise XOR operator (element-wise) in place"""
         if torch.is_tensor(y) or isinstance(y, int):
@@ -215,7 +218,7 @@ class BinarySharedTensor(EncryptedTensor):
 
     def get_plain_text(self):
         """Decrypt the tensor"""
-        return self.reveal()
+        return self.encoder.decode(self.reveal())
 
     # Bitwise operators
     __xor__ = XOR

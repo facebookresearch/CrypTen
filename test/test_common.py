@@ -32,10 +32,13 @@ class TestCommon(unittest.TestCase):
 
     def test_encode_decode(self):
         """Tests tensor encoding and decoding."""
-        fpe = FixedPointEncoder(precision_bits=16)
         for float in [False, True]:
+            if float:
+                fpe = FixedPointEncoder(precision_bits=16)
+            else:
+                fpe = FixedPointEncoder(precision_bits=0)
             tensor = get_test_tensor(float=float)
-            decoded = fpe.decode(fpe.encode(tensor), to_float=float)
+            decoded = fpe.decode(fpe.encode(tensor))
             self._check(
                 decoded,
                 tensor,
@@ -53,9 +56,10 @@ class TestCommon(unittest.TestCase):
         )
 
         # Try a few other types.
+        fpe = FixedPointEncoder(precision_bits=0)
         for dtype in [torch.uint8, torch.int8, torch.int16]:
             tensor = torch.zeros(5, dtype=dtype).random_()
-            decoded = fpe.decode(fpe.encode(tensor), to_float=False).type(dtype)
+            decoded = fpe.decode(fpe.encode(tensor)).type(dtype)
             self._check(decoded, tensor, "Encoding/decoding a %s failed." % dtype)
 
     def test_nearest_integer_division(self):

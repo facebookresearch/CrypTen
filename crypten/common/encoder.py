@@ -53,10 +53,10 @@ class FixedPointEncoder:
         else:
             raise TypeError("Unknown tensor type: %s." % type(x))
 
-    def decode(self, tensor, to_float=True):
+    def decode(self, tensor):
         """Helper function that decodes from scaled tensor"""
         assert is_int_tensor(tensor), "input must be a LongTensor"
-        if to_float:
+        if self._scale > 1:
             correction = (tensor < 0).long()
             dividend = tensor / self._scale - correction
             remainder = tensor % self._scale
