@@ -1,1 +1,1 @@
-CrypTorch: Private and secure machine learning in PyTorch.
+CrypTen: Private and secure machine learning in PyTorch.
