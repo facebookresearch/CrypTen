@@ -70,11 +70,11 @@ def run_mpc_linear_svm(
         b_torch = b
 
     # Encrypt all the things!!!
-    x = crypten.MPCTensor(x)
-    y = crypten.MPCTensor(y)
+    x = crypten.cryptensor(x)
+    y = crypten.cryptensor(y)
 
-    w = crypten.MPCTensor(w_init)
-    b = crypten.MPCTensor(b_init)
+    w = crypten.cryptensor(w_init)
+    b = crypten.cryptensor(b_init)
 
     batch_time = AverageMeter()
 

@@ -14,7 +14,7 @@ import torch
 
 
 # placeholders for class references, to be filled later by import_crypten():
-MPCTensor, is_float_tensor, crypten = None, None, None
+is_float_tensor, crypten = None, None
 ArithmeticSharedTensor, BinarySharedTensor = None, None
 
 
@@ -24,18 +24,16 @@ def import_crypten():
     in MultiProcessTestCase.setUp() are set, and sets the class references for
     all test functions.
     """
-    global MPCTensor, is_float_tensor, crypten
+    global is_float_tensor, crypten
     global ArithmeticSharedTensor, BinarySharedTensor
 
-    from crypten import MPCTensor as _MPCTensor
     from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
     import crypten as _crypten
 
-    MPCTensor = _MPCTensor
     is_float_tensor = _is_float_tensor
     crypten = _crypten
-    ArithmeticSharedTensor = crypten.primitives.arithmetic.ArithmeticSharedTensor
-    BinarySharedTensor = crypten.primitives.binary.BinarySharedTensor
+    ArithmeticSharedTensor = crypten.mpc.primitives.arithmetic.ArithmeticSharedTensor
+    BinarySharedTensor = crypten.mpc.primitives.binary.BinarySharedTensor
 
 
 class TestCrypten(MultiProcessTestCase):
@@ -49,6 +47,7 @@ class TestCrypten(MultiProcessTestCase):
         super().setUp()
         if self.rank >= 0:
             import_crypten()
+            crypten.set_default_backend(crypten.mpc)
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
@@ -73,9 +72,9 @@ class TestCrypten(MultiProcessTestCase):
         tensor1 = get_random_test_tensor(size=(5, 5, 5, 5), is_float=True)
         tensor2 = get_random_test_tensor(size=(5, 5, 5, 5), is_float=True)
 
-        for type1 in [lambda x: x, MPCTensor]:
+        for type1 in [lambda x: x, crypten.cryptensor]:
             encrypted1 = type1(tensor1)
-            for type2 in [lambda x: x, MPCTensor]:
+            for type2 in [lambda x: x, crypten.cryptensor]:
                 encrypted2 = type2(tensor2)
 
                 for op in ["cat", "stack"]:
@@ -139,7 +138,7 @@ class TestCrypten(MultiProcessTestCase):
         tensor_types = [ArithmeticSharedTensor, BinarySharedTensor]
         for i, curr_ptype in enumerate(ptype_values):
             tensor = get_random_test_tensor(is_float=False)
-            encr_tensor = MPCTensor(tensor, ptype=curr_ptype)
+            encr_tensor = crypten.cryptensor(tensor, ptype=curr_ptype)
             assert isinstance(encr_tensor._tensor, tensor_types[i]), "ptype test failed"
 
 

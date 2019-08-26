@@ -62,7 +62,7 @@ def run_experiment(
         image = transform(image)
 
         # perform inference using encrypted model on encrypted sample:
-        encrypted_image = crypten.MPCTensor(image)
+        encrypted_image = crypten.cryptensor(image)
         encrypted_output = encrypted_model(encrypted_image)
 
         # measure accuracy of prediction

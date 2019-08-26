@@ -7,12 +7,10 @@
 
 from functools import reduce
 
-import crypten.common.constants as constants
-
 # dependencies:
 import torch
 from crypten import comm
-from crypten.common import EncryptedTensor, FixedPointEncoder
+from crypten.common import EncryptedTensor, FixedPointEncoder, constants
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 

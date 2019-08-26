@@ -12,14 +12,6 @@ import crypten
 import torch
 
 
-def get_tensor_type(backend="mpc"):
-    if backend == "mpc":
-        Tensor = crypten.MPCTensor
-    else:
-        raise ValueError("Unknown backend: %s" % backend)
-    return Tensor
-
-
 def set_precision(bits):
     from crypten.common import constants
 
@@ -53,7 +45,7 @@ def online_learner(
     total_reward = 0.0
 
     # initialize constructor for tensors:
-    Tensor = get_tensor_type(backend)
+    crypten.set_default_backend(getattr(crypten, backend))
 
     # loop over dataset:
     idx = 0
@@ -65,7 +57,7 @@ def online_learner(
             "invalid sample: %s" % sample
         )
 
-        context = Tensor(sample["context"])
+        context = crypten.cryptensor(sample["context"])
         num_features = context.nelement()
         num_arms = sample["rewards"].nelement()
 
@@ -74,8 +66,8 @@ def online_learner(
 
             # initialize accumulators for linear least squares:
             A_inv = [torch.eye(num_features).unsqueeze(0) for _ in range(num_arms)]
-            A_inv = crypten.cat([Tensor(A) for A in A_inv])
-            b = Tensor(torch.zeros(num_arms, num_features))
+            A_inv = crypten.cat([crypten.cryptensor(A) for A in A_inv])
+            b = crypten.cryptensor(torch.zeros(num_arms, num_features))
 
             # compute initial weights for all arms:
             weights = b.unsqueeze(1).matmul(A_inv).squeeze(1)
@@ -96,7 +88,7 @@ def online_learner(
         # Once the action is taken, the reward (a scalar) is observed by some
         # party and secret shared. Here we simulate that by selecting the
         # reward from the rewards vector and then sharing it.
-        reward = Tensor(
+        reward = crypten.cryptensor(
             (sample["rewards"][selected_arm] > random.random()).view(1).float()
         )
 

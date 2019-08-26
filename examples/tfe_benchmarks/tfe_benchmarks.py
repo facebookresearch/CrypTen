@@ -241,14 +241,14 @@ def validate(val_loader, model, criterion, print_freq=10, flatten=False):
             # compute output
             if flatten:
                 input = input.view(input.size(0), -1)
-            if isinstance(model, crypten.nn.Module) and not isinstance(
-                input, crypten.MPCTensor
+            if isinstance(model, crypten.nn.Module) and not crypten.is_encrypted_tensor(
+                input
             ):
-                input = crypten.MPCTensor(input)
+                input = crypten.cryptensor(input)
 
             output = model(input)
 
-            if isinstance(output, crypten.MPCTensor):
+            if crypten.is_encrypted_tensor(output):
                 output = output.get_plain_text()
             loss = criterion(output, target)
 

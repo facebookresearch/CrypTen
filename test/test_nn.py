@@ -15,7 +15,6 @@ import torch
 # we cannot import crypten here because WORLD_SIZE, etc. are not yet set:
 crypten = None
 is_float_tensor = None
-MPCTensor = None
 
 
 def import_crypten():
@@ -24,13 +23,11 @@ def import_crypten():
     MultiProcessTestCase.setUp() are set, and updates the class references for
     all test functions.
     """
-    global crypten, MPCTensor, is_float_tensor
+    global crypten, is_float_tensor
     import crypten as _crypten
-    from crypten import MPCTensor as _MPCTensor
     from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
 
     crypten = _crypten
-    MPCTensor = _MPCTensor
     is_float_tensor = _is_float_tensor
 
 
@@ -88,7 +85,7 @@ class TestNN(MultiProcessTestCase):
         # check correctness for a variety of input sizes
         for i in range(1, 10):
             input = init_tensor.repeat(1, 1, i, i)
-            encr_input = MPCTensor(input)
+            encr_input = crypten.cryptensor(input)
             encr_output = encr_module(encr_input)
             self._check(encr_output, reference, "GlobalAveragePool failed")
 
@@ -166,19 +163,19 @@ class TestNN(MultiProcessTestCase):
                     get_random_test_tensor(size=input_sizes[module_name], is_float=True)
                     for _ in range(2)
                 ]
-                encr_inputs = [MPCTensor(input) for input in inputs]
+                encr_inputs = [crypten.cryptensor(input) for input in inputs]
             elif module_name not in no_input_modules:
                 inputs = get_random_test_tensor(
                     size=input_sizes[module_name], is_float=True
                 )
-                encr_inputs = MPCTensor(inputs)
+                encr_inputs = crypten.cryptensor(inputs)
 
             # some modules take additonal indices as input:
             if module_name in additional_inputs:
                 if not isinstance(inputs, (list, tuple)):
                     inputs, encr_inputs = [inputs], [encr_inputs]
                 inputs.append(additional_inputs[module_name])
-                encr_inputs.append(MPCTensor(inputs[-1]))
+                encr_inputs.append(crypten.cryptensor(inputs[-1]))
 
             # compare model outputs:
             reference = module_lambdas[module_name](inputs)
@@ -241,7 +238,7 @@ class TestNN(MultiProcessTestCase):
 
             # generate inputs:
             input = get_random_test_tensor(size=input_sizes[module_name], is_float=True)
-            encr_input = MPCTensor(input)
+            encr_input = crypten.cryptensor(input)
 
             # create PyTorch module:
             module = getattr(torch.nn, module_name)(*module_args[module_name])
@@ -313,7 +310,7 @@ class TestNN(MultiProcessTestCase):
 
             # construct test input and run through sequential container:
             input = get_random_test_tensor(size=input_size, is_float=True)
-            encr_input = MPCTensor(input)
+            encr_input = crypten.cryptensor(input)
             encr_output = sequential(encr_input)
 
             # compute reference output:
@@ -333,7 +330,7 @@ class TestNN(MultiProcessTestCase):
         # define test case:
         input_size = (3, 10)
         input = get_random_test_tensor(size=input_size, is_float=True)
-        encr_input = MPCTensor(input)
+        encr_input = crypten.cryptensor(input)
 
         # test residual block with subsequent linear layer:
         graph = crypten.nn.Graph("input", "output")
@@ -367,8 +364,8 @@ class TestNN(MultiProcessTestCase):
         # create test tensor:
         input = get_random_test_tensor(max_value=0.999, is_float=True).abs() + 0.001
         target = get_random_test_tensor(max_value=0.999, is_float=True).abs() + 0.001
-        encrypted_input = MPCTensor(input)
-        encrypted_target = MPCTensor(target)
+        encrypted_input = crypten.cryptensor(input)
+        encrypted_target = crypten.cryptensor(target)
 
         # test forward() function of all losses:
         for loss_name in ["BCELoss", "L1Loss", "MSELoss"]:

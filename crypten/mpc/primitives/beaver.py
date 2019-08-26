@@ -5,8 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import torch
 import crypten
+import torch
 from crypten import comm
 from crypten.common.util import count_wraps
 
@@ -30,7 +30,7 @@ class Beaver:
 
         assert op in ["mul", "matmul", "conv2d"]
 
-        provider = crypten.get_default_provider()
+        provider = crypten.mpc.get_default_provider()
         a, b, c = provider.generate_additive_triple(
             x.size(), y.size(), op, *args, **kwargs
         )
@@ -39,6 +39,7 @@ class Beaver:
         # Stack to vectorize reveal if possible
         if x.size() == y.size():
             from .arithmetic import ArithmeticSharedTensor
+
             eps_del = ArithmeticSharedTensor.stack([x - a, y - b]).reveal()
             epsilon = eps_del[0]
             delta = eps_del[1]
@@ -70,7 +71,7 @@ class Beaver:
         # Clone the input to make result's attributes consistent with the input
         result = x.clone()
 
-        provider = crypten.get_default_provider()
+        provider = crypten.mpc.get_default_provider()
         r, r2 = provider.square(x.size())
         result._tensor = r2._tensor
 
@@ -95,7 +96,7 @@ class Beaver:
         Since [eta_xr] = 0 with probability |x| / Q for modulus Q, we can make
         the assumption that [eta_xr] = 0 with high probability.
         """
-        provider = crypten.get_default_provider()
+        provider = crypten.mpc.get_default_provider()
         r, theta_r = provider.wrap_rng(x.size(), comm.get_world_size())
         beta_xr = theta_r.clone()
         beta_xr._tensor = count_wraps([x._tensor, r._tensor])
@@ -115,7 +116,7 @@ class Beaver:
         """Performs Beaver AND protocol for BinarySharedTensor tensors x and y"""
         from .binary import BinarySharedTensor
 
-        provider = crypten.get_default_provider()
+        provider = crypten.mpc.get_default_provider()
         a, b, c = provider.generate_xor_triple(x.size())
 
         # Stack to vectorize reveal
@@ -142,9 +143,10 @@ class Beaver:
         """
         if comm.get_world_size() < 2:
             from crypten.primitives import ArithmeticSharedTensor
+
             return ArithmeticSharedTensor(xB._tensor, precision=0, src=0)
 
-        provider = crypten.get_default_provider()
+        provider = crypten.mpc.get_default_provider()
         rA, rB = provider.B2A_rng(xB.size())
 
         z = (xB ^ rB).reveal()

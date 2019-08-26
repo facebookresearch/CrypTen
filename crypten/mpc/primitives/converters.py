@@ -7,8 +7,8 @@
 
 from crypten import comm
 from crypten.common import constants, FixedPointEncoder
-from crypten.ptype import ptype as Ptype
 
+from ..ptype import ptype as Ptype
 from .arithmetic import ArithmeticSharedTensor
 from .binary import Beaver, BinarySharedTensor
 

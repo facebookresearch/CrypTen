@@ -6,10 +6,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
+from crypten import comm
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.util import count_wraps
-from crypten.primitives import ArithmeticSharedTensor, BinarySharedTensor
-from crypten import comm
+from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 
 class TrustedThirdParty:

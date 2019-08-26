@@ -57,7 +57,7 @@ class Circuit:
             P <- P0 & P1
             K <- K0 ^ (P0 & K1) <- don't need K since it is implied by S and P
         """
-        from crypten.primitives import BinarySharedTensor
+        from crypten.mpc.primitives import BinarySharedTensor
 
         for i in range(constants.LOG_BITS):
             in_mask = MASKS[i]

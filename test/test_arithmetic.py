@@ -25,9 +25,7 @@ def import_crypten():
     all test functions.
     """
     global ArithmeticSharedTensor, is_float_tensor
-    from crypten.primitives import (
-        ArithmeticSharedTensor as _ArithmeticSharedTensor,
-    )
+    from crypten.mpc.primitives import ArithmeticSharedTensor as _ArithmeticSharedTensor
     from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
 
     ArithmeticSharedTensor = _ArithmeticSharedTensor

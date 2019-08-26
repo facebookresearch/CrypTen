@@ -8,8 +8,6 @@
 import crypten
 import torch.nn
 
-from ..mpc import MPCTensor
-
 
 # FIXME(lvdmaaten): Make crypten.nn work for any EncryptedTensor.
 
@@ -100,7 +98,7 @@ class Module:
         """Encrypts the model."""
         if mode != self.encrypted:
             self.encrypted = mode
-            tensor_type = MPCTensor if mode else torch.FloatTensor
+            tensor_type = crypten.cryptensor if mode else torch.FloatTensor
             for name, param in self.named_parameters(recurse=False):
                 self._parameters[name] = tensor_type(param)
                 setattr(self, name, self._parameters[name])
@@ -318,8 +316,8 @@ class Shape(Module):
 
     def forward(self, x):
         size = torch.tensor(x.size())
-        if isinstance(x, MPCTensor):
-            size = MPCTensor(size.float())
+        if crypten.is_encrypted_tensor(x):
+            size = crypten.cryptensor(size.float())
         return size
 
     @staticmethod
@@ -379,7 +377,7 @@ class Gather(Module):
         tensor, indices = input
 
         # indices are not data so we can get plain text:
-        if isinstance(indices, MPCTensor):
+        if crypten.is_encrypted_tensor(indices):
             indices = indices.get_plain_text().long()
         result = tensor.onnx_gather(indices, self.dimension)
         return result

@@ -226,13 +226,13 @@ def validate(val_loader, model, criterion, print_freq=10):
     with torch.no_grad():
         end = time.time()
         for i, (input, target) in enumerate(val_loader):
-            if isinstance(model, crypten.nn.Module) and not isinstance(
-                input, crypten.MPCTensor
+            if isinstance(model, crypten.nn.Module) and not crypten.is_encrypted_tensor(
+                input
             ):
-                input = crypten.MPCTensor(input)
+                input = crypten.cryptensor(input)
             # compute output
             output = model(input)
-            if isinstance(output, crypten.MPCTensor):
+            if crypten.is_encrypted_tensor(output):
                 output = output.get_plain_text()
             loss = criterion(output, target)
 

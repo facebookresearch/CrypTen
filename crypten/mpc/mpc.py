@@ -7,9 +7,9 @@
 
 import crypten
 import torch
+from crypten.common import EncryptedTensor, constants
+from crypten.common.util import pool_reshape
 
-from .common import EncryptedTensor, constants
-from .common.util import pool_reshape
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
 
@@ -82,7 +82,7 @@ class MPCTensor(EncryptedTensor):
 
     def bernoulli(self):
         """Draws a random tensor of {0, 1} with given probabilities"""
-        return self > crypten.rand(self.size())
+        return self > crypten.mpc.rand(self.size())
 
     # Comparators
     @mode(Ptype.binary)
@@ -145,7 +145,9 @@ class MPCTensor(EncryptedTensor):
         a = self.expand(row_length - 1, *self.size())
 
         # Generate cyclic permutations for each row
-        b = crypten.stack([self.roll(i + 1, dims=-1) for i in range(row_length - 1)])
+        b = crypten.mpc.stack(
+            [self.roll(i + 1, dims=-1) for i in range(row_length - 1)]
+        )
 
         # Sum of columns with all 1s will have value equal to (length - 1).
         # Using >= since it requires 1-fewer comparrison than !=
@@ -171,7 +173,7 @@ class MPCTensor(EncryptedTensor):
 
         # Multiply by a random permutation to give each maximum a random priority
         if one_hot_required:
-            result *= crypten.randperm(input.size())
+            result *= crypten.mpc.randperm(input.size())
             result = result._argmax_helper()
 
         if dim is None:

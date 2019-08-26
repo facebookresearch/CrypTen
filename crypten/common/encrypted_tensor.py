@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+
 class EncryptedTensor:
     """
         Encrypted tensor type that is private and cannot be shown to the outside world.

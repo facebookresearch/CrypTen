@@ -25,7 +25,7 @@ def import_crypten():
     all test functions.
     """
     global MPCTensor, is_float_tensor
-    from crypten import MPCTensor as _MPCTensor
+    from crypten.mpc import MPCTensor as _MPCTensor
     from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
 
     MPCTensor = _MPCTensor
@@ -918,7 +918,7 @@ class TestMPC(MultiProcessTestCase):
 
     def test_to(self):
         """Tests Arithemetic/Binary SharedTensor type conversions."""
-        from crypten.ptype import ptype as Ptype
+        from crypten.mpc.ptype import ptype as Ptype
 
         tensor = get_random_test_tensor(is_float=True)
         encrypted_tensor = MPCTensor(tensor)

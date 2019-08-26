@@ -29,16 +29,13 @@ def communicator():
 # initialize communicator:
 comm = communicator()
 
+import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
-import crypten.primitives  # noqa: F401
-import crypten.provider  # noqa: F401
-import torch
 
 # other imports:
 from .common.encrypted_tensor import EncryptedTensor
-from .mpc import MPCTensor
+from .mpc import MPCTensor, ptype
 from .multiprocessing_pdb import pdb
-from .ptype import ptype
 
 
 # the different private type attributes of an encrypted tensor
@@ -46,88 +43,7 @@ arithmetic = ptype.arithmetic
 binary = ptype.binary
 
 # expose classes and functions in package:
-__all__ = [
-    "MPCTensor",
-    "EncryptedTensor",
-    "primitives",
-    "pdb",
-    "provider",
-    "nn"
-]
-
-
-def __cat_stack_helper(op, tensors, *args, **kwargs):
-    assert op in ["cat", "stack"], "Unsupported op for helper function"
-    assert isinstance(tensors, list), "%s input must be a list" % op
-    assert len(tensors) > 0, "expected a non-empty list of MPCTensors"
-
-    ptype = kwargs.pop("ptype", None)
-    # Populate ptype field
-    if ptype is None:
-        for tensor in tensors:
-            if isinstance(tensor, MPCTensor):
-                ptype = tensor.ptype
-                break
-    if ptype is None:
-        ptype = arithmetic
-
-    # Make all inputs MPCTensors of given ptype
-    for i, tensor in enumerate(tensors):
-        if torch.is_tensor(tensor):
-            tensors[i] = MPCTensor(tensor, ptype=ptype)
-        assert isinstance(tensors[i], MPCTensor), "Can't %s %s with MPCTensor" % (
-            op, type(tensor),
-        )
-        if tensors[i].ptype != ptype:
-            tensors[i] = tensors[i].to(ptype)
-
-    # Operate on all input tensors
-    result = tensors[0].clone()
-    result._tensor._tensor = getattr(torch, op)(
-        [tensor._tensor._tensor for tensor in tensors], *args, **kwargs
-    )
-    return result
-
-
-def cat(tensors, *args, **kwargs):
-    """Perform matrix concatenation"""
-    return __cat_stack_helper("cat", tensors, *args, **kwargs)
-
-
-def stack(tensors, *args, **kwargs):
-    """Perform tensor stacking"""
-    return __cat_stack_helper("stack", tensors, *args, **kwargs)
-
-
-def rand(*sizes):
-    """
-    Returns a tensor with elements uniformly sampled in [0, 1) using the
-    trusted third party.
-    """
-    rand = MPCTensor(None)
-    rand._tensor = crypten.provider.TrustedThirdParty.rand(*sizes)
-    rand.ptype = arithmetic
-    return rand
-
-
-def bernoulli(tensor):
-    """
-    Returns a tensor with elements in {0, 1}. The i-th element of the
-    output will be 1 with probability according to the i-th value of the
-    input tensor.
-    """
-    return rand(tensor.size()) < tensor
-
-
-def randperm(size):
-    """
-        Generate an MPCTensor with rows that contain values [1, 2, ... n]
-        where `n` is the length of each row (size[-1])
-    """
-    result = MPCTensor(None)
-    result._tensor = crypten.provider.TrustedThirdParty.randperm(size)
-    result.ptype = arithmetic
-    return result
+__all__ = ["MPCTensor", "EncryptedTensor", "pdb", "mpc", "nn"]
 
 
 def print_communication_stats():
@@ -138,20 +54,56 @@ def reset_communication_stats():
     comm.reset_communication_stats()
 
 
-# Set provider
-__SUPPORTRED_PROVIDERS = [
-    crypten.provider.TrustedThirdParty,
-    crypten.provider.HomomorphicProvider,
-]
-__default_provider = __SUPPORTRED_PROVIDERS[0]
+# Set backend
+__SUPPORTRED_BACKENDS = [crypten.mpc]
+__default_backend = __SUPPORTRED_BACKENDS[0]
 
 
-def set_default_provider(new_default_provider):
-    global __default_provider
-    assert new_default_provider in __SUPPORTRED_PROVIDERS, \
-        "Provider %s is not supported" % new_default_provider
-    __default_provider = new_default_provider
+def set_default_backend(new_default_backend):
+    """Sets the default cryptensor backend (mpc, he)"""
+    global __default_backend
+    assert new_default_backend in __SUPPORTRED_BACKENDS, (
+        "Backend %s is not supported" % new_default_backend
+    )
+    __default_backend = new_default_backend
 
 
-def get_default_provider():
-    return __default_provider
+def get_default_backend():
+    """Returns the default cryptensor backend (mpc, he)"""
+    return __default_backend
+
+
+def cryptensor(*args, backend=None, **kwargs):
+    """
+    Factory function to return encrypted tensor of given backend.
+    """
+    if backend is None:
+        backend = get_default_backend()
+    if backend == crypten.mpc:
+        return MPCTensor(*args, **kwargs)
+    else:
+        raise TypeError("Backend %s is not supported" % backend)
+
+
+def is_encrypted_tensor(obj):
+    """
+    Returns True if obj is an encrypted tensor.
+    """
+    return isinstance(obj, EncryptedTensor)
+
+
+# Top level tensor functions
+__PASSTHROUGH_FUNCTIONS = ["bernoulli", "cat", "rand", "randperm", "stack"]
+
+
+def __add_top_level_function(func_name):
+    def _passthrough_function(*args, backend=None, **kwargs):
+        if backend is None:
+            backend = get_default_backend()
+        return getattr(backend, func_name)(*args, **kwargs)
+
+    globals()[func_name] = _passthrough_function
+
+
+for func in __PASSTHROUGH_FUNCTIONS:
+    __add_top_level_function(func)
