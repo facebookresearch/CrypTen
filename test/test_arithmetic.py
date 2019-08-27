@@ -449,16 +449,32 @@ class TestArithmetic(MultiProcessTestCase):
                 encrypted_out = encrypted_tensor.softmax()
         self._check(encrypted_out, reference, "softmax failed")
 
-    def test_onnx_gather(self):
-        """Tests onnx_gather function of encrypted tensor"""
+    def test_take(self):
+        """Tests take function of encrypted tensor"""
         tensor_size = [5, 5, 5, 5]
         index = torch.tensor([[[1, 2], [3, 4]], [[4, 2], [1, 3]]], dtype=torch.long)
         tensor = get_random_test_tensor(size=tensor_size, is_float=True)
+
+        # Test when dimension!=None
         for dimension in range(0, 4):
             reference = torch.from_numpy(tensor.numpy().take(index, dimension))
             encrypted_tensor = ArithmeticSharedTensor(tensor)
-            encrypted_out = encrypted_tensor.onnx_gather(index, dimension)
-            self._check(encrypted_out, reference, "onnx_gather function failed")
+            encrypted_out = encrypted_tensor.take(index, dimension)
+            self._check(encrypted_out, reference, "take function failed: dimension set")
+
+        # Test when dimension is default (i.e. None)
+        sizes = [(15,), (5, 10), (15, 10, 5)]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            encrypted_tensor = ArithmeticSharedTensor(tensor)
+            take_indices = [[0], [10], [0, 5, 10]]
+            for indices in take_indices:
+                indices = torch.tensor(indices)
+                self._check(
+                    encrypted_tensor.take(indices),
+                    tensor.take(indices),
+                    f"take failed with indices {indices}",
+                )
 
     def test_get_set(self):
         for tensor_type in [lambda x: x, ArithmeticSharedTensor]:

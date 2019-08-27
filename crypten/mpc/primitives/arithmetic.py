@@ -10,11 +10,11 @@ from functools import reduce
 # dependencies:
 import torch
 from crypten import comm
-from crypten.encoder import FixedPointEncoder
 from crypten.common import constants
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 from crypten.cryptensor import CrypTensor
+from crypten.encoder import FixedPointEncoder
 
 from .beaver import Beaver
 
@@ -330,12 +330,18 @@ class ArithmeticSharedTensor(CrypTensor):
         correction = (-correction).exp()
         return result * correction
 
-    def onnx_gather(self, index, dimension):
-        """Gather entries of tensor along a dimension according to indices """
+    def take(self, index, dimension=None):
+        """Take entries of tensor along a dimension according to indices
+            This function is identical to torch.take() when dimension=None,
+            otherwise, it is identical to ONNX gather() function.
+        """
         result = self.shallow_copy()
-        all_indices = [slice(0, x) for x in self.size()]
-        all_indices[dimension] = index
-        result._tensor = self._tensor[all_indices]
+        if dimension is None:
+            result._tensor = torch.take(self._tensor, index)
+        else:
+            all_indices = [slice(0, x) for x in self.size()]
+            all_indices[dimension] = index
+            result._tensor = self._tensor[all_indices]
         return result
 
     # negation and reciprocal:

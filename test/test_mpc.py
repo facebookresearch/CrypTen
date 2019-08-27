@@ -14,6 +14,7 @@ from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_te
 import torch
 import torch.nn.functional as F
 
+
 # placeholders for class references, to be filled later by import_crypten():
 MPCTensor, is_float_tensor = None, None
 
@@ -366,16 +367,32 @@ class TestMPC(MultiProcessTestCase):
                                     )
                             self._check(encrypted_pool, reference, "%s failed" % func)
 
-    def test_onnx_gather(self):
-        """Tests onnx_gather function on encrypted tensor"""
+    def test_take(self):
+        """Tests take function on encrypted tensor"""
         tensor_size = [5, 5, 5, 5]
         index = torch.tensor([[[1, 2], [3, 4]], [[4, 2], [1, 3]]], dtype=torch.long)
         tensor = get_random_test_tensor(size=tensor_size, is_float=True)
+
+        # Test when dimension!=None
         for dimension in range(0, 4):
             reference = torch.from_numpy(tensor.numpy().take(index, dimension))
             encrypted_tensor = MPCTensor(tensor)
-            encrypted_out = encrypted_tensor.onnx_gather(index, dimension)
-            self._check(encrypted_out, reference, "onnx_gather function failed")
+            encrypted_out = encrypted_tensor.take(index, dimension)
+            self._check(encrypted_out, reference, "take function failed: dimension set")
+
+        # Test when dimension is default (i.e. None)
+        sizes = [(15,), (5, 10), (15, 10, 5)]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            encrypted_tensor = MPCTensor(tensor)
+            take_indices = [[0], [10], [0, 5, 10]]
+            for indices in take_indices:
+                indices = torch.tensor(indices)
+                self._check(
+                    encrypted_tensor.take(indices),
+                    tensor.take(indices),
+                    f"take failed with indices {indices}",
+                )
 
     def test_relu(self):
         """Test relu on encrypted tensor."""
@@ -807,15 +824,15 @@ class TestMPC(MultiProcessTestCase):
 
             # test shallow_copy
             encrypted_tensor_shallow = encrypted_tensor.shallow_copy()
-            self.assertEqual(id(encrypted_tensor_shallow._tensor),
-                             id(encrypted_tensor._tensor))
-            self._check(encrypted_tensor_shallow,
-                        tensor,
-                        "shallow_copy failed")
+            self.assertEqual(
+                id(encrypted_tensor_shallow._tensor), id(encrypted_tensor._tensor)
+            )
+            self._check(encrypted_tensor_shallow, tensor, "shallow_copy failed")
             # test clone
             encrypted_tensor_clone = encrypted_tensor.clone()
-            self.assertNotEqual(id(encrypted_tensor_clone._tensor),
-                                id(encrypted_tensor._tensor))
+            self.assertNotEqual(
+                id(encrypted_tensor_clone._tensor), id(encrypted_tensor._tensor)
+            )
             self._check(encrypted_tensor_clone, tensor, "clone failed")
 
     def test_index_select(self):
@@ -830,12 +847,12 @@ class TestMPC(MultiProcessTestCase):
                 for index in indices:
                     index_tensor = torch.tensor(index, dtype=torch.long)
                     reference = tensor.index_select(dim, index_tensor)
-                    encrypted_out = encrypted_tensor.index_select(dim,
-                                                                  index_tensor)
-                    self._check(encrypted_out,
-                                reference,
-                                "index_select failed at dim "
-                                f"{dim} and index {index}")
+                    encrypted_out = encrypted_tensor.index_select(dim, index_tensor)
+                    self._check(
+                        encrypted_out,
+                        reference,
+                        "index_select failed at dim {dim} and index {index}",
+                    )
 
     def test_repeat_expand(self):
         """Tests repeat and expand of encrypted tensors."""
@@ -850,21 +867,28 @@ class TestMPC(MultiProcessTestCase):
             for dims in repeat_dims:
                 encrypted_tensor_repeated = encrypted_tensor.repeat(*dims)
                 # test that repeat copies tensor's data
-                self.assertNotEqual(id(encrypted_tensor_repeated._tensor),
-                                    id(encrypted_tensor._tensor))
-                self._check(encrypted_tensor_repeated,
-                            tensor.repeat(*dims),
-                            f"repeat failed with dims {dims}")
+                self.assertNotEqual(
+                    id(encrypted_tensor_repeated._tensor), id(encrypted_tensor._tensor)
+                )
+                self._check(
+                    encrypted_tensor_repeated,
+                    tensor.repeat(*dims),
+                    f"repeat failed with dims {dims}",
+                )
 
             for dims in expand_dims:
                 encrypted_tensor_expanded = encrypted_tensor.expand(*dims)
                 # TODO: create .get_tensor() to replace ._tensor._tensor
                 # test that expand creates a view into the same underlying tensor
-                self.assertNotEqual(id(encrypted_tensor_expanded._tensor._tensor),
-                                    id(encrypted_tensor._tensor._tensor))
-                self._check(encrypted_tensor_expanded,
-                            tensor.expand(*dims),
-                            f"repeat failed with dims {dims}")
+                self.assertNotEqual(
+                    id(encrypted_tensor_expanded._tensor._tensor),
+                    id(encrypted_tensor._tensor._tensor),
+                )
+                self._check(
+                    encrypted_tensor_expanded,
+                    tensor.expand(*dims),
+                    f"repeat failed with dims {dims}",
+                )
 
     def test_view_flatten(self):
         """Tests view and flatten of encrypted tensors."""
@@ -873,15 +897,19 @@ class TestMPC(MultiProcessTestCase):
             tensor = get_random_test_tensor(size=size, is_float=True)
             encrypted_tensor = MPCTensor(tensor)
             for dim in range(tensor.dim()):
-                self._check(encrypted_tensor.flatten(start_dim=dim),
-                            tensor.flatten(start_dim=dim),
-                            f"flatten failed with dim {dim}")
+                self._check(
+                    encrypted_tensor.flatten(start_dim=dim),
+                    tensor.flatten(start_dim=dim),
+                    f"flatten failed with dim {dim}",
+                )
 
             shapes = [(100), (5, 20), (10, 2, 5), (-1, 10)]
             for shape in shapes:
-                self._check(encrypted_tensor.view(shape),
-                            tensor.view(shape),
-                            f"view failed with shape {shape}")
+                self._check(
+                    encrypted_tensor.view(shape),
+                    tensor.view(shape),
+                    f"view failed with shape {shape}",
+                )
 
     def test_roll(self):
         """Tests roll of encrypted tensors."""
@@ -893,13 +921,13 @@ class TestMPC(MultiProcessTestCase):
             roll_dims = [0, 1, 0, (0, 1)]
 
             for shifts, dims in zip(roll_shifts, roll_dims):
-                encrypted_tensor_rolled = encrypted_tensor.roll(shifts,
-                                                                dims=dims)
-                self.assertEqual(encrypted_tensor_rolled.numel(),
-                                 tensor.numel())
-                self._check(encrypted_tensor_rolled,
-                            tensor.roll(shifts, dims=dims),
-                            f"roll failed with shift {shifts} and dims {dims}")
+                encrypted_tensor_rolled = encrypted_tensor.roll(shifts, dims=dims)
+                self.assertEqual(encrypted_tensor_rolled.numel(), tensor.numel())
+                self._check(
+                    encrypted_tensor_rolled,
+                    tensor.roll(shifts, dims=dims),
+                    f"roll failed with shift {shifts} and dims {dims}",
+                )
 
     def test_unfold(self):
         """Tests unfold of encrypted tensors."""
@@ -911,10 +939,12 @@ class TestMPC(MultiProcessTestCase):
             for size, step in itertools.product(range(1, 4), range(1, 4)):
                 # check unfold along higher dimension if possible
                 for dim in range(tensor.dim()):
-                    self._check(encrypted_tensor.unfold(dim, size, step),
-                                tensor.unfold(dim, size, step),
-                                "unfold failed with dim "
-                                f"{dim}, size {size}, and step {step}")
+                    self._check(
+                        encrypted_tensor.unfold(dim, size, step),
+                        tensor.unfold(dim, size, step),
+                        "unfold failed with dim "
+                        f"{dim}, size {size}, and step {step}",
+                    )
 
     def test_to(self):
         """Tests Arithemetic/Binary SharedTensor type conversions."""
@@ -928,16 +958,18 @@ class TestMPC(MultiProcessTestCase):
         self.assertEqual(binary_encrypted_tensor.ptype, Ptype.binary)
 
         # check original encrypted_tensor was not modified after conversion
-        self._check(encrypted_tensor,
-                    tensor,
-                    "encrypted_tensor was modified during conversion "\
-                    "to BinarySharedTensor.")
+        self._check(
+            encrypted_tensor,
+            tensor,
+            "encrypted_tensor was modified during conversion to BinarySharedTensor.",
+        )
 
         encrypted_from_binary = binary_encrypted_tensor.to(Ptype.arithmetic)
-        self._check(encrypted_from_binary,
-                    tensor,
-                    "to failed from BinarySharedTensor "\
-                    "to ArithmeticSharedTensor")
+        self._check(
+            encrypted_from_binary,
+            tensor,
+            "to failed from BinarySharedTensor to ArithmeticSharedTensor",
+        )
 
     def test_cumsum(self):
         """Tests cumulative sum on encrypted tensors."""
@@ -947,9 +979,11 @@ class TestMPC(MultiProcessTestCase):
             encrypted_tensor = MPCTensor(tensor)
 
             for dim in range(tensor.dim()):
-                self._check(encrypted_tensor.cumsum(dim),
-                            tensor.cumsum(dim),
-                            f"cumsum failed along {dim} dim")
+                self._check(
+                    encrypted_tensor.cumsum(dim),
+                    tensor.cumsum(dim),
+                    f"cumsum failed along {dim} dim",
+                )
 
     def test_trace(self):
         """Tests trace operation on 2D encrypted tensors."""
@@ -959,22 +993,7 @@ class TestMPC(MultiProcessTestCase):
             tensor = get_random_test_tensor(size=size, is_float=True)
             encrypted_tensor = MPCTensor(tensor)
 
-            self._check(encrypted_tensor.trace(),
-                        tensor.trace(),
-                        "trace failed")
-
-    def test_take(self):
-        """Tests take on encrypted tensors."""
-        sizes = [(15,), (5, 10), (15, 10, 5)]
-        for size in sizes:
-            tensor = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
-            take_indices = [[0], [10], [0, 5, 10]]
-            for indices in take_indices:
-                indices = torch.tensor(indices)
-                self._check(encrypted_tensor.take(indices),
-                            tensor.take(indices),
-                            f"take failed with indices {indices}")
+            self._check(encrypted_tensor.trace(), tensor.trace(), "trace failed")
 
     def test_flip(self):
         """Tests flip operation on encrypted tensors."""
@@ -987,9 +1006,11 @@ class TestMPC(MultiProcessTestCase):
 
             for dims in flip_dims:
                 if len(dims) <= tensor.dim():
-                    self._check(encrypted_tensor.flip(dims),
-                                tensor.flip(dims),
-                                f"flip failed with {dims} dims")
+                    self._check(
+                        encrypted_tensor.flip(dims),
+                        tensor.flip(dims),
+                        f"flip failed with {dims} dims",
+                    )
 
 
 # This code only runs when executing the file outside the test harness (e.g.

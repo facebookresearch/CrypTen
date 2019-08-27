@@ -189,9 +189,9 @@ class CrypTensor(object):
         """Perform (weighted) inner product with plain or cipher text."""
         raise NotImplementedError("dot is not implemented")
 
-    def onnx_gather(self, index, dimension):
-        """Gather entries of tensor along a dimension according to indices"""
-        raise NotImplementedError("onnx_gather is not implemented")
+    def take(self, index, dimension):
+        """Take entries of tensor along a dimension according to indices"""
+        raise NotImplementedError("take is not implemented")
 
 
 REGULAR_FUNCTIONS = [
@@ -208,14 +208,12 @@ REGULAR_FUNCTIONS = [
     "expand",
     "roll",
     "unfold",
-    "take",
     "flip",
     "trace",
     "sum",
     "cumsum",
     "reshape",
     "gather",
-    "take",
     "index_select",
 ]
 

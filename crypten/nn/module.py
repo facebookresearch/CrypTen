@@ -379,7 +379,7 @@ class Gather(Module):
         # indices are not data so we can get plain text:
         if crypten.is_encrypted_tensor(indices):
             indices = indices.get_plain_text().long()
-        result = tensor.onnx_gather(indices, self.dimension)
+        result = tensor.take(indices, self.dimension)
         return result
 
     @staticmethod
