@@ -913,7 +913,7 @@ class TestMPC(MultiProcessTestCase):
                 for dim in range(tensor.dim()):
                     self._check(encrypted_tensor.unfold(dim, size, step),
                                 tensor.unfold(dim, size, step),
-                                "unfold failed with dim "\
+                                "unfold failed with dim "
                                 f"{dim}, size {size}, and step {step}")
 
     def test_to(self):

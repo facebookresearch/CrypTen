@@ -8,7 +8,7 @@
 # dependencies:
 import torch
 from crypten import comm
-from crypten.common import FixedPointEncoder
+from crypten.encoder import FixedPointEncoder
 from crypten.common.rng import generate_kbit_random_tensor
 from crypten.common.tensor_types import is_int_tensor
 from crypten.cryptensor import CrypTensor

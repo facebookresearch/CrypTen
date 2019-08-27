@@ -6,7 +6,8 @@
 # LICENSE file in the root directory of this source tree.
 
 from crypten import comm
-from crypten.common import constants, FixedPointEncoder
+from crypten.common import constants
+from crypten.encoder import FixedPointEncoder
 
 from ..ptype import ptype as Ptype
 from .arithmetic import ArithmeticSharedTensor

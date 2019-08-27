@@ -34,16 +34,16 @@ import crypten.nn  # noqa: F401
 
 # other imports:
 from .cryptensor import CrypTensor
-from .mpc import MPCTensor, ptype
+from .mpc import ptype
 from .multiprocessing_pdb import pdb
 
 
-# the different private type attributes of an encrypted tensor
+# the different private type attributes of an mpc encrypted tensor
 arithmetic = ptype.arithmetic
 binary = ptype.binary
 
 # expose classes and functions in package:
-__all__ = ["CrypTensor", "MPCTensor", "pdb", "mpc", "nn"]
+__all__ = ["CrypTensor", "pdb", "mpc", "nn"]
 
 
 def print_communication_stats():
@@ -80,7 +80,7 @@ def cryptensor(*args, backend=None, **kwargs):
     if backend is None:
         backend = get_default_backend()
     if backend == crypten.mpc:
-        return MPCTensor(*args, **kwargs)
+        return backend.MPCTensor(*args, **kwargs)
     else:
         raise TypeError("Backend %s is not supported" % backend)
 

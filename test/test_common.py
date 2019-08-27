@@ -10,7 +10,7 @@ import unittest
 
 import crypten
 import torch
-from crypten.common.encoder import FixedPointEncoder, nearest_integer_division
+from crypten.encoder import FixedPointEncoder, nearest_integer_division
 
 
 def get_test_tensor(max_value=10, float=False):
@@ -47,7 +47,7 @@ class TestCommon(unittest.TestCase):
 
         # Make sure encoding a subclass of EncryptedTensor is a no-op
         tensor = get_test_tensor(float=True)
-        encrypted_tensor = crypten.MPCTensor(tensor)
+        encrypted_tensor = crypten.cryptensor(tensor)
         encrypted_tensor = fpe.encode(encrypted_tensor)
         self._check(
             encrypted_tensor.get_plain_text(),

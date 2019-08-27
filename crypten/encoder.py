@@ -8,8 +8,8 @@
 import numpy as np
 import torch
 
-from ..cryptensor import CrypTensor
-from .tensor_types import is_float_tensor, is_int_tensor
+from .cryptensor import CrypTensor
+from .common.tensor_types import is_float_tensor, is_int_tensor
 
 
 def nearest_integer_division(tensor, integer):
