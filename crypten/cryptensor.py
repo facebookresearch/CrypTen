@@ -189,7 +189,7 @@ class CrypTensor(object):
         """Perform (weighted) inner product with plain or cipher text."""
         raise NotImplementedError("dot is not implemented")
 
-    def take(self, index, dimension):
+    def take(self, index, dimension=None):
         """Take entries of tensor along a dimension according to indices"""
         raise NotImplementedError("take is not implemented")
 
