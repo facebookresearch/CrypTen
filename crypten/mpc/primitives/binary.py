@@ -8,9 +8,10 @@
 # dependencies:
 import torch
 from crypten import comm
-from crypten.common import EncryptedTensor, FixedPointEncoder
+from crypten.common import FixedPointEncoder
 from crypten.common.rng import generate_kbit_random_tensor
 from crypten.common.tensor_types import is_int_tensor
+from crypten.cryptensor import CrypTensor
 
 from .beaver import Beaver
 from .circuit import Circuit
@@ -20,7 +21,7 @@ SENTINEL = -1
 
 
 # MPC tensor where shares are XOR-sharings.
-class BinarySharedTensor(EncryptedTensor):
+class BinarySharedTensor(CrypTensor):
     """
         Encrypted tensor object that uses binary sharing to perform computations.
 

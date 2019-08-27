@@ -7,7 +7,8 @@
 
 import crypten
 import torch
-from crypten.common import EncryptedTensor, constants
+from ..cryptensor import CrypTensor
+from crypten.common import constants
 from crypten.common.util import pool_reshape
 
 from .primitives.converters import convert
@@ -38,7 +39,7 @@ def mode(ptype, inplace=False):
     return function_wrapper
 
 
-class MPCTensor(EncryptedTensor):
+class MPCTensor(CrypTensor):
     def __init__(self, input, ptype=Ptype.arithmetic, *args, **kwargs):
         if input is None:
             return
@@ -253,7 +254,7 @@ class MPCTensor(EncryptedTensor):
     def div(self, y):
         """Divide by a given tensor"""
         result = self.clone()
-        if isinstance(y, EncryptedTensor):
+        if isinstance(y, CrypTensor):
             result._tensor._tensor = torch.broadcast_tensors(
                 result._tensor._tensor, y._tensor._tensor
             )[0].clone()
@@ -349,7 +350,7 @@ def _add_oop_unary_passthrough_function(name, preferred=None):
 def _add_oop_binary_passthrough_function(name, preferred=None):
     def ob_wrapper_function(self, value, *args, **kwargs):
         result = self.shallow_copy()
-        if isinstance(value, EncryptedTensor):
+        if isinstance(value, CrypTensor):
             value = value._tensor
         result._tensor = getattr(result._tensor, name)(value, *args, **kwargs)
         return result
@@ -373,7 +374,7 @@ def _add_inplace_unary_passthrough_function(name, preferred=None):
 
 def _add_inplace_binary_passthrough_function(name, preferred=None):
     def ib_wrapper_function(self, value, *args, **kwargs):
-        if isinstance(value, EncryptedTensor):
+        if isinstance(value, CrypTensor):
             value = value._tensor
         self._tensor = getattr(self._tensor, name)(value, *args, **kwargs)
         return self

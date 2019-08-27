@@ -6,7 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
-class EncryptedTensor:
+class CrypTensor(object):
     """
         Encrypted tensor type that is private and cannot be shown to the outside world.
     """
@@ -27,7 +27,7 @@ class EncryptedTensor:
         raise NotImplementedError("__rpow__ is not implemented")
 
     def __init__(self):
-        raise NotImplementedError("Cannot instantiate an EncryptedTensor")
+        raise NotImplementedError("Cannot instantiate an CrypTensor")
 
     def get_plain_text(self):
         """Decrypts the encrypted tensor."""
@@ -229,14 +229,14 @@ def _add_regular_function(function_name):
         result._tensor = getattr(result._tensor, function_name)(*args, **kwargs)
         return result
 
-    setattr(EncryptedTensor, function_name, regular_func)
+    setattr(CrypTensor, function_name, regular_func)
 
 
 def _add_property_function(function_name):
     def property_func(self, *args, **kwargs):
         return getattr(self._tensor, function_name)(*args, **kwargs)
 
-    setattr(EncryptedTensor, function_name, property_func)
+    setattr(CrypTensor, function_name, property_func)
 
 
 for function_name in REGULAR_FUNCTIONS:

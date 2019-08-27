@@ -6,7 +6,6 @@
 # LICENSE file in the root directory of this source tree.
 
 from .encoder import FixedPointEncoder
-from .encrypted_tensor import EncryptedTensor
 
 
-__all__ = ["EncryptedTensor", "FixedPointEncoder"]
+__all__ = ["FixedPointEncoder"]

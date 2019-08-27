@@ -8,7 +8,7 @@
 import numpy as np
 import torch
 
-from .encrypted_tensor import EncryptedTensor
+from ..cryptensor import CrypTensor
 from .tensor_types import is_float_tensor, is_int_tensor
 
 
@@ -34,7 +34,7 @@ class FixedPointEncoder:
 
     def encode(self, x):
         """Helper function to wrap data if needed"""
-        if isinstance(x, EncryptedTensor):
+        if isinstance(x, CrypTensor):
             return x
         elif isinstance(x, int) or isinstance(x, float):
             # Squeeze in order to get a 0-dim tensor with value `x`

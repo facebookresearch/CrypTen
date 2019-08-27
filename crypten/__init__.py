@@ -33,7 +33,7 @@ import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
 
 # other imports:
-from .common.encrypted_tensor import EncryptedTensor
+from .cryptensor import CrypTensor
 from .mpc import MPCTensor, ptype
 from .multiprocessing_pdb import pdb
 
@@ -43,7 +43,7 @@ arithmetic = ptype.arithmetic
 binary = ptype.binary
 
 # expose classes and functions in package:
-__all__ = ["MPCTensor", "EncryptedTensor", "pdb", "mpc", "nn"]
+__all__ = ["CrypTensor", "MPCTensor", "pdb", "mpc", "nn"]
 
 
 def print_communication_stats():
@@ -89,7 +89,7 @@ def is_encrypted_tensor(obj):
     """
     Returns True if obj is an encrypted tensor.
     """
-    return isinstance(obj, EncryptedTensor)
+    return isinstance(obj, CrypTensor)
 
 
 # Top level tensor functions

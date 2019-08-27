@@ -10,9 +10,10 @@ from functools import reduce
 # dependencies:
 import torch
 from crypten import comm
-from crypten.common import EncryptedTensor, FixedPointEncoder, constants
+from crypten.common import FixedPointEncoder, constants
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
+from crypten.cryptensor import CrypTensor
 
 from .beaver import Beaver
 
@@ -21,7 +22,7 @@ SENTINEL = -1
 
 
 # MPC tensor where shares additive-sharings.
-class ArithmeticSharedTensor(EncryptedTensor):
+class ArithmeticSharedTensor(CrypTensor):
     """
         Encrypted tensor object that uses additive sharing to perform computations.
 
@@ -235,7 +236,7 @@ class ArithmeticSharedTensor(EncryptedTensor):
     def div(self, y):
         """Divide by a given tensor"""
         result = self.clone()
-        if isinstance(y, EncryptedTensor):
+        if isinstance(y, CrypTensor):
             result._tensor = torch.broadcast_tensors(result._tensor, y._tensor)[
                 0
             ].clone()

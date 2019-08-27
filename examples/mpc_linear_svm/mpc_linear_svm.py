@@ -91,10 +91,9 @@ def run_mpc_linear_svm(
 
         yy = yhat * y
 
-        # Accuracy
-        correct = (
-            (yy + 1).mul(0.5).sum()
-        )  # equivalent to (yy == 1).sum() w/o comparator
+        # Compute accuracy -
+        # (equivalent to (yy == 1).sum() w/o comparator)
+        correct = (yy + 1).mul(0.5).sum()
         logging.info(
             "--- Accuracy %.2f%%"
             % (correct.get_plain_text().float().div(examples).item() * 100)
