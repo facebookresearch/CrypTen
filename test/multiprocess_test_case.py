@@ -153,10 +153,10 @@ class MultiProcessTestCase(unittest.TestCase):
     def _join_processes(self, fn):
         for p in self.processes:
             p.join()
-        self._check_return_codes()
+            self._check_return_codes(p)
 
-    def _check_return_codes(self):
-        self.assertEqual(self.processes[0].exitcode, 0)
+    def _check_return_codes(self, process):
+        self.assertEqual(process.exitcode, 0)
 
     def _add_benchmark_results(self, rank, args, time, niters):
         args_str = ", ".join([f"{k}={v}" for k, v in args.items()])

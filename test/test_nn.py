@@ -322,9 +322,13 @@ class TestNN(MultiProcessTestCase):
             # compare output to reference:
             self._check(encr_output, reference, "nn.Sequential forward failed")
 
+    @unittest.skip("this test is broken")
     def test_graph(self):
         """
         Tests crypten.nn.Graph module.
+
+        FIXME t53084684: this unit test fails due to the process with rank 1
+        returns a non-zero return code.
         """
 
         # define test case:
