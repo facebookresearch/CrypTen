@@ -142,7 +142,7 @@ class Beaver:
             Note: This is an arithmetic xor of a single bit.
         """
         if comm.get_world_size() < 2:
-            from crypten.primitives import ArithmeticSharedTensor
+            from .arithmetic import ArithmeticSharedTensor
 
             return ArithmeticSharedTensor(xB._tensor, precision=0, src=0)
 
