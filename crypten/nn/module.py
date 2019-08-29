@@ -305,6 +305,37 @@ class Unsqueeze(Module):
         return Unsqueeze(dimension[0])
 
 
+class Flatten(Module):
+    """
+    Module that flattens the input tensor into a 2D matrix.
+    """
+
+    def __init__(self, axis=1):
+        super().__init__()
+        self.axis = axis
+
+    def forward(self, x):
+        if self.axis == 0:
+            return x.view(1, -1)
+        else:
+            assert self.axis <= x.dim(), "axis must not be larger than dimension"
+            prod = 1
+            for i in range(self.axis):
+                prod *= x.size(i)
+            return x.view(prod, -1)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        # axis : int (default is 1)
+        axis = 1
+        if "axis" in attributes:
+            axis = int(attributes["axis"])
+            assert axis >= 0, "axis must not be negative"
+        return Flatten(axis)
+
+
 class Shape(Module):
     """
     Module that returns the shape of a tensor. If the input tensor is encrypted,

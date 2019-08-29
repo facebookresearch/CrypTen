@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import numpy
 import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
@@ -102,6 +103,7 @@ class TestNN(MultiProcessTestCase):
             "Add": (),
             "Concat": (0,),
             "Constant": (1.2,),
+            "Flatten": (2,),
             "Gather": (0,),
             "Reshape": (),
             "Shape": (),
@@ -113,6 +115,12 @@ class TestNN(MultiProcessTestCase):
             "Add": lambda x: x[0] + x[1],
             "Concat": lambda x: torch.cat((x[0], x[1])),
             "Constant": lambda _: torch.tensor(module_args["Constant"][0]),
+            "Flatten": lambda x: x.view(
+                numpy.prod(
+                    input_sizes["Flatten"][0:module_args["Flatten"][0]]
+                ).astype(int),
+                -1,
+            ),
             "Gather": lambda x: torch.from_numpy(
                 x[0].numpy().take(x[1], module_args["Gather"][0])
             ),
@@ -126,6 +134,7 @@ class TestNN(MultiProcessTestCase):
             "Add": (10, 12),
             "Concat": (2, 2),
             "Constant": (1,),
+            "Flatten": (2, 3, 4, 5),
             "Gather": (4, 4, 4, 4),
             "Reshape": (1, 4),
             "Shape": (8, 3, 2),
@@ -141,6 +150,7 @@ class TestNN(MultiProcessTestCase):
             "Add": [],
             "Concat": [("axis", int)],
             "Constant": [("value", int)],
+            "Flatten": [("axis", int)],
             "Gather": [("axis", int)],
             "Reshape": [],
             "Shape": [],
