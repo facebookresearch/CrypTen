@@ -80,7 +80,7 @@ __all__ = [
 ]
 
 # mapping from ONNX to crypten.nn:
-ONNX_TO_CRYPTORCH = {
+ONNX_TO_CRYPTEN = {
     "Add": Add,
     "AveragePool": AvgPool2d,
     "BatchNormalization": _BatchNorm,
@@ -156,9 +156,9 @@ def from_onnx(onnx_string_or_file):
     crypten_model = Graph(input_names[0], output_names[0])
     for node in onnx_model.graph.node:
         # get operator type:
-        if node.op_type not in ONNX_TO_CRYPTORCH:
+        if node.op_type not in ONNX_TO_CRYPTEN:
             raise ValueError("CrypTen does not support op %s." % node.op_type)
-        cls = ONNX_TO_CRYPTORCH[node.op_type]
+        cls = ONNX_TO_CRYPTEN[node.op_type]
 
         # retrieve inputs, outputs, attributes, and parameters for this node:
         node_output_name = [name for name in node.output][0]
