@@ -10,10 +10,10 @@ from functools import reduce
 # dependencies:
 import torch
 from crypten import comm
+from crypten.encoder import FixedPointEncoder
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 from crypten.cryptensor import CrypTensor
-from crypten.encoder import FixedPointEncoder
 
 from .beaver import Beaver
 
@@ -486,3 +486,53 @@ class ArithmeticSharedTensor(CrypTensor):
         """Computer an outer product between two vectors"""
         assert self.dim() == 1 and y.dim() == 1, "Outer product must be on 1D tensors"
         return self.view((-1, 1)).matmul(y.view((1, -1)))
+
+
+REGULAR_FUNCTIONS = [
+    "clone",
+    "__getitem__",
+    "index_select",
+    "view",
+    "flatten",
+    "t",
+    "transpose",
+    "unsqueeze",
+    "squeeze",
+    "repeat",
+    "expand",
+    "roll",
+    "unfold",
+    "flip",
+    "trace",
+    "sum",
+    "cumsum",
+    "reshape",
+    "gather",
+    "index_select",
+]
+
+
+PROPERTY_FUNCTIONS = ["__len__", "nelement", "dim", "size", "numel"]
+
+
+def _add_regular_function(function_name):
+    def regular_func(self, *args, **kwargs):
+        result = self.shallow_copy()
+        result._tensor = getattr(result._tensor, function_name)(*args, **kwargs)
+        return result
+
+    setattr(ArithmeticSharedTensor, function_name, regular_func)
+
+
+def _add_property_function(function_name):
+    def property_func(self, *args, **kwargs):
+        return getattr(self._tensor, function_name)(*args, **kwargs)
+
+    setattr(ArithmeticSharedTensor, function_name, property_func)
+
+
+for function_name in REGULAR_FUNCTIONS:
+    _add_regular_function(function_name)
+
+for function_name in PROPERTY_FUNCTIONS:
+    _add_property_function(function_name)

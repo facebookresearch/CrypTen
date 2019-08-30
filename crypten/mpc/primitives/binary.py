@@ -8,10 +8,10 @@
 # dependencies:
 import torch
 from crypten import comm
+from crypten.encoder import FixedPointEncoder
 from crypten.common.rng import generate_kbit_random_tensor
 from crypten.common.tensor_types import is_int_tensor
 from crypten.cryptensor import CrypTensor
-from crypten.encoder import FixedPointEncoder
 
 from .beaver import Beaver
 from .circuit import Circuit
@@ -239,3 +239,51 @@ class BinarySharedTensor(CrypTensor):
     __rxor__ = __xor__
     __rand__ = __and__
     __ror__ = __or__
+
+
+REGULAR_FUNCTIONS = [
+    "clone",
+    "__getitem__",
+    "index_select",
+    "view",
+    "flatten",
+    "t",
+    "transpose",
+    "unsqueeze",
+    "squeeze",
+    "repeat",
+    "expand",
+    "roll",
+    "unfold",
+    "flip",
+    "reshape",
+    "gather",
+    "take",
+    "index_select",
+]
+
+
+PROPERTY_FUNCTIONS = ["__len__", "nelement", "dim", "size", "numel"]
+
+
+def _add_regular_function(function_name):
+    def regular_func(self, *args, **kwargs):
+        result = self.shallow_copy()
+        result._tensor = getattr(result._tensor, function_name)(*args, **kwargs)
+        return result
+
+    setattr(BinarySharedTensor, function_name, regular_func)
+
+
+def _add_property_function(function_name):
+    def property_func(self, *args, **kwargs):
+        return getattr(self._tensor, function_name)(*args, **kwargs)
+
+    setattr(BinarySharedTensor, function_name, property_func)
+
+
+for function_name in REGULAR_FUNCTIONS:
+    _add_regular_function(function_name)
+
+for function_name in PROPERTY_FUNCTIONS:
+    _add_property_function(function_name)
