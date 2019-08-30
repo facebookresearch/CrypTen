@@ -9,6 +9,7 @@ import logging
 import tempfile
 
 import crypten
+import torch
 import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
@@ -49,8 +50,11 @@ def run_experiment(
         ]
     )
 
+    to_tensor_transform = transforms.ToTensor()
+    dummy_input = to_tensor_transform(dataset[0][0])
+    dummy_input.unsqueeze_(0)
     # encrypt model:
-    encrypted_model = crypten.nn.from_pytorch(model, dummy_input=dataset[0][0])
+    encrypted_model = crypten.nn.from_pytorch(model, dummy_input=dummy_input)
     encrypted_model.encrypt()
 
     # loop over dataset:
@@ -60,6 +64,8 @@ def run_experiment(
         # preprocess sample:
         image, target = sample
         image = transform(image)
+        image.unsqueeze_(0)
+        target = torch.LongTensor([target])
 
         # perform inference using encrypted model on encrypted sample:
         encrypted_image = crypten.cryptensor(image)
