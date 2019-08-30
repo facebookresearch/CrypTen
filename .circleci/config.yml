@@ -5,7 +5,8 @@ version: 2
 # -------------------------------------------------------------------------------------
 jobs:
   rununittests:
-    docker: circleci/python:3.7.4-buster 
+    docker:
+      - image: circleci/python:3.7.4-buster
     working_directory: ~/CrypTen
     steps:
       - checkout
