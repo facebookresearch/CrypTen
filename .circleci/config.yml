@@ -1,0 +1,33 @@
+version: 2
+
+# -------------------------------------------------------------------------------------
+# Jobs
+# -------------------------------------------------------------------------------------
+jobs:
+  rununittests:
+    docker: circleci/python:3.7.4-buster 
+    working_directory: ~/CrypTen
+    steps:
+      - checkout
+      - run:
+          name: Sets up the virtualenv
+          command: |
+            python3 -m venv ~/crypten-test
+            . ~/crypten-test/bin/activate
+            pip3 install --upgrade pip
+            pip3 install torch==1.2.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
+            pip3 install onnx
+      - run:
+          name: Unit tests
+          command: |
+            python3 -m unittest discover test
+
+
+# -------------------------------------------------------------------------------------
+# Workflows
+# -------------------------------------------------------------------------------------
+workflows:
+  version: 2
+  commit:
+    jobs:
+      - rununittests
