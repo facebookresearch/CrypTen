@@ -58,9 +58,9 @@ class DistributedCommunicator(Communicator):
             logging.info("World size = %d" % dist.get_world_size())
             logging.getLogger().setLevel(level)
 
-            self.setup_shared_rng()
+            self.__setup_shared_rng()
 
-    def setup_shared_rng(self):
+    def __setup_shared_rng(self):
         """
             Generate shared random seeds to generate pseudo-random sharings of
             zero. The random seeds are shared such that each process shares
@@ -110,8 +110,9 @@ class DistributedCommunicator(Communicator):
     def recv(self, tensor, src=None):
         """Receives a tensor from an (optional) source src."""
         assert dist.is_initialized(), "initialize the communicator first"
-        dist.recv(tensor, src=src)
-        return tensor
+        result = tensor.clone()
+        dist.recv(result, src=src)
+        return result
 
     @_logging
     def scatter(self, scatter_list, src, size=None, async_op=False):
@@ -128,18 +129,20 @@ class DistributedCommunicator(Communicator):
         return tensor
 
     @_logging
-    def reduce(self, tensor, op=ReduceOp.SUM, async_op=False):
+    def reduce(self, tensor, dst, op=ReduceOp.SUM, async_op=False):
         """Reduces the tensor data across all parties."""
         assert dist.is_initialized(), "initialize the communicator first"
-        dist.reduce(tensor, op=op, async_op=async_op)
-        return tensor
+        result = tensor.clone()
+        dist.reduce(result, dst, op=op, async_op=async_op)
+        return result
 
     @_logging
     def all_reduce(self, tensor, op=ReduceOp.SUM, async_op=False):
         """Reduces the tensor data across all parties; all get the final result."""
         assert dist.is_initialized(), "initialize the communicator first"
-        dist.all_reduce(tensor, op=op, async_op=async_op)
-        return tensor
+        result = tensor.clone()
+        dist.all_reduce(result, op=op, async_op=async_op)
+        return result
 
     @_logging
     def gather(self, tensor, dst, async_op=False):

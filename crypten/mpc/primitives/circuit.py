@@ -5,8 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import crypten.common.constants as constants
 import torch
+import math
 
 
 # Cached SPK masks are:
@@ -57,9 +57,10 @@ class Circuit:
             P <- P0 & P1
             K <- K0 ^ (P0 & K1) <- don't need K since it is implied by S and P
         """
-        from crypten.mpc.primitives import BinarySharedTensor
+        from .binary import BinarySharedTensor
 
-        for i in range(constants.LOG_BITS):
+        log_bits = int(math.log2(torch.iinfo(torch.long).bits))
+        for i in range(log_bits):
             in_mask = MASKS[i]
             out_mask = Circuit.__fan(in_mask, i)
             not_out_mask = out_mask ^ -1

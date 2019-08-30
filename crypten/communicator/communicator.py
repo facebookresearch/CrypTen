@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import crypten.common.constants as constants
 import torch
 
 
@@ -13,6 +12,17 @@ class Communicator:
     """
     Abstract class defining the functions that a Communicator should implement.
     """
+    # Determines whether communicators log communication stats
+    __verbosity = False
+
+    @classmethod
+    def is_verbose(cls):
+        return cls.__verbosity
+
+    @classmethod
+    def set_verbosity(cls, verbosity):
+        assert isinstance(verbosity, bool), "Verbosity must be a boolean value"
+        cls.__verbosity = verbosity
 
     def initialize(self, **kwargs):
         """Initializes the communicator. Call this function before using it."""
@@ -76,15 +86,17 @@ def _logging(func):
 
     def logging_wrapper(self, *args, **kwargs):
 
-        # hack the inputs into some of the functions:
+        # TODO: Replace this
+        # - hacks the inputs into some of the functions for world_size 1:
         if self.get_world_size() < 2:
             if func.__name__ in ["gather", "all_gather"]:
                 return [args[0]]
             else:
                 return args[0]
 
+        # TODO: Update this to remove scatter logging
         # only log if needed:
-        if constants.VERBOSE:
+        if self.is_verbose():
             if isinstance(args[0], (list, tuple)):  # N - 1 tensors communicated
                 self._log_communication(args[0][0].nelement() * (len(args[0]) - 1))
             elif torch.is_tensor(args[0]):  # one tensor communicated

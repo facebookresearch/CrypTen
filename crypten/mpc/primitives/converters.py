@@ -6,12 +6,12 @@
 # LICENSE file in the root directory of this source tree.
 
 from crypten import comm
-from crypten.common import constants
 from crypten.encoder import FixedPointEncoder
 
 from ..ptype import ptype as Ptype
 from .arithmetic import ArithmeticSharedTensor
 from .binary import Beaver, BinarySharedTensor
+import torch
 
 
 def _A2B(arithmetic_tensor):
@@ -26,7 +26,10 @@ def _A2B(arithmetic_tensor):
     return binary_tensor
 
 
-def _B2A(binary_tensor, precision=constants.PRECISION, bits=constants.BITS):
+def _B2A(binary_tensor, precision=None, bits=None):
+    if bits is None:
+        bits = torch.iinfo(torch.long).bits
+
     arithmetic_tensor = 0
     for i in range(bits):
         binary_bit = binary_tensor & 1

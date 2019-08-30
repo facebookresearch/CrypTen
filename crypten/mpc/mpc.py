@@ -7,7 +7,6 @@
 
 import crypten
 import torch
-from crypten.common import constants
 from crypten.common.util import pool_reshape
 
 from ..cryptensor import CrypTensor
@@ -89,7 +88,8 @@ class MPCTensor(CrypTensor):
     @mode(Ptype.binary)
     def _ltz(self):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
-        result = (self >> constants.BITS - 1).to(Ptype.arithmetic, bits=1)
+        shift = torch.iinfo(torch.long).bits - 1
+        result = (self >> shift).to(Ptype.arithmetic, bits=1)
         return result * result._tensor.encoder._scale
 
     @mode(Ptype.arithmetic)

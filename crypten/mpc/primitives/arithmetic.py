@@ -10,7 +10,6 @@ from functools import reduce
 # dependencies:
 import torch
 from crypten import comm
-from crypten.common import constants
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 from crypten.cryptensor import CrypTensor
@@ -33,7 +32,7 @@ class ArithmeticSharedTensor(CrypTensor):
     """
 
     # constructors:
-    def __init__(self, tensor=None, size=None, precision=constants.PRECISION, src=0):
+    def __init__(self, tensor=None, size=None, precision=None, src=0):
         if src == SENTINEL:
             return
 
@@ -51,7 +50,7 @@ class ArithmeticSharedTensor(CrypTensor):
             self._tensor += tensor
 
     @staticmethod
-    def from_shares(share, precision=constants.PRECISION, src=0):
+    def from_shares(share, precision=None, src=0):
         """Generate an AdditiveSharedTensor from a share from each party"""
         result = ArithmeticSharedTensor(src=SENTINEL)
         result._tensor = share

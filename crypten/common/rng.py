@@ -4,7 +4,6 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-import crypten
 import torch
 
 
@@ -17,9 +16,11 @@ def generate_random_ring_element(size, ring_size=(2 ** 64), **kwargs):
 
 
 def generate_kbit_random_tensor(
-    size, bitlength=crypten.common.constants.BITS, **kwargs
+    size, bitlength=None, **kwargs
 ):
     """Helper function to generate a random k-bit number"""
+    if bitlength is None:
+        bitlength = torch.iinfo(torch.long).bits
     if bitlength == 64:
         return generate_random_ring_element(size, **kwargs)
     return torch.randint(0, 2 ** bitlength, size, dtype=torch.long, **kwargs)

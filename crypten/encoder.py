@@ -27,9 +27,12 @@ def nearest_integer_division(tensor, integer):
 
 
 class FixedPointEncoder:
-    """Encoder that encodes long or float tensors into scaled base tensors."""
+    """Encoder that encodes long or float tensors into scaled integer tensors."""
+    __default_precision_bits = 16
 
-    def __init__(self, precision_bits=16):
+    def __init__(self, precision_bits=None):
+        if precision_bits is None:
+            precision_bits = FixedPointEncoder.__default_precision_bits
         self._scale = int(2 ** precision_bits)
 
     def encode(self, x):
@@ -71,3 +74,15 @@ class FixedPointEncoder:
     @property
     def scale(self):
         return self._scale
+
+    @classmethod
+    def set_default_precision(cls, precision_bits):
+        assert isinstance(precision_bits, int) and precision_bits >= 0 and \
+            precision_bits < 64, "precision must be a positive integer less than 64"
+        cls.__default_precision_bits = precision_bits
+
+
+def set_default_precision(precision_bits):
+    assert isinstance(precision_bits, int) and precision_bits >= 0 and \
+        precision_bits < 64, "precision must be a positive integer less than 64"
+    FixedPointEncoder.set_default_precision(precision_bits)
