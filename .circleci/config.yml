@@ -21,6 +21,7 @@ jobs:
       - run:
           name: Unit tests
           command: |
+            . ~/crypten-test/bin/activate
             python3 -m unittest discover test
 
 
