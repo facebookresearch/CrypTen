@@ -6,9 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from .arithmetic import ArithmeticSharedTensor
-from .beaver import Beaver
 from .binary import BinarySharedTensor
-from .circuit import Circuit
 
 
-__all__ = ["ArithmeticSharedTensor", "BinarySharedTensor", "Beaver", "Circuit"]
+__all__ = ["ArithmeticSharedTensor", "BinarySharedTensor"]

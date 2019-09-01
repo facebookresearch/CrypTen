@@ -10,12 +10,12 @@ from functools import reduce
 # dependencies:
 import torch
 from crypten import comm
-from crypten.encoder import FixedPointEncoder
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 from crypten.cryptensor import CrypTensor
+from crypten.encoder import FixedPointEncoder
 
-from .beaver import Beaver
+from . import beaver
 
 
 SENTINEL = -1
@@ -194,7 +194,7 @@ class ArithmeticSharedTensor(CrypTensor):
                 result._tensor = getattr(result._tensor, op)(y._tensor)
             else:  # ['mul', 'matmul', 'conv2d'] - Note: 'mul_' calls 'mul' here
                 # Must copy _tensor.data here to support 'mul_' being inplace
-                result._tensor.data = getattr(Beaver, op)(
+                result._tensor.data = getattr(beaver, op)(
                     result, y, *args, **kwargs
                 )._tensor.data
         else:
@@ -223,7 +223,9 @@ class ArithmeticSharedTensor(CrypTensor):
     def mul(self, y):
         """Perform element-wise multiplication"""
         if isinstance(y, int) or is_int_tensor(y):
-            return self.clone().mul_(y)
+            result = self.clone()
+            result._tensor = self._tensor * y
+            return result
         return self._arithmetic_function(y, "mul")
 
     def mul_(self, y):
@@ -271,7 +273,7 @@ class ArithmeticSharedTensor(CrypTensor):
 
     def wraps(self):
         """Privately computes the number of wraparounds for a set a shares"""
-        return Beaver.wraps(self)
+        return beaver.wraps(self)
 
     def matmul(self, y):
         """Perform matrix multiplication using some tensor"""
@@ -429,7 +431,8 @@ class ArithmeticSharedTensor(CrypTensor):
         return self.pow(0.5)
 
     def square(self):
-        result = Beaver.square(self).div_(self.encoder.scale)
+        result = self.clone()
+        result._tensor = beaver.square(self).div_(self.encoder.scale)._tensor
         return result
 
     def norm(self, *args, **kwargs):

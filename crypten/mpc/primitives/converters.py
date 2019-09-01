@@ -5,13 +5,14 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import torch
 from crypten import comm
 from crypten.encoder import FixedPointEncoder
 
 from ..ptype import ptype as Ptype
 from .arithmetic import ArithmeticSharedTensor
-from .binary import Beaver, BinarySharedTensor
-import torch
+from .binary import BinarySharedTensor
+from . import beaver
 
 
 def _A2B(arithmetic_tensor):
@@ -33,7 +34,7 @@ def _B2A(binary_tensor, precision=None, bits=None):
     arithmetic_tensor = 0
     for i in range(bits):
         binary_bit = binary_tensor & 1
-        arithmetic_bit = Beaver.B2A_single_bit(binary_bit)
+        arithmetic_bit = beaver.B2A_single_bit(binary_bit)
         # avoids long integer overflow since 2 ** 63 is out of range
         # (aliases to -2 ** 63)
         if i == 63:

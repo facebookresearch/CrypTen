@@ -11,146 +11,137 @@ from crypten import comm
 from crypten.common.util import count_wraps
 
 
-class Beaver:
+def __beaver_protocol(op, x, y, *args, **kwargs):
+    """Performs Beaver protocol for additively secret-shared tensors x and y
+
+    1. Obtain uniformly random sharings [a],[b] and [c] = [a * b]
+    2. Additively hide [x] and [y] with appropriately sized [a] and [b]
+    3. Open ([epsilon] = [x] - [a]) and ([delta] = [y] - [b])
+    4. Return [z] = [c] + (epsilon * [b]) + ([a] * delta) + (epsilon * delta)
     """
-    Beaver class contains all protocols that make calls to the TTP to
-    perform variable hiding
-    """
+    assert op in ["mul", "matmul", "conv2d"]
 
-    @staticmethod
-    def __beaver_protocol(op, x, y, *args, **kwargs):
-        """Performs Beaver protocol for additively secret-shared tensors x and y
+    provider = crypten.mpc.get_default_provider()
+    a, b, c = provider.generate_additive_triple(
+        x.size(), y.size(), op, *args, **kwargs
+    )
 
-        1. Additively hide x and y with appropriately sized a and b
-        2. Open (epsilon = x - a) and (delta = y - b)
-        3. Return z = epsilon * delta + epsilon * b + a * delta + (c = a * b)
-        """
-        # Clone the input to make result's attributes consistent with the input
-        result = x.shallow_copy()
+    # Stack to vectorize reveal if possible
+    if x.size() == y.size():
+        from .arithmetic import ArithmeticSharedTensor
 
-        assert op in ["mul", "matmul", "conv2d"]
-
-        provider = crypten.mpc.get_default_provider()
-        a, b, c = provider.generate_additive_triple(
-            x.size(), y.size(), op, *args, **kwargs
-        )
-        result._tensor = c._tensor
-
-        # Stack to vectorize reveal if possible
-        if x.size() == y.size():
-            from .arithmetic import ArithmeticSharedTensor
-
-            eps_del = ArithmeticSharedTensor.stack([x - a, y - b]).reveal()
-            epsilon = eps_del[0]
-            delta = eps_del[1]
-        else:
-            epsilon = (x - a).reveal()
-            delta = (y - b).reveal()
-
-        result._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
-        result._tensor += getattr(torch, op)(a._tensor, delta, *args, **kwargs)
-        if result.rank == 0:
-            result._tensor += getattr(torch, op)(epsilon, delta, *args, **kwargs)
-
-        return c
-
-    @staticmethod
-    def mul(x, y):
-        return Beaver.__beaver_protocol("mul", x, y)
-
-    @staticmethod
-    def matmul(x, y):
-        return Beaver.__beaver_protocol("matmul", x, y)
-
-    @staticmethod
-    def conv2d(x, y, **kwargs):
-        return Beaver.__beaver_protocol("conv2d", x, y, **kwargs)
-
-    @staticmethod
-    def square(x):
-        # Clone the input to make result's attributes consistent with the input
-        result = x.clone()
-
-        provider = crypten.mpc.get_default_provider()
-        r, r2 = provider.square(x.size())
-        result._tensor = r2._tensor
-
-        epsilon = (x - r).reveal()
-        result._tensor += r._tensor.mul_(epsilon).mul_(2)
-        if result.rank == 0:
-            result._tensor += epsilon.mul_(epsilon)
-
-        return result
-
-    @staticmethod
-    def wraps(x):
-        """Privately computes the number of wraparounds for a set a shares
-
-        To do so, we note that:
-            [theta_x] = theta_z + [beta_xr] - [theta_r] - [eta_xr]
-
-        Where [theta_i] is the wraps for a variable i
-              [beta_ij] is the differential wraps for variables i and j
-              [eta_ij]  is the plaintext wraps for variables i and j
-
-        Since [eta_xr] = 0 with probability |x| / Q for modulus Q, we can make
-        the assumption that [eta_xr] = 0 with high probability.
-        """
-        provider = crypten.mpc.get_default_provider()
-        r, theta_r = provider.wrap_rng(x.size(), comm.get_world_size())
-        beta_xr = theta_r.clone()
-        beta_xr._tensor = count_wraps([x._tensor, r._tensor])
-
-        z = x + r
-        theta_z = comm.gather(z._tensor, 0)
-        theta_x = beta_xr - theta_r
-
-        # TODO: Incorporate eta_xr
-        if x.rank == 0:
-            theta_z = count_wraps(theta_z)
-            theta_x._tensor += theta_z
-        return theta_x
-
-    @staticmethod
-    def AND(x, y):
-        """Performs Beaver AND protocol for BinarySharedTensor tensors x and y"""
-        from .binary import BinarySharedTensor
-
-        provider = crypten.mpc.get_default_provider()
-        a, b, c = provider.generate_xor_triple(x.size())
-
-        # Stack to vectorize reveal
-        eps_del = BinarySharedTensor.stack([x ^ a, y ^ b]).reveal()
+        eps_del = ArithmeticSharedTensor.stack([x - a, y - b]).reveal()
         epsilon = eps_del[0]
         delta = eps_del[1]
+    else:
+        epsilon = (x - a).reveal()
+        delta = (y - b).reveal()
 
-        c._tensor ^= (epsilon & b._tensor) ^ (a._tensor & delta)
-        if c.rank == 0:
-            c._tensor ^= epsilon & delta
+    # z = c + (a * delta) + (epsilon * b) + epsilon * delta
+    # TODO: Implement crypten.mul / crypten.matmul / crypten.conv2d
+    c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
+    c += getattr(a, op)(delta, *args, **kwargs)
+    c += getattr(torch, op)(epsilon, delta, *args, **kwargs)
 
-        return c
+    return c
 
-    @staticmethod
-    def B2A_single_bit(xB):
-        """Converts a single-bit BinarySharedTensor xB into an
-            ArithmeticSharedTensor. This is done by:
 
-        1. Generate ArithmeticSharedTensor [rA] and BinarySharedTensor =rB= with
-            a common 1-bit value r.
-        2. Hide xB with rB and open xB ^ rB
-        3. If xB ^ rB = 0, then return [rA], otherwise return 1 - [rA]
-            Note: This is an arithmetic xor of a single bit.
-        """
-        if comm.get_world_size() < 2:
-            from .arithmetic import ArithmeticSharedTensor
+def mul(x, y):
+    return __beaver_protocol("mul", x, y)
 
-            return ArithmeticSharedTensor(xB._tensor, precision=0, src=0)
 
-        provider = crypten.mpc.get_default_provider()
-        rA, rB = provider.B2A_rng(xB.size())
+def matmul(x, y):
+    return __beaver_protocol("matmul", x, y)
 
-        z = (xB ^ rB).reveal()
-        rA._tensor = rA._tensor * (1 - z) - rA._tensor * z
-        if rA.rank == 0:
-            rA._tensor += z
-        return rA
+
+def conv2d(x, y, **kwargs):
+    return __beaver_protocol("conv2d", x, y, **kwargs)
+
+
+def square(x):
+    """Computes the square of `x` for additively secret-shared tensor `x`
+
+    1. Obtain uniformly random sharings [r] and [r2] = [r * r]
+    2. Additively hide [x] with appropriately sized [r]
+    3. Open ([epsilon] = [x] - [r])
+    4. Return z = [r2] + 2 * epsilon * [r] + epsilon ** 2
+    """
+    provider = crypten.mpc.get_default_provider()
+    r, r2 = provider.square(x.size())
+
+    epsilon = (x - r).reveal()
+    return r2 + 2 * r * epsilon + epsilon * epsilon
+
+
+def wraps(x):
+    """Privately computes the number of wraparounds for a set a shares
+
+    To do so, we note that:
+        [theta_x] = theta_z + [beta_xr] - [theta_r] - [eta_xr]
+
+    Where [theta_i] is the wraps for a variable i
+          [beta_ij] is the differential wraps for variables i and j
+          [eta_ij]  is the plaintext wraps for variables i and j
+
+    Note: Since [eta_xr] = 0 with probability 1 - |x| / Q for modulus Q, we
+    can make the assumption that [eta_xr] = 0 with high probability.
+    """
+    provider = crypten.mpc.get_default_provider()
+    r, theta_r = provider.wrap_rng(x.size(), comm.get_world_size())
+    beta_xr = theta_r.clone()
+    beta_xr._tensor = count_wraps([x._tensor, r._tensor])
+
+    z = x + r
+    theta_z = comm.gather(z._tensor, 0)
+    theta_x = beta_xr - theta_r
+
+    # TODO: Incorporate eta_xr
+    if x.rank == 0:
+        theta_z = count_wraps(theta_z)
+        theta_x._tensor += theta_z
+    return theta_x
+
+
+def AND(x, y):
+    """
+    Performs Beaver protocol for binary secret-shared tensors x and y
+
+    1. Obtain uniformly random sharings [a],[b] and [c] = [a & b]
+    2. XOR hide [x] and [y] with appropriately sized [a] and [b]
+    3. Open ([epsilon] = [x] ^ [a]) and ([delta] = [y] ^ [b])
+    4. Return [c] ^ (epsilon & [b]) ^ ([a] & delta) ^ (epsilon & delta)
+    """
+    from .binary import BinarySharedTensor
+
+    provider = crypten.mpc.get_default_provider()
+    a, b, c = provider.generate_xor_triple(x.size())
+
+    # Stack to vectorize reveal
+    eps_del = BinarySharedTensor.stack([x ^ a, y ^ b]).reveal()
+    epsilon = eps_del[0]
+    delta = eps_del[1]
+
+    return (b & epsilon) ^ (a & delta) ^ (epsilon & delta) ^ c
+
+
+def B2A_single_bit(xB):
+    """Converts a single-bit BinarySharedTensor xB into an
+        ArithmeticSharedTensor. This is done by:
+
+    1. Generate ArithmeticSharedTensor [rA] and BinarySharedTensor =rB= with
+        a common 1-bit value r.
+    2. Hide xB with rB and open xB ^ rB
+    3. If xB ^ rB = 0, then return [rA], otherwise return 1 - [rA]
+        Note: This is an arithmetic xor of a single bit.
+    """
+    if comm.get_world_size() < 2:
+        from .arithmetic import ArithmeticSharedTensor
+
+        return ArithmeticSharedTensor(xB._tensor, precision=0, src=0)
+
+    provider = crypten.mpc.get_default_provider()
+    rA, rB = provider.B2A_rng(xB.size())
+
+    z = (xB ^ rB).reveal()
+    rA = rA * (1 - 2 * z) + z
+    return rA

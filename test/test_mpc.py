@@ -747,6 +747,17 @@ class TestMPC(MultiProcessTestCase):
                         % ("private" if private else "public", func),
                     )
 
+                    # Test with integer tensor
+                    tensor2 = get_random_test_tensor(size=size2, is_float=False)
+                    reference = getattr(tensor1, func)(tensor2.float())
+                    encrypted_out = getattr(encrypted1, func)(tensor2)
+                    self._check(
+                        encrypted_out,
+                        reference,
+                        "%s broadcast failed with public integer tensor"
+                        % func,
+                    )
+
             for size in matmul_sizes:
                 for batch1, batch2 in itertools.combinations(batch_dims, 2):
                     size1 = (*batch1, *size)
@@ -767,6 +778,16 @@ class TestMPC(MultiProcessTestCase):
                         reference,
                         "%s matmul broadcast failed"
                         % ("private" if private else "public"),
+                    )
+
+                    # Test with integer tensor
+                    tensor2 = get_random_test_tensor(size=size2, is_float=False)
+                    reference = tensor1.matmul(tensor2.float())
+                    encrypted_out = encrypted1.matmul(tensor2)
+                    self._check(
+                        encrypted_out,
+                        reference,
+                        "matmul broadcast failed with public integer tensor",
                     )
 
     def test_inplace(self):

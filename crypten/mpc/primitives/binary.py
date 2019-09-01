@@ -8,13 +8,12 @@
 # dependencies:
 import torch
 from crypten import comm
-from crypten.encoder import FixedPointEncoder
 from crypten.common.rng import generate_kbit_random_tensor
 from crypten.common.tensor_types import is_int_tensor
 from crypten.cryptensor import CrypTensor
+from crypten.encoder import FixedPointEncoder
 
-from .beaver import Beaver
-from .circuit import Circuit
+from . import beaver, circuit
 
 
 SENTINEL = -1
@@ -106,7 +105,7 @@ class BinarySharedTensor(CrypTensor):
         if torch.is_tensor(y) or isinstance(y, int):
             self._tensor &= y
         elif isinstance(y, BinarySharedTensor):
-            self._tensor.data = Beaver.AND(self, y)._tensor.data
+            self._tensor.data = beaver.AND(self, y)._tensor.data
         else:
             raise TypeError("Cannot AND %s with %s." % (type(y), type(self)))
         return self
@@ -154,7 +153,7 @@ class BinarySharedTensor(CrypTensor):
     # Circuits
     def add(self, y):
         """Compute [self] + [y] for xor-sharing"""
-        return Circuit.add(self, y)
+        return circuit.add(self, y)
 
     def __setitem__(self, index, value):
         """Set tensor values by index"""
