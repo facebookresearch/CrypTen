@@ -398,6 +398,18 @@ class TestMPC(MultiProcessTestCase):
                     f"take failed with indices {indices}",
                 )
 
+    def test_neg(self):
+        """Test negative on encrypted tensor."""
+        for width in range(2, 5):
+            matrix_size = (5, width)
+            matrix = get_random_test_tensor(size=matrix_size, is_float=True)
+            encrypted_matrix = MPCTensor(matrix)
+            self._check(-encrypted_matrix, -matrix, "__neg__ failed")
+            for func_name in ["neg", "neg_"]:
+                reference = getattr(matrix, func_name)()
+                encrypted_output = getattr(encrypted_matrix, func_name)()
+                self._check(encrypted_output, reference, "%s failed" % func_name)
+
     def test_relu(self):
         """Test relu on encrypted tensor."""
         for width in range(2, 5):

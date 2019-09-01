@@ -293,6 +293,7 @@ OOP_UNARY_FUNCTIONS = {
     "square": Ptype.arithmetic,
     "norm": Ptype.arithmetic,
     "mean": Ptype.arithmetic,
+    "neg": Ptype.arithmetic,
     "__neg__": Ptype.arithmetic,
     "cos": Ptype.arithmetic,
     "sin": Ptype.arithmetic,
