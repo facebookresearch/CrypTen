@@ -11,6 +11,13 @@ class CrypTensor(object):
         Encrypted tensor type that is private and cannot be shown to the outside world.
     """
 
+    @staticmethod
+    def new(*args, **kwargs):
+        """
+        Creates a new CrypTensor of same type.
+        """
+        raise NotImplementedError("new is not implemented")
+
     def abs(self):
         raise NotImplementedError("abs is not implemented")
 

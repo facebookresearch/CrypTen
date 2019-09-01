@@ -90,6 +90,10 @@ class TestMPC(MultiProcessTestCase):
                 for _ in bench.iters:
                     encrypted_tensor = MPCTensor(reference)
                     self._check(encrypted_tensor, reference, "en/decryption failed")
+                    encrypted_tensor2 = encrypted_tensor.new(reference)
+                    self.assertIsInstance(encrypted_tensor2, MPCTensor,
+                                          "new() returns incorrect type")
+                    self._check(encrypted_tensor2, reference, "en/decryption failed")
 
     def test_arithmetic(self):
         """Tests arithmetic functions on encrypted tensor."""

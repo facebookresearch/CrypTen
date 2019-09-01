@@ -46,6 +46,13 @@ class MPCTensor(CrypTensor):
         self._tensor = tensor_name(input, *args, **kwargs)
         self.ptype = ptype
 
+    @staticmethod
+    def new(*args, **kwargs):
+        """
+        Creates a new MPCTensor, passing all args and kwargs into the constructor.
+        """
+        return MPCTensor(*args, **kwargs)
+
     def shallow_copy(self):
         """Create a shallow copy of the input tensor"""
         result = MPCTensor(None)
