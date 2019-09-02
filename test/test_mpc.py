@@ -891,6 +891,23 @@ class TestMPC(MultiProcessTestCase):
                         "index_select failed at dim {dim} and index {index}",
                     )
 
+    def test_narrow(self):
+        """Tests narrow function."""
+        sizes = [(5, 6), (5, 6, 7), (6, 7, 8, 9)]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            encr_tensor = MPCTensor(tensor)
+            for dim in range(len(size)):
+                for start in range(size[dim] - 2):
+                    for length in range(1, size[dim] - start):
+                        tensor_narrow = tensor.narrow(dim, start, length)
+                        encr_tensor_narrow = encr_tensor.narrow(dim, start, length)
+                        self._check(
+                            encr_tensor_narrow,
+                            tensor_narrow,
+                            "narrow failed along dimension %d" % dim,
+                        )
+
     def test_repeat_expand(self):
         """Tests repeat and expand of encrypted tensors."""
         sizes = [(1, 8), (4, 1, 8)]

@@ -291,6 +291,14 @@ class CrypTensor(object):
         """
         raise NotImplementedError("repeat is not implemented")
 
+    def narrow(self, dim, start, length):
+        """
+        Returns a new tensor that is a narrowed version of `input` tensor.
+        The dimension `dim` is `input` from `start` to `start + length`.
+        The returned `tensor` and `input` tensor share the same underlying storage.
+        """
+        raise NotImplementedError("narrow is not implemented")
+
     def expand(self, *sizes):
         """
         Returns a new view of the `self` tensor with singleton dimensions
@@ -308,7 +316,7 @@ class CrypTensor(object):
         a larger size by setting the `stride` to 0. Any dimension of size 1 can
         be expanded to an arbitrary value without allocating new memory.
         """
-        raise NotImplementedError("repeat is not implemented")
+        raise NotImplementedError("expand is not implemented")
 
     def roll(self, shifts, dims=None):
         """

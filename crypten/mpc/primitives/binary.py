@@ -251,6 +251,7 @@ REGULAR_FUNCTIONS = [
     "unsqueeze",
     "squeeze",
     "repeat",
+    "narrow",
     "expand",
     "roll",
     "unfold",
