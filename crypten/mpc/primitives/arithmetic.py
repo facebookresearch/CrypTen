@@ -164,6 +164,7 @@ class ArithmeticSharedTensor(CrypTensor):
             "mul",
             "matmul",
             "conv2d",
+            "conv_transpose2d",
         ], f"Provided op `{op}` is not a supported arithmetic function"
 
         additive_func = op in ["add", "sub"]
@@ -187,12 +188,13 @@ class ArithmeticSharedTensor(CrypTensor):
                     result._tensor = torch.broadcast_tensors(result._tensor, y)[0]
             elif op == "mul_":  # ['mul_']
                 result._tensor = result._tensor.mul_(y)
-            else:  # ['mul', 'matmul', 'conv2d']
+            else:  # ['mul', 'matmul', 'conv2d', 'conv_transpose2d']
                 result._tensor = getattr(torch, op)(result._tensor, y, *args, **kwargs)
         elif private:
             if additive_func:  # ['add', 'sub', 'add_', 'sub_']
                 result._tensor = getattr(result._tensor, op)(y._tensor)
-            else:  # ['mul', 'matmul', 'conv2d'] - Note: 'mul_' calls 'mul' here
+            else:  # ['mul', 'matmul', 'conv2d', 'conv_transpose2d']
+                # NOTE: 'mul_' calls 'mul' here
                 # Must copy _tensor.data here to support 'mul_' being inplace
                 result._tensor.data = getattr(beaver, op)(
                     result, y, *args, **kwargs
@@ -293,6 +295,10 @@ class ArithmeticSharedTensor(CrypTensor):
     def conv2d(self, kernel, **kwargs):
         """Perform a 2D convolution using the given kernel"""
         return self._arithmetic_function(kernel, "conv2d", **kwargs)
+
+    def conv_transpose2d(self, kernel, **kwargs):
+        """Perform a 2D transpose convolution (deconvolution) using the given kernel"""
+        return self._arithmetic_function(kernel, "conv_transpose2d", **kwargs)
 
     def avg_pool2d(self, kernel_size, *args, **kwargs):
         """Perform an average pooling on each 2D matrix of the given tensor"""

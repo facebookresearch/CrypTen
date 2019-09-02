@@ -316,31 +316,44 @@ class TestMPC(MultiProcessTestCase):
 
     def test_conv(self):
         """Test convolution of encrypted tensor with public/private tensors."""
-        for kernel_type in [lambda x: x, MPCTensor]:
-            for matrix_width in range(2, 5):
-                for kernel_width in range(1, matrix_width):
-                    for padding in range(kernel_width // 2 + 1):
-                        matrix_size = (5, matrix_width)
-                        matrix = get_random_test_tensor(size=matrix_size, is_float=True)
+        for func_name in ["conv2d", "conv_transpose2d"]:
+            for kernel_type in [lambda x: x, MPCTensor]:
+                for matrix_width in range(2, 5):
+                    for kernel_width in range(1, matrix_width):
+                        for padding in range(kernel_width // 2 + 1):
 
-                        kernel_size = (kernel_width, kernel_width)
-                        kernel = get_random_test_tensor(size=kernel_size, is_float=True)
+                            # sample input:
+                            matrix_size = (5, matrix_width)
+                            matrix = get_random_test_tensor(
+                                size=matrix_size, is_float=True
+                            )
+                            matrix = matrix.unsqueeze(0).unsqueeze(0)
 
-                        matrix = matrix.unsqueeze(0).unsqueeze(0)
-                        kernel = kernel.unsqueeze(0).unsqueeze(0)
+                            # sample filtering kernel:
+                            kernel_size = (kernel_width, kernel_width)
+                            kernel = get_random_test_tensor(
+                                size=kernel_size, is_float=True
+                            )
+                            kernel = kernel.unsqueeze(0).unsqueeze(0)
 
-                        reference = F.conv2d(matrix, kernel, padding=padding)
-                        encrypted_matrix = MPCTensor(matrix)
-                        encrypted_kernel = kernel_type(kernel)
-                        with self.benchmark(
-                            kernel_type=kernel_type.__name__, matrix_width=matrix_width
-                        ) as bench:
-                            for _ in bench.iters:
-                                encrypted_conv = encrypted_matrix.conv2d(
-                                    encrypted_kernel, padding=padding
-                                )
+                            # perform filtering:
+                            encr_matrix = MPCTensor(matrix)
+                            encr_kernel = kernel_type(kernel)
+                            with self.benchmark(
+                                kernel_type=kernel_type.__name__,
+                                matrix_width=matrix_width,
+                            ) as bench:
+                                for _ in bench.iters:
+                                    encr_conv = getattr(encr_matrix, func_name)(
+                                        encr_kernel, padding=padding
+                                    )
 
-                        self._check(encrypted_conv, reference, "conv2d failed")
+                            # check that result is correct:
+                            reference = getattr(F, func_name)(
+                                matrix, kernel, padding=padding
+                            )
+                            self._check(encr_conv, reference,
+                                        "%s failed" % func_name)
 
     def test_pooling(self):
         """Test avg_pool, sum_pool, max_pool of encrypted tensor."""

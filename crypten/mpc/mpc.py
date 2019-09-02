@@ -314,6 +314,7 @@ OOP_BINARY_FUNCTIONS = {
     "mul": Ptype.arithmetic,
     "matmul": Ptype.arithmetic,
     "conv2d": Ptype.arithmetic,
+    "conv_transpose2d": Ptype.arithmetic,
     "dot": Ptype.arithmetic,
     "ger": Ptype.arithmetic,
     "XOR": Ptype.binary,

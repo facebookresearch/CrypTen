@@ -19,7 +19,7 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
     3. Open ([epsilon] = [x] - [a]) and ([delta] = [y] - [b])
     4. Return [z] = [c] + (epsilon * [b]) + ([a] * delta) + (epsilon * delta)
     """
-    assert op in ["mul", "matmul", "conv2d"]
+    assert op in ["mul", "matmul", "conv2d", "conv_transpose2d"]
 
     provider = crypten.mpc.get_default_provider()
     a, b, c = provider.generate_additive_triple(
@@ -38,7 +38,7 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
         delta = (y - b).reveal()
 
     # z = c + (a * delta) + (epsilon * b) + epsilon * delta
-    # TODO: Implement crypten.mul / crypten.matmul / crypten.conv2d
+    # TODO: Implement crypten.mul / crypten.matmul / crypten.conv{_transpose}2d
     c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
     c += getattr(a, op)(delta, *args, **kwargs)
     c += getattr(torch, op)(epsilon, delta, *args, **kwargs)
@@ -56,6 +56,10 @@ def matmul(x, y):
 
 def conv2d(x, y, **kwargs):
     return __beaver_protocol("conv2d", x, y, **kwargs)
+
+
+def conv_transpose2d(x, y, **kwargs):
+    return __beaver_protocol("conv_transpose2d", x, y, **kwargs)
 
 
 def square(x):
