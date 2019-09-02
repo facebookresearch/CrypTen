@@ -7,7 +7,8 @@
 
 import logging
 import unittest
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multiprocess_test_case import \
+    MultiProcessTestCase, get_random_test_tensor, get_random_linear
 
 import torch
 
@@ -325,13 +326,9 @@ class TestNN(MultiProcessTestCase):
             # compare output to reference:
             self._check(encr_output, reference, "nn.Sequential forward failed")
 
-    @unittest.skip("this test is broken")
     def test_graph(self):
         """
         Tests crypten.nn.Graph module.
-
-        FIXME t53084684: this unit test fails due to the process with rank 1
-        returns a non-zero return code.
         """
 
         # define test case:
@@ -341,8 +338,8 @@ class TestNN(MultiProcessTestCase):
 
         # test residual block with subsequent linear layer:
         graph = crypten.nn.Graph("input", "output")
-        linear1 = torch.nn.Linear(input_size[1], input_size[1])
-        linear2 = torch.nn.Linear(input_size[1], input_size[1])
+        linear1 = get_random_linear(input_size[1], input_size[1])
+        linear2 = get_random_linear(input_size[1], input_size[1])
         graph.add_module("linear", crypten.nn.from_pytorch(linear1, input), ["input"])
         graph.add_module("residual", crypten.nn.Add(), ["input", "linear"])
         graph.add_module(

@@ -44,6 +44,18 @@ def get_random_test_tensor(max_value=6, size=(1, 5), is_float=False):
     return tensor
 
 
+def get_random_linear(in_channels, out_channels):
+    linear = torch.nn.Linear(in_channels, out_channels)
+    if dist.is_initialized():
+        # Broadcast this tensor to the world so that the generated random tensor
+        # is in sync in all distributed processes. See T45688819 for more
+        # information.
+        dist.broadcast(linear.weight, 0)
+        dist.broadcast(linear.bias, 0)
+
+    return linear
+
+
 class MultiProcessTestCase(unittest.TestCase):
     MAIN_PROCESS_RANK = -1
     _benchmark_results = defaultdict(list)
