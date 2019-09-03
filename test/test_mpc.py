@@ -1079,6 +1079,23 @@ class TestMPC(MultiProcessTestCase):
                         f"flip failed with {dims} dims",
                     )
 
+    def test_control_flow_failure(self):
+        """Tests that control flow fails as expected"""
+        tensor = get_random_test_tensor(is_float=True)
+        encrypted_tensor = MPCTensor(tensor)
+        with self.assertRaises(RuntimeError):
+            if encrypted_tensor:
+                pass
+
+        with self.assertRaises(RuntimeError):
+            tensor = 5 if encrypted_tensor else 0
+
+        with self.assertRaises(RuntimeError):
+            if False:
+                pass
+            elif encrypted_tensor:
+                pass
+
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)

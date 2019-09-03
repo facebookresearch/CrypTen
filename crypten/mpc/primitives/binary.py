@@ -83,7 +83,15 @@ class BinarySharedTensor(CrypTensor):
         return result
 
     def __repr__(self):
-        return "[%s] BinarySharedTensor" % str(self.size())
+        return "%s BinarySharedTensor" % str(tuple(self.size()))
+
+    def __bool__(self):
+        """Override bool operator since encrypted tensors cannot evaluate"""
+        raise RuntimeError("Cannot evaluate BinarySharedTensors to boolean values")
+
+    def __nonzero__(self):
+        """__bool__ for backwards compatibility with Python 2"""
+        raise RuntimeError("Cannot evaluate BinarySharedTensors to boolean values")
 
     def XOR_(self, y):
         """Bitwise XOR operator (element-wise) in place"""

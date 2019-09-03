@@ -84,7 +84,15 @@ class ArithmeticSharedTensor(CrypTensor):
         return result
 
     def __repr__(self):
-        return "[%s] ArithmeticSharedTensor" % str(self.size())
+        return "%s ArithmeticSharedTensor" % str(tuple(self.size()))
+
+    def __bool__(self):
+        """Override bool operator since encrypted tensors cannot evaluate"""
+        raise RuntimeError("Cannot evaluate ArithmeticSharedTensors to boolean values")
+
+    def __nonzero__(self):
+        """__bool__ for backwards compatibility with Python 2"""
+        raise RuntimeError("Cannot evaluate ArithmeticSharedTensors to boolean values")
 
     def __setitem__(self, index, value):
         """Set tensor values by index"""

@@ -60,6 +60,7 @@ class MPCTensor(CrypTensor):
         result.ptype = self.ptype
         return result
 
+    # Handle share types and conversions
     def to(self, ptype, **kwargs):
         """Converts self._tensor to the given ptype"""
         retval = self.clone()
@@ -80,6 +81,14 @@ class MPCTensor(CrypTensor):
     def get_plain_text(self):
         """Decrypt the tensor"""
         return self._tensor.get_plain_text()
+
+    def __bool__(self):
+        """Override bool operator since encrypted tensors cannot evaluate"""
+        raise RuntimeError("Cannot evaluate MPCTensors to boolean values")
+
+    def __nonzero__(self):
+        """__bool__ for backwards compatibility with Python 2"""
+        raise RuntimeError("Cannot evaluate MPCTensors to boolean values")
 
     def __setitem__(self, index, value):
         """Set tensor values by index"""
