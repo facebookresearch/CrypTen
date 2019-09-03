@@ -5,7 +5,22 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""
+To run mpc_linear_svm example in multiprocess mode:
+
+$ python examples/mpc_linear_svm/launcher.py --multiprocess
+
+To run mpc_linear_svm example on AWS EC2 instances:
+
+$ python aws_launcher.py -- \
+      --ssh_key_file=/home/$USER/.aws/fair-$USER.pem \
+      --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
+      --aux_files=examples/mpc_linear_svm/mpc_linear_svm.py \
+      examples/mpc_linear_svm/launcher.py
+"""
+
 import argparse
+import importlib
 import logging
 import os
 
@@ -41,11 +56,20 @@ parser.add_argument(
     action="store_true",
     help="skip evaluation for plaintext svm",
 )
+parser.add_argument(
+    "--multiprocess",
+    default=False,
+    action="store_true",
+    help="Run example in multiprocess mode",
+)
 
 
 def run_experiment(args):
     # only import here to initialize crypten within the subprocesses
-    from examples.mpc_linear_svm import run_mpc_linear_svm
+    if importlib.util.find_spec("mpc_linear_svm") is not None:
+        from mpc_linear_svm import run_mpc_linear_svm
+    else:
+        from .mpc_linear_svm import run_mpc_linear_svm
 
     level = logging.INFO
     if "RANK" in os.environ and os.environ["RANK"] != "0":
@@ -62,10 +86,13 @@ def run_experiment(args):
 
 def main():
     args = parser.parse_args()
-    launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
-    launcher.start()
-    launcher.join()
-    launcher.terminate()
+    if args.multiprocess:
+        launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
+        launcher.start()
+        launcher.join()
+        launcher.terminate()
+    else:
+        run_experiment(args)
 
 
 if __name__ == "__main__":
