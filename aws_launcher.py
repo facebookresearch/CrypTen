@@ -37,10 +37,9 @@ in order to communicate with AWS service):
 
 $ http_proxy=http://fwdproxy:8080 https_proxy=http://fwdproxy:8080 \
   buck run @mode/dev-nosan deeplearning/projects/crypten:aws_launcher -- \
-    --ssh_key_file=/home/$USER/.aws/aws_launcher.pem \
+    --ssh_key_file=/home/$USER/.aws/fair-$USER.pem \
     --http_proxy=fwdproxy:8080 \
     --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
-    --prepare_cmd "source activate pytorch_p36" \
     --aux_files=deeplearning/projects/crypten/examples/mpc_linear_svm/mpc_linear_svm.py \
     deeplearning/projects/crypten/examples/mpc_linear_svm/experiment.py \
         --features 50 \
@@ -57,6 +56,7 @@ import os
 import sys
 import time
 import uuid
+import warnings
 from argparse import REMAINDER, ArgumentParser
 from pathlib import Path
 
@@ -137,6 +137,12 @@ def main():
 
     cf = configparser.ConfigParser()
     cf.read(args.credentials)
+
+    warnings.filterwarnings(
+        "ignore",
+        category=ResourceWarning,
+        message="unclosed.*<ssl.SSLSocket.*>"
+    )
 
     session = boto3.session.Session(
         aws_access_key_id=cf["default"]["aws_access_key_id"],
@@ -222,10 +228,11 @@ def main():
             environment_cmd = "; ".join(
                 [f"export {key}={value}" for (key, value) in environment.items()]
             )
-            cmd = "{}; {}; {}; {} {}".format(
+            prepare_cmd = f"{args.prepare_cmd}; " if args.prepare_cmd else ""
+            cmd = "{}; {} {} {} {}".format(
                 environment_cmd,
-                f"cd {remote_dir}",
-                args.prepare_cmd,
+                f"cd {remote_dir} ;",
+                prepare_cmd,
                 f"./{script_basename}",
                 " ".join(args.training_script_args),
             )
