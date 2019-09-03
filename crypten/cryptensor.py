@@ -409,3 +409,7 @@ class CrypTensor(object):
 
     def size(self):
         raise NotImplementedError("size is not implemented")
+
+    @property
+    def shape(self):
+        return self.size()
