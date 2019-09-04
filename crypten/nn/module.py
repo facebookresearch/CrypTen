@@ -9,7 +9,7 @@ import crypten
 import torch.nn
 
 
-# FIXME(lvdmaaten): Make crypten.nn work for any EncryptedTensor.
+# FIXME(lvdmaaten): Make crypten.nn work for any CrypTensor.
 
 
 class Module:

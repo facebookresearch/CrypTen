@@ -45,7 +45,7 @@ class TestCommon(unittest.TestCase):
                 "Encoding/decoding a %s failed." % "float" if float else "long",
             )
 
-        # Make sure encoding a subclass of EncryptedTensor is a no-op
+        # Make sure encoding a subclass of CrypTensor is a no-op
         tensor = get_test_tensor(float=True)
         encrypted_tensor = crypten.cryptensor(tensor)
         encrypted_tensor = fpe.encode(encrypted_tensor)

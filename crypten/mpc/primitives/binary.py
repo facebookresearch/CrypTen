@@ -49,7 +49,7 @@ class BinarySharedTensor(CrypTensor):
 
     @staticmethod
     def from_shares(share, src=0):
-        """Generate an AdditiveSharedTensor from a share from each party"""
+        """Generate a BinarySharedTensor from a share from each party"""
         result = BinarySharedTensor(src=SENTINEL)
         result._tensor = share
         result.encoder = FixedPointEncoder(precision_bits=0)

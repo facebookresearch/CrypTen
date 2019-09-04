@@ -51,7 +51,7 @@ class ArithmeticSharedTensor(CrypTensor):
 
     @staticmethod
     def from_shares(share, precision=None, src=0):
-        """Generate an AdditiveSharedTensor from a share from each party"""
+        """Generate an ArithmeticSharedTensor from a share from each party"""
         result = ArithmeticSharedTensor(src=SENTINEL)
         result._tensor = share
         result.encoder = FixedPointEncoder(precision_bits=precision)

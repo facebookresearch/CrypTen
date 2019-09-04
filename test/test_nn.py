@@ -381,7 +381,7 @@ class TestNN(MultiProcessTestCase):
 
 
 # This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_spdz_benchmark)
+# via the buck target test_mpc_benchmark)
 if __name__ == "__main__":
     TestNN.benchmarks_enabled = True
     unittest.main()

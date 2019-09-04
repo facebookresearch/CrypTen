@@ -204,11 +204,11 @@ class CrypTensor(object):
         """
         raise NotImplementedError("clone is not implemented")
 
-    def __get_item__(self, index):
+    def __getitem__(self, index):
         """
         Returns an encrypted tensor containing elements of self at `index`
         """
-        raise NotImplementedError("__get_item__ is not implemented")
+        raise NotImplementedError("__getitem__ is not implemented")
 
     def index_select(self, dim, index):
         """
