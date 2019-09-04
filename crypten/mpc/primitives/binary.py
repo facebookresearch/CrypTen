@@ -106,7 +106,18 @@ class BinarySharedTensor(CrypTensor):
 
     def XOR(self, y):
         """Bitwise XOR operator (element-wise)"""
-        return self.clone().XOR_(y)
+        result = self.clone()
+        if isinstance(y, BinarySharedTensor):
+            broadcast_tensors = torch.broadcast_tensors(
+                result._tensor, y._tensor
+            )
+            result._tensor = broadcast_tensors[0].clone()
+        elif torch.is_tensor(y):
+            broadcast_tensors = torch.broadcast_tensors(
+                result._tensor, y
+            )
+            result._tensor = broadcast_tensors[0].clone()
+        return result.XOR_(y)
 
     def AND_(self, y):
         """Bitwise AND operator (element-wise) in place"""
@@ -120,7 +131,18 @@ class BinarySharedTensor(CrypTensor):
 
     def AND(self, y):
         """Bitwise AND operator (element-wise)"""
-        return self.clone().AND_(y)
+        result = self.clone()
+        if isinstance(y, BinarySharedTensor):
+            broadcast_tensors = torch.broadcast_tensors(
+                result._tensor, y._tensor
+            )
+            result._tensor = broadcast_tensors[0].clone()
+        elif torch.is_tensor(y):
+            broadcast_tensors = torch.broadcast_tensors(
+                result._tensor, y
+            )
+            result._tensor = broadcast_tensors[0].clone()
+        return result.AND_(y)
 
     def OR_(self, y):
         """Bitwise OR operator (element-wise) in place"""

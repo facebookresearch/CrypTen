@@ -7,6 +7,7 @@
 
 import logging
 import unittest
+import itertools
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 
@@ -155,6 +156,49 @@ class TestBinary(MultiProcessTestCase):
                 for _ in bench.iters:
                     encrypted_out = encrypted_tensor | encrypted_tensor2
             self._check(encrypted_out, reference, "%s OR failed" % tensor_type)
+
+    def test_bitwise_broadcasting(self):
+        """Tests bitwise function broadcasting"""
+        bitwise_ops = ["__and__", "__or__", "__xor__"]
+        sizes = [
+            (),
+            (1,),
+            (2,),
+            (1, 1),
+            (1, 2),
+            (2, 1),
+            (2, 2),
+            (1, 1, 1),
+            (1, 1, 2),
+            (1, 2, 1),
+            (2, 1, 1),
+            (2, 2, 2),
+            (1, 1, 1, 1),
+            (1, 1, 1, 2),
+            (1, 1, 2, 1),
+            (1, 2, 1, 1),
+            (2, 1, 1, 1),
+            (2, 2, 2, 2),
+        ]
+
+        for tensor_type in [lambda x: x, BinarySharedTensor]:
+            for op in bitwise_ops:
+                for size1, size2 in itertools.combinations(sizes, 2):
+                    tensor1 = get_random_test_tensor(size=size1, is_float=False)
+                    tensor2 = get_random_test_tensor(size=size2, is_float=False)
+                    encrypted_tensor1 = BinarySharedTensor(tensor1)
+                    tensor2_transformed = tensor_type(tensor2)
+
+                    if isinstance(tensor2_transformed, BinarySharedTensor):
+                        tensor2_transformed_type = "private"
+                    else:
+                        tensor2_transformed_type = "public"
+
+                    self._check(getattr(encrypted_tensor1, op)(
+                                tensor2_transformed),
+                                getattr(tensor1, op)(tensor2),
+                                f"{tensor2_transformed_type} {op} broadcasting "
+                                f"failed with sizes {size1}, {size2}")
 
     def test_invert(self):
         """Test bitwise-invert function on BinarySharedTensor"""
