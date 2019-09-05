@@ -27,13 +27,29 @@ class BenchmarkRun(NamedTuple):
     time: float
 
 
-def get_random_test_tensor(max_value=6, size=(1, 5), is_float=False):
+def get_random_test_tensor(max_value=6,
+                           size=(1, 5),
+                           is_float=False,
+                           ex_zero=False):
+    """Generates random tensor for testing
+
+    Args:
+        max_value (int): defines range for int tensor
+        size (tuple): size of tensor
+        is_float (bool): determines float or int tensor
+        ex_zero (bool): excludes zero tensor
+
+    Returns: torch.tensor
+    """
     if is_float:
         tensor = (2 * torch.rand(torch.Size(size)) - 1) * max_value
     else:
         tensor = torch.randint(
             -max_value, max_value, torch.Size(size), dtype=torch.int64
         )
+    if ex_zero:
+        # replace 0 with 1
+        tensor[tensor == 0] = 1
 
     if dist.is_initialized():
         # Broadcast this tensor to the world so that the generated random tensor

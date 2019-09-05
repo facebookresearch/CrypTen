@@ -173,7 +173,7 @@ class TestMPC(MultiProcessTestCase):
             self._check(encrypted_out, reference, "sum failed")
 
     def test_div(self):
-        """Tests division of encrypted tensor by scalar."""
+        """Tests division of encrypted tensor by scalar and tensor."""
         for function in ["div", "div_"]:
             for scalar in [2, 2.0]:
                 tensor = get_random_test_tensor(is_float=True)
@@ -181,15 +181,18 @@ class TestMPC(MultiProcessTestCase):
                 reference = tensor.float().div(scalar)
                 encrypted_tensor = MPCTensor(tensor)
                 encrypted_tensor = getattr(encrypted_tensor, function)(scalar)
-                self._check(encrypted_tensor, reference, "division failed")
+                self._check(encrypted_tensor,
+                            reference,
+                            "scalar division failed")
 
-                divisor = get_random_test_tensor(is_float=float)
-                divisor += (divisor == 0).to(dtype=divisor.dtype)  # div by 0
+                divisor = get_random_test_tensor(is_float=True, ex_zero=True)
 
                 reference = tensor.div(divisor)
                 encrypted_tensor = MPCTensor(tensor)
                 encrypted_tensor = getattr(encrypted_tensor, function)(divisor)
-                self._check(encrypted_tensor, reference, "division failed")
+                self._check(encrypted_tensor,
+                            reference,
+                            "tensor division failed")
 
     def test_mean(self):
         """Tests computing means of encrypted tensors."""
@@ -728,8 +731,8 @@ class TestMPC(MultiProcessTestCase):
                                 )
                         self._check(encrypted_out, reference, "pad failed")
 
-    def test_broadcast(self):
-        """Test broadcast functionality."""
+    def test_broadcast_arithmetic(self):
+        """Test broadcast of arithmetic functions."""
         arithmetic_functions = ["add", "sub", "mul", "div"]
         arithmetic_sizes = [
             (),
@@ -751,8 +754,6 @@ class TestMPC(MultiProcessTestCase):
             (2, 1, 1, 1),
             (2, 2, 2, 2),
         ]
-        matmul_sizes = [(1, 1), (1, 5), (5, 1), (5, 5)]
-        batch_dims = [(), (1,), (5,), (1, 1), (1, 5), (5, 5)]
 
         for tensor_type in [lambda x: x, MPCTensor]:
             for func in arithmetic_functions:
@@ -773,7 +774,10 @@ class TestMPC(MultiProcessTestCase):
                     )
 
                     # Test with integer tensor
-                    tensor2 = get_random_test_tensor(size=size2, is_float=False)
+                    exclude_zero = True if func == "div" else False
+                    tensor2 = get_random_test_tensor(size=size2,
+                                                     is_float=False,
+                                                     ex_zero=exclude_zero)
                     reference = getattr(tensor1, func)(tensor2.float())
                     encrypted_out = getattr(encrypted1, func)(tensor2)
                     self._check(
@@ -783,6 +787,13 @@ class TestMPC(MultiProcessTestCase):
                         % func,
                     )
 
+    def test_broadcast_matmul(self):
+        """Test broadcast of matmul."""
+        matmul_sizes = [(1, 1), (1, 5), (5, 1), (5, 5)]
+        batch_dims = [(), (1,), (5,), (1, 1), (1, 5), (5, 5)]
+
+        for tensor_type in [lambda x: x, MPCTensor]:
+
             for size in matmul_sizes:
                 for batch1, batch2 in itertools.combinations(batch_dims, 2):
                     size1 = (*batch1, *size)
@@ -790,7 +801,7 @@ class TestMPC(MultiProcessTestCase):
 
                     tensor1 = get_random_test_tensor(size=size1, is_float=True)
                     tensor2 = get_random_test_tensor(size=size2, is_float=True)
-                    tensor2 = tensor1.transpose(-2, -1)
+                    tensor2 = tensor2.transpose(-2, -1)
 
                     encrypted1 = MPCTensor(tensor1)
                     encrypted2 = tensor_type(tensor2)
@@ -807,7 +818,8 @@ class TestMPC(MultiProcessTestCase):
 
                     # Test with integer tensor
                     tensor2 = get_random_test_tensor(size=size2, is_float=False)
-                    reference = tensor1.matmul(tensor2.float())
+                    tensor2 = tensor2.float().transpose(-2, -1)
+                    reference = tensor1.matmul(tensor2)
                     encrypted_out = encrypted1.matmul(tensor2)
                     self._check(
                         encrypted_out,
