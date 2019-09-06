@@ -21,6 +21,7 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 from examples.meters import AverageMeter
+from examples.util import NoopContextManager
 from torchvision import datasets, transforms
 
 
@@ -37,6 +38,7 @@ def run_tfe_benchmarks(
     evaluate=True,
     seed=None,
     skip_plaintext=False,
+    context_manager=None,
 ):
     if seed is not None:
         random.seed(seed)
@@ -79,23 +81,30 @@ def run_tfe_benchmarks(
             logging.info("=> no checkpoint found at '{}'".format(resume))
 
     # Loading MNIST. Normalizing per pytorch/examples/blob/master/mnist/main.py
-    def preprocess_data():
-        mnist_train = datasets.MNIST(
-            "/tmp",
-            download=True,
-            train=True,
-            transform=transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-            ),
-        )
-        mnist_test = datasets.MNIST(
-            "/tmp",
-            download=True,
-            train=False,
-            transform=transforms.Compose(
-                [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
-            ),
-        )
+    def preprocess_data(context_manager):
+        with context_manager:
+            mnist_train = datasets.MNIST(
+                "/tmp",
+                download=True,
+                train=True,
+                transform=transforms.Compose(
+                    [
+                        transforms.ToTensor(),
+                        transforms.Normalize((0.1307,), (0.3081,))
+                    ]
+                ),
+            )
+            mnist_test = datasets.MNIST(
+                "/tmp",
+                download=True,
+                train=False,
+                transform=transforms.Compose(
+                    [
+                        transforms.ToTensor(),
+                        transforms.Normalize((0.1307,), (0.3081,))
+                    ]
+                ),
+            )
         train_loader = torch.utils.data.DataLoader(
             mnist_train, batch_size=batch_size, shuffle=True
         )
@@ -104,7 +113,9 @@ def run_tfe_benchmarks(
         )
         return train_loader, test_loader
 
-    train_loader, val_loader = preprocess_data()
+    if context_manager is None:
+        context_manager = NoopContextManager()
+    train_loader, val_loader = preprocess_data(context_manager)
     flatten = False
     if network == "A":
         flatten = True
@@ -176,9 +187,9 @@ def train(
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output, target, topk=(1, 5))
-        losses.update(loss.item(), input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        losses.add(loss.item(), input.size(0))
+        top1.add(prec1[0], input.size(0))
+        top5.add(prec5[0], input.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
@@ -186,23 +197,28 @@ def train(
         optimizer.step()
 
         # measure elapsed time
-        batch_time.update(time.time() - end)
+        current_batch_time = time.time() - end
+        batch_time.add(current_batch_time)
         end = time.time()
 
         if i % print_freq == 0:
             logging.info(
-                "Epoch: [{0}][{1}/{2}]\t"
-                "Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t"
-                "Loss {loss.val:.4f} ({loss.avg:.4f})\t"
-                "Prec@1 {top1.val:.3f} ({top1.avg:.3f})\t"
-                "Prec@5 {top5.val:.3f} ({top5.avg:.3f})".format(
+                "Epoch: [{}][{}/{}]\t"
+                "Time {:.3f} ({:.3f})\t"
+                "Loss {:.4f} ({:.4f})\t"
+                "Prec@1 {:.3f} ({:.3f})\t"
+                "Prec@5 {:.3f} ({:.3f})".format(
                     epoch,
                     i,
                     len(train_loader),
-                    batch_time=batch_time,
-                    loss=losses,
-                    top1=top1,
-                    top5=top5,
+                    current_batch_time,
+                    batch_time.value(),
+                    loss.item(),
+                    losses.value(),
+                    prec1[0],
+                    top1.value(),
+                    prec5[0],
+                    top5.value(),
                 )
             )
 
