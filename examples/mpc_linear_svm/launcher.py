@@ -20,7 +20,6 @@ $ python3 aws_launcher.py \
 """
 
 import argparse
-import importlib
 import logging
 import os
 
@@ -64,12 +63,9 @@ parser.add_argument(
 )
 
 
-def run_experiment(args):
+def _run_experiment(args):
     # only import here to initialize crypten within the subprocesses
-    if importlib.util.find_spec("mpc_linear_svm") is not None:
-        from mpc_linear_svm import run_mpc_linear_svm
-    else:
-        from .mpc_linear_svm import run_mpc_linear_svm
+    from mpc_linear_svm import run_mpc_linear_svm
 
     level = logging.INFO
     if "RANK" in os.environ and os.environ["RANK"] != "0":
@@ -84,7 +80,7 @@ def run_experiment(args):
     )
 
 
-def main():
+def main(run_experiment):
     args = parser.parse_args()
     if args.multiprocess:
         launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
@@ -96,4 +92,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(_run_experiment)
