@@ -418,7 +418,7 @@ class ArithmeticSharedTensor(CrypTensor):
         """
         return self.log().mul_(p).exp(iterations=9)
 
-    def reciprocal(self, method="NR", nr_iters=7, log_iters=1, exp_iters=9):
+    def reciprocal(self, method="NR", nr_iters=10, log_iters=1, exp_iters=9):
         """
         Methods:
             'NR' : Newton Raphson method computes the reciprocal using iterations

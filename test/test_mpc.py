@@ -186,8 +186,9 @@ class TestMPC(MultiProcessTestCase):
                             reference,
                             "scalar division failed")
 
-                divisor = get_random_test_tensor(is_float=True, ex_zero=True)
-
+                # multiply denominator by 10 to avoid dividing by small num
+                divisor = get_random_test_tensor(is_float=True,
+                                                 ex_zero=True) * 10
                 reference = tensor.div(divisor)
                 encrypted_tensor = MPCTensor(tensor)
                 encrypted_tensor = getattr(encrypted_tensor, function)(divisor)
@@ -834,7 +835,7 @@ class TestMPC(MultiProcessTestCase):
                                 )
                         self._check(encrypted_out, reference, "pad failed")
 
-    def test_broadcast_arithmetic(self):
+    def test_broadcast_arithmetic_ops(self):
         """Test broadcast of arithmetic functions."""
         arithmetic_functions = ["add", "sub", "mul", "div"]
         arithmetic_sizes = [
@@ -861,8 +862,16 @@ class TestMPC(MultiProcessTestCase):
         for tensor_type in [lambda x: x, MPCTensor]:
             for func in arithmetic_functions:
                 for size1, size2 in itertools.combinations(arithmetic_sizes, 2):
-                    tensor1 = get_random_test_tensor(size=size1, is_float=True)
-                    tensor2 = get_random_test_tensor(size=size2, is_float=True)
+                    exclude_zero = True if func == "div" else False
+                    # multiply denominator by 10 to avoid dividing by small num
+                    const = 10 if func == "div" else 1
+
+                    tensor1 = get_random_test_tensor(size=size1,
+                                                     is_float=True)
+                    tensor2 = get_random_test_tensor(size=size2,
+                                                     is_float=True,
+                                                     ex_zero=exclude_zero)
+                    tensor2 *= const
                     encrypted1 = MPCTensor(tensor1)
                     encrypted2 = tensor_type(tensor2)
                     reference = getattr(tensor1, func)(tensor2)
@@ -877,10 +886,10 @@ class TestMPC(MultiProcessTestCase):
                     )
 
                     # Test with integer tensor
-                    exclude_zero = True if func == "div" else False
                     tensor2 = get_random_test_tensor(size=size2,
                                                      is_float=False,
                                                      ex_zero=exclude_zero)
+                    tensor2 *= const
                     reference = getattr(tensor1, func)(tensor2.float())
                     encrypted_out = getattr(encrypted1, func)(tensor2)
                     self._check(
