@@ -324,29 +324,6 @@ class ArithmeticSharedTensor(CrypTensor):
         )
         return result
 
-    def softmax(self, apprx_max=5.0, **kwargs):
-        """Compute the max of a tensor's elements (or along a given dimension)
-
-        This is computed by
-            softmax(x)
-                = exp(x) * reciprocal(sum(exp(x)))
-                = exp(x) * exp( -log( sum(exp(x)))
-
-        For large x, exp(x) will be extremely large and therefore sum(exp(x))
-        will be out of the accurate range for log(). Therefore we note that the
-        above can be corrected by subtracting a constant:
-
-                = exp(x - c) * exp( -log( sum(exp(x - c))))
-        """
-        numerator = self.exp()
-        # correction should be approximately the maximum value
-        denominator = (self - apprx_max).exp().sum().reciprocal()
-        result = numerator * denominator
-
-        correction = torch.empty(size=result.size()).fill_(apprx_max)
-        correction = (-correction).exp()
-        return result * correction
-
     def take(self, index, dimension=None):
         """Take entries of tensor along a dimension according to indices
             This function is identical to torch.take() when dimension=None,

@@ -438,17 +438,6 @@ class TestArithmetic(MultiProcessTestCase):
                     encrypted_out = getattr(encrypted_tensor, func)()
             self._check(encrypted_out, reference, "%s failed" % func)
 
-    def test_softmax(self):
-        """Test max function"""
-        tensor = get_random_test_tensor(is_float=True)
-        reference = torch.nn.functional.softmax(tensor, dim=1)
-
-        encrypted_tensor = ArithmeticSharedTensor(tensor)
-        with self.benchmark() as bench:
-            for _ in bench.iters:
-                encrypted_out = encrypted_tensor.softmax()
-        self._check(encrypted_out, reference, "softmax failed")
-
     def test_take(self):
         """Tests take function of encrypted tensor"""
         tensor_size = [5, 5, 5, 5]

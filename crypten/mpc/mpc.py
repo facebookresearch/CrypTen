@@ -356,6 +356,25 @@ class MPCTensor(CrypTensor):
         return (self * 2).sigmoid(reciprocal_method=reciprocal_method) * 2 - 1
 
     @mode(Ptype.arithmetic)
+    def softmax(self, dim, **kwargs):
+        """Compute the softmax of a tensor's elements along a given dimension
+        """
+        # 0-d case
+        if self.dim() == 0:
+            assert dim == 0, "Improper dim argument"
+            return MPCTensor(torch.ones(()))
+
+        if self.size(dim) == 1:
+            return MPCTensor(torch.ones(self.size()))
+
+        maximum_value = self.max(dim, keepdim=True)[0]
+        logits = self - maximum_value
+        numerator = logits.exp()
+        # correction should be approximately the maximum value
+        denominator = numerator.sum(dim, keepdim=True)
+        return numerator / denominator
+
+    @mode(Ptype.arithmetic)
     def pad(self, pad, mode="constant", value=0):
         result = self.shallow_copy()
         if isinstance(value, MPCTensor):
@@ -390,7 +409,6 @@ class MPCTensor(CrypTensor):
 OOP_UNARY_FUNCTIONS = {
     "avg_pool2d": Ptype.arithmetic,
     "sum_pool2d": Ptype.arithmetic,
-    "softmax": Ptype.arithmetic,
     "take": Ptype.arithmetic,
     "exp": Ptype.arithmetic,
     "log": Ptype.arithmetic,
