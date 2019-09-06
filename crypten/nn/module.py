@@ -605,12 +605,15 @@ class _Pool2d(Module):
     Module that performs 2D pooling.
     """
 
-    def __init__(self, pool_type, kernel_size, stride=1, padding=0):
+    def __init__(
+        self, pool_type, kernel_size, stride=1, padding=0, return_indices=False
+    ):
         super().__init__()
         self.pool_type = pool_type
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
+        self.return_indices = return_indices
 
     def forward(self, x):
         args = [self.kernel_size]
@@ -618,6 +621,7 @@ class _Pool2d(Module):
         if self.pool_type == "average":
             return x.avg_pool2d(*args, **kwargs)
         elif self.pool_type == "max":
+            kwargs["return_indices"] = self.return_indices
             return x.max_pool2d(*args, **kwargs)
         else:
             raise ValueError("Unknown pooling type: %s" % self.pool_type)
@@ -669,8 +673,14 @@ class MaxPool2d(_Pool2d):
     Module that performs 2D max pooling.
     """
 
-    def __init__(self, kernel_size, stride=1, padding=0):
-        super().__init__("max", kernel_size, stride=stride, padding=padding)
+    def __init__(self, kernel_size, stride=1, padding=0, return_indices=False):
+        super().__init__(
+            "max",
+            kernel_size,
+            stride=stride,
+            padding=padding,
+            return_indices=return_indices
+        )
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):

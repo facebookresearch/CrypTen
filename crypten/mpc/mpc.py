@@ -38,6 +38,23 @@ def mode(ptype, inplace=False):
     return function_wrapper
 
 
+def _one_hot_to_index(tensor, dim, keepdim):
+    '''
+    Converts a one-hot tensor output from an argmax / argmin function to a
+    tensor containing indices from the input tensor from which the result of the
+    argmax / argmin was obtained.
+    '''
+    if dim is None:
+        result = tensor.flatten()
+        result = result * torch.tensor([i for i in range(tensor.nelement())])
+        return result.sum()
+    else:
+        size = [1] * tensor.dim()
+        size[dim] = tensor.size(dim)
+        result = tensor * torch.tensor([i for i in range(tensor.size(dim))]).view(size)
+        return result.sum(dim, keepdim=keepdim)
+
+
 class MPCTensor(CrypTensor):
     def __init__(self, input, ptype=Ptype.arithmetic, *args, **kwargs):
         if input is None:
@@ -156,6 +173,7 @@ class MPCTensor(CrypTensor):
     # max / min-related functions
     def _argmax_helper(self):
         """Returns 1 for all elements that have the highest value in each row"""
+        # TODO: Adapt this to take a dim argument.
         row_length = self.size(-1) if self.size(-1) > 1 else 2
 
         # Copy each row (length - 1) times to compare to each other row
@@ -172,55 +190,130 @@ class MPCTensor(CrypTensor):
         return result >= (row_length - 1)
 
     @mode(Ptype.arithmetic)
-    def argmax(self, dim=None, one_hot_required=True):
-        """Returns a one-hot vector with a 1 entry at a maximum value.
+    def argmax(self, dim=None, keepdim=False, one_hot=False):
+        """Returns the indices of the maximum value of all elements in the
+        `input` tensor.
 
-        If multiple values are equal to the maximum, it will choose one randomly,
-        then ties will be broken (randomly) if one_hot_required is True.
-        Otherwise, all indices with maximal inputs will be return a 1.
+        If multiple values are equal to the maximum, ties will be broken
+        (randomly). Note that this deviates from PyTorch's implementation since
+        PyTorch does not break ties randomly, but rather returns the lowest
+        index of a maximal value.
+
+        If `keepdim` is `True`, the output tensor are of the same size as
+        `input` except in the dimension `dim` where they are of size 1.
+        Otherwise, `dim` is squeezed, resulting in the output tensors having 1
+        fewer dimension than `input`.
+
+        If `one_hot` is `True`, the output tensor will have the same size as the
+        input and contain elements of value `1` on argmax indices (with random
+        tiebreaking) and value `0` on other indices.
         """
         if self.dim() == 0:
-            return MPCTensor(torch.zeros(())) + 1
-        if dim is None:
-            input = self.flatten()
-        else:
-            input = self.transpose(dim, -1)
+            return MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
+
+        input = self.flatten() if dim is None else self.transpose(dim, -1)
 
         result = input._argmax_helper()
 
         # Multiply by a random permutation to give each maximum a random priority
-        if one_hot_required:
-            result *= crypten.mpc.randperm(input.size())
-            result = result._argmax_helper()
+        result *= crypten.mpc.randperm(input.size())
+        result = result._argmax_helper()
 
+        result = result.view(self.size()) if dim is None else result.transpose(dim, -1)
+        return result if one_hot else _one_hot_to_index(result, dim, keepdim)
+
+    @mode(Ptype.arithmetic)
+    def argmin(self, dim=None, keepdim=False, one_hot=False):
+        """Returns the indices of the minimum value of all elements in the
+        `input` tensor.
+
+        If multiple values are equal to the minimum, ties will be broken
+        (randomly). Note that this deviates from PyTorch's implementation since
+        PyTorch does not break ties randomly, but rather returns the lowest
+        index of a minimal value.
+
+        If `keepdim` is `True`, the output tensor are of the same size as
+        `input` except in the dimension `dim` where they are of size 1.
+        Otherwise, `dim` is squeezed, resulting in the output tensors having 1
+        fewer dimension than `input`.
+
+        If `one_hot` is `True`, the output tensor will have the same size as the
+        input and contain elements of value `1` on argmin indices (with random
+        tiebreaking) and value `0` on other indices.
+        """
+        return (-self).argmax(dim=dim, keepdim=keepdim, one_hot=one_hot)
+
+    @mode(Ptype.arithmetic)
+    def max(self, dim=None, keepdim=False, one_hot=False):
+        """Returns the maximum value of all elements in the input tensor.
+
+        If `dim` is specified, returns a tuple `(values, indices)` where
+        `values` is the maximum value of each row of the `input` tensor in the
+        given dimension `dim`. And `indices` ther result of an argmax call with
+        the same keyword arguments (`dim`, `keepdim`, and `one_hot`)
+
+        If `keepdim` is `True`, the output tensors are of the same size as
+        `input` except in the dimension `dim` where they are of size 1.
+        Otherwise, `dim` is squeezed, resulting in the output tensors having 1
+        fewer dimension than `input`.
+        """
         if dim is None:
-            return result.view(self.size())
+            argmax_result = self.argmax(one_hot=True)
+            max_result = self.mul(argmax_result).sum()
+            return max_result
         else:
-            return result.transpose(dim, -1)
+            argmax_result = self.argmax(dim=dim, one_hot=True)
+            max_result = (self * argmax_result).sum(dim=dim, keepdim=keepdim)
+            if one_hot:
+                return max_result, argmax_result
+            else:
+                return max_result, _one_hot_to_index(argmax_result, dim, keepdim)
 
     @mode(Ptype.arithmetic)
-    def argmin(self, **kwargs):
-        """Returns a one-hot vector with a 1 entry at a minimum value. If multiple
-        values are equal to the minimum, it will choose one randomly"""
-        return (-self).argmax(**kwargs)
+    def min(self, dim=None, keepdim=False, one_hot=False):
+        """Returns the minimum value of all elements in the input tensor.
 
-    @mode(Ptype.arithmetic)
-    def max(self, dim=None, **kwargs):
-        """Compute the max of a tensor's elements (or along a given dimension)"""
+        If `dim` is sepcified, returns a tuple `(values, indices)` where
+        `values` is the minimum value of each row of the `input` tensor in the
+        given dimension `dim`. And `indices` ther result of an argmin call with
+        the same keyword arguments (`dim`, `keepdim`, and `one_hot`)
+
+        If `keepdim` is `True`, the output tensors are of the same size as
+        `input` except in the dimension `dim` where they are of size 1.
+        Otherwise, `dim` is squeezed, resulting in the output tensors having 1
+        fewer dimension than `input`.
+        """
+        result = (-self).max(dim=dim, keepdim=keepdim, one_hot=one_hot)
         if dim is None:
-            return self.mul(self.argmax(**kwargs)).sum()
+            return -result
         else:
-            result = self * self.argmax(dim=dim, **kwargs)
-            return result.sum(dim=dim)
+            return -result[0], result[1]
 
     @mode(Ptype.arithmetic)
-    def min(self, **kwargs):
-        """Compute the min of a tensor's elements (or along a given dimension)"""
-        return -((-self).max(**kwargs))
+    def max_pool2d(self, kernel_size, padding=None, stride=None, return_indices=False):
+        """Applies a 2D max pooling over an input signal composed of several
+        input planes.
 
-    @mode(Ptype.arithmetic)
-    def max_pool2d(self, kernel_size, padding=None, stride=None):
-        """Perform a max pooling on each 2D matrix of the given tensor"""
+        If `return_indices` is `True`, this will return the one-hot max indices
+        along with the outputs.
+
+        These indices will be returned as with dimensions equal to the
+        max_pool2d output dimensions plus the kernel dimensions. This is because
+        each returned index will be a one-hot kernel for each element of the
+        output that corresponds to the maximal block element of the corresponding
+        input block.
+
+        An max pool with output tensor of size (i, j, k, l) with kernel size k
+        and will return an index tensor of size (i, j, k, l, k, k)
+        [ 0,  1,  2,  3]                    [[0, 0], [0, 0]]
+        [ 4,  5,  6,  7]         ->         [[0, 1], [0, 1]]
+        [ 8,  9, 10, 11]         ->         [[0, 0], [0, 0]]
+        [12, 13, 14, 15]                    [[0, 1], [0, 1]]
+
+        Note: This deviates from PyTorch's implementation since PyTorch returns
+        the index values for each element rather than a one-hot kernel. This
+        deviation is useful for implementing max_unpool2d later.
+        """
         max_input = self.shallow_copy()
         max_input._tensor._tensor, output_size = pool_reshape(
             self._tensor._tensor,
@@ -232,9 +325,14 @@ class MPCTensor(CrypTensor):
             # which is -2 ** 32 because multiplication can otherwise fail.
             pad_value=(-2 ** 40),
         )
-        max_vals = max_input.max(dim=-1)
-        result = max_vals.view(output_size)
-        return result
+        max_vals, argmax_vals = max_input.max(dim=-1, one_hot=True)
+        max_vals = max_vals.view(output_size)
+        if return_indices:
+            if isinstance(kernel_size, int):
+                kernel_size = (kernel_size, kernel_size)
+            argmax_vals = argmax_vals.view(output_size + kernel_size)
+            return max_vals, argmax_vals
+        return max_vals
 
     # Logistic Functions
     @mode(Ptype.arithmetic)

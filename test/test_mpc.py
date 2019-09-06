@@ -91,8 +91,9 @@ class TestMPC(MultiProcessTestCase):
                     encrypted_tensor = MPCTensor(reference)
                     self._check(encrypted_tensor, reference, "en/decryption failed")
                     encrypted_tensor2 = encrypted_tensor.new(reference)
-                    self.assertIsInstance(encrypted_tensor2, MPCTensor,
-                                          "new() returns incorrect type")
+                    self.assertIsInstance(
+                        encrypted_tensor2, MPCTensor, "new() returns incorrect type"
+                    )
                     self._check(encrypted_tensor2, reference, "en/decryption failed")
 
     def test_arithmetic(self):
@@ -355,29 +356,23 @@ class TestMPC(MultiProcessTestCase):
                             reference = getattr(F, func_name)(
                                 matrix, kernel, padding=padding
                             )
-                            self._check(encr_conv, reference,
-                                        "%s failed" % func_name)
+                            self._check(encr_conv, reference, "%s failed" % func_name)
 
     def test_pooling(self):
         """Test avg_pool, sum_pool, max_pool of encrypted tensor."""
-        for func in ["avg_pool2d", "sum_pool2d", "max_pool2d"]:
-            for width in range(2, 5):
-                for width2 in range(1, width):
-                    matrix_size = (1, 4, 5, width)
-                    matrix = get_random_test_tensor(size=matrix_size, is_float=True)
-                    pool_size = width2
-                    for stride in range(1, width2):
-                        for padding in range(2):
-                            if func == "max_pool2d":
-                                reference = F.max_pool2d(
-                                    matrix, pool_size, stride=stride, padding=padding
-                                )
-                            else:
-                                reference = F.avg_pool2d(
-                                    matrix, pool_size, stride=stride, padding=padding
-                                )
-                                if func == "sum_pool2d":
-                                    reference *= width2 * width2
+        for width in range(2, 5):
+            for width2 in range(1, width):
+                matrix_size = (1, 4, 5, width)
+                matrix = get_random_test_tensor(size=matrix_size, is_float=True)
+                pool_size = width2
+                for stride in range(1, width2):
+                    for padding in range(2):
+                        for func in ["avg_pool2d", "sum_pool2d"]:
+                            reference = F.avg_pool2d(
+                                matrix, pool_size, stride=stride, padding=padding
+                            )
+                            if func == "sum_pool2d":
+                                reference *= width2 * width2
 
                             encrypted_matrix = MPCTensor(matrix)
                             with self.benchmark(func=func, width=width) as bench:
@@ -386,6 +381,33 @@ class TestMPC(MultiProcessTestCase):
                                         pool_size, stride=stride, padding=padding
                                     )
                             self._check(encrypted_pool, reference, "%s failed" % func)
+
+                        # Test max_pool2d
+                        for return_indices in [False, True]:
+                            kwargs = {
+                                'stride' : stride,
+                                'padding' : padding,
+                                'return_indices' : return_indices,
+                            }
+                            reference = F.max_pool2d(
+                                matrix, pool_size, **kwargs
+                            )
+                            encrypted_matrix = MPCTensor(matrix)
+                            with self.benchmark(
+                                    func="max_pool2d", width=width) as bench:
+                                for _ in bench.iters:
+                                    encrypted_pool = encrypted_matrix.max_pool2d(
+                                        pool_size, **kwargs
+                                    )
+                            if return_indices:
+                                self._check(
+                                    encrypted_pool[0], reference[0], "max_pool2d failed"
+                                )
+                                # TODO: add test for argmax_pool2d result
+                            else:
+                                self._check(
+                                    encrypted_pool, reference, "max_pool2d failed"
+                                )
 
     def test_take(self):
         """Tests take function on encrypted tensor"""
@@ -472,17 +494,9 @@ class TestMPC(MultiProcessTestCase):
             (1, 1),
             (1, 5),
             (5, 5),
-            (5, 1),
             (1, 1, 1),
-            (1, 5, 1),
-            (1, 1, 5),
-            (1, 5, 5),
-            (5, 1, 1),
             (5, 5, 5),
             (1, 1, 1, 1),
-            (5, 1, 1, 1),
-            (5, 5, 1, 1),
-            (1, 5, 5, 5),
             (5, 5, 5, 5),
         ]
         test_cases = [torch.FloatTensor([[1, 1, 2, 1, 4, 1, 3, 4]])] + [
@@ -499,12 +513,65 @@ class TestMPC(MultiProcessTestCase):
                 self._check(encrypted_out, reference, "%s reduction failed" % comp)
 
                 for dim in range(tensor.dim()):
-                    reference = getattr(tensor, comp)(dim=dim)[0]
-                    with self.benchmark(niters=10, comp=comp, dim=dim) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = getattr(encrypted_tensor, comp)(dim=dim)
+                    for keepdim in [False, True]:
+                        reference = getattr(tensor, comp)(dim=dim, keepdim=keepdim)
 
-                    self._check(encrypted_out, reference, "%s reduction failed" % comp)
+                        # Test with one_hot = False
+                        with self.benchmark(
+                            niters=10,
+                            comp=comp,
+                            dim=dim,
+                            keepdim=keepdim,
+                            one_hot=False,
+                        ) as bench:
+                            for _ in bench.iters:
+                                encrypted_out = getattr(encrypted_tensor, comp)(
+                                    dim=dim, keepdim=keepdim, one_hot=False
+                                )
+
+                        # Check max / min values are correct
+                        self._check(
+                            encrypted_out[0], reference[0], "%s reduction failed" % comp
+                        )
+
+                        # Test argmax / argmin values are correct
+                        out_encr = encrypted_out[1]
+                        out_decr = out_encr.get_plain_text().long()
+                        argmax_ref = reference[1]
+
+                        # Must index into tensor since ties are broken randomly
+                        # so crypten and PyTorch can return different indices.
+                        # This checks that they index to the same value.
+                        if not keepdim:
+                            out_decr = out_decr.unsqueeze(dim)
+                            argmax_ref = argmax_ref.unsqueeze(dim)
+                        mpc_result = tensor.gather(dim, out_decr)
+                        torch_result = tensor.gather(dim, argmax_ref)
+                        self.assertTrue(
+                            (mpc_result == torch_result).all().item(),
+                            "%s reduction failed" % comp
+                        )
+
+                        # Test indices with one_hot = True
+                        with self.benchmark(
+                            niters=10, comp=comp, dim=dim, keepdim=keepdim, one_hot=True
+                        ) as bench:
+                            for _ in bench.iters:
+                                encrypted_out = getattr(encrypted_tensor, comp)(
+                                    dim=dim, keepdim=keepdim, one_hot=True
+                                )
+
+                        # Check argmax results
+                        val_ref = reference[0]
+                        out_encr = encrypted_out[1]
+                        out_decr = out_encr.get_plain_text()
+                        self.assertTrue((out_decr.sum(dim=dim) == 1).all())
+                        self.assertTrue(
+                            (
+                                out_decr.mul(tensor).sum(dim=dim, keepdim=keepdim)
+                                == val_ref
+                            ).all()
+                        )
 
     def test_argmax_argmin(self):
         """Test argmax and argmin"""
@@ -515,17 +582,9 @@ class TestMPC(MultiProcessTestCase):
             (1, 1),
             (1, 5),
             (5, 5),
-            (5, 1),
             (1, 1, 1),
-            (1, 5, 1),
-            (1, 1, 5),
-            (1, 5, 5),
-            (5, 1, 1),
             (5, 5, 5),
             (1, 1, 1, 1),
-            (5, 1, 1, 1),
-            (5, 5, 1, 1),
-            (1, 5, 5, 5),
             (5, 5, 5, 5),
         ]
         test_cases = [torch.FloatTensor([[1, 1, 2, 1, 4, 1, 3, 4]])] + [
@@ -537,32 +596,76 @@ class TestMPC(MultiProcessTestCase):
             for comp in ["argmax", "argmin"]:
                 cmp = comp[3:]
 
-                # Compute one-hot argmax/min reference in plaintext
-                values = getattr(tensor, cmp)()
-                indices = (tensor == values).float()
+                value = getattr(tensor, cmp)()
 
-                with self.benchmark(niters=10, comp=comp, dim=None) as bench:
+                # test with one_hot = False
+                with self.benchmark(
+                        niters=10, comp=comp, dim=None, one_hot=False) as bench:
                     for _ in bench.iters:
-                        encrypted_out = getattr(encrypted_tensor, comp)()
+                        encrypted_out = getattr(encrypted_tensor, comp)(one_hot=False)
 
+                # Must index into tensor since ties are broken randomly
+                # so crypten and PyTorch can return different indices.
+                # This checks that they index to the same value.
+                decrypted_out = encrypted_out.get_plain_text()
+                if tensor.dim() == 0:       # if input is 0-d, argmax should be 0
+                    self.assertEqual(decrypted_out, 0)
+                else:
+                    decrypted_val = tensor.flatten()[decrypted_out.long()]
+                    self.assertTrue(decrypted_val.eq(value).all().item())
+
+                # test with one_hot = False
+                with self.benchmark(
+                        niters=10, comp=comp, dim=None, one_hot=True) as bench:
+                    for _ in bench.iters:
+                        encrypted_out = getattr(encrypted_tensor, comp)(one_hot=True)
+                one_hot_indices = (tensor == value).float()
                 decrypted_out = encrypted_out.get_plain_text()
                 self.assertTrue(decrypted_out.sum() == 1)
-                self.assertTrue(decrypted_out.mul(indices).sum() == 1)
+                self.assertTrue(decrypted_out.mul(one_hot_indices).sum() == 1)
 
                 for dim in range(tensor.dim()):
-                    # Compute one-hot argmax/min reference in plaintext
-                    values = getattr(tensor, cmp)(dim=dim)[0]
-                    values = values.unsqueeze(dim)
-                    indices = (tensor == values).float()
+                    for keepdim in [False, True]:
+                        # Compute one-hot argmax/min reference in plaintext
+                        values, indices = getattr(tensor, cmp)(
+                            dim=dim, keepdim=keepdim
+                        )
 
-                    with self.benchmark(niters=10, comp=comp, dim=dim) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = getattr(encrypted_tensor, comp)(dim=dim)
-                    decrypted_out = encrypted_out.get_plain_text()
-                    self.assertTrue((decrypted_out.sum(dim=dim) == 1).all())
-                    self.assertTrue(
-                        (decrypted_out.mul(indices).sum(dim=dim) == 1).all()
-                    )
+                        # test with one_hot = False
+                        with self.benchmark(
+                            niters=10, comp=comp, dim=dim, one_hot=False
+                        ) as bench:
+                            for _ in bench.iters:
+                                encrypted_out = getattr(encrypted_tensor, comp)(
+                                    dim=dim, keepdim=keepdim, one_hot=False)
+
+                        # Must index into tensor since ties are broken randomly
+                        # so crypten and PyTorch can return different indices.
+                        # This checks that they index to the same value.abs
+                        decrypted_out = encrypted_out.get_plain_text()
+                        if not keepdim:
+                            decrypted_out = decrypted_out.unsqueeze(dim)
+                            indices = indices.unsqueeze(dim)
+                        decrypted_val = tensor.gather(dim, decrypted_out.long())
+                        reference = tensor.gather(dim, indices)
+                        self.assertTrue(decrypted_val.eq(reference).all().item())
+
+                        # test with one_hot = True
+                        with self.benchmark(
+                            niters=10, comp=comp, dim=dim, one_hot=True
+                        ) as bench:
+                            for _ in bench.iters:
+                                encrypted_out = getattr(encrypted_tensor, comp)(
+                                    dim=dim, keepdim=keepdim, one_hot=True)
+                        decrypted_out = encrypted_out.get_plain_text()
+
+                        if not keepdim:
+                            values = values.unsqueeze(dim)
+                        one_hot_indices = tensor.eq(values).float()
+                        self.assertTrue(decrypted_out.sum(dim=dim).eq(1).all())
+                        self.assertTrue(
+                            decrypted_out.mul(one_hot_indices).sum(dim=dim).eq(1).all()
+                        )
 
     def test_abs_sign(self):
         """Test absolute value function"""
@@ -783,8 +886,7 @@ class TestMPC(MultiProcessTestCase):
                     self._check(
                         encrypted_out,
                         reference,
-                        "%s broadcast failed with public integer tensor"
-                        % func,
+                        "%s broadcast failed with public integer tensor" % func,
                     )
 
     def test_broadcast_matmul(self):
