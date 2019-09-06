@@ -94,15 +94,16 @@ class Module:
             module._apply(fn)
         return self
 
-    def encrypt(self, mode=True):
+    def encrypt(self, mode=True, src=0):
         """Encrypts the model."""
         if mode != self.encrypted:
             self.encrypted = mode
             tensor_type = crypten.cryptensor if mode else torch.FloatTensor
+            kwargs = {'src': src} if mode else {}
             for name, param in self.named_parameters(recurse=False):
-                self._parameters[name] = tensor_type(param)
+                self._parameters[name] = tensor_type(param, **kwargs)
                 setattr(self, name, self._parameters[name])
-            return self._apply(lambda m: m.encrypt(mode=mode))
+            return self._apply(lambda m: m.encrypt(mode=mode, src=src))
         return self
 
     def decrypt(self):
@@ -735,8 +736,8 @@ class _BatchNorm(Module):
         self.alpha = inv_var * self.weight
         self.beta = self.bias - self.running_mean * self.alpha
 
-    def encrypt(self, mode=True):
-        super().encrypt(mode=mode)
+    def encrypt(self, mode=True, src=0):
+        super().encrypt(mode=mode, src=src)
         self.precompute_alpha_beta()
 
     def forward(self, input):
