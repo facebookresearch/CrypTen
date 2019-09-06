@@ -32,8 +32,8 @@ class BinarySharedTensor(CrypTensor):
     def __init__(self, tensor=None, size=None, src=0):
         if src == SENTINEL:
             return
-
-        assert is_int_tensor(tensor), "input must be an integer tensor"
+        assert isinstance(src, int) and src >= 0 and src < comm.get_world_size(), \
+            "invalid tensor source"
 
         #  Assume 0 bits of precision unless encoder is set outside of init
         self.encoder = FixedPointEncoder(precision_bits=0)

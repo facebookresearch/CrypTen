@@ -343,6 +343,13 @@ class TestBinary(MultiProcessTestCase):
             elif encrypted_tensor:
                 pass
 
+    def test_src_failure(self):
+        """Tests that out-of-bounds src fails as expected"""
+        tensor = get_random_test_tensor(is_float=True)
+        for src in [None, 'abc', -2, self.world_size]:
+            with self.assertRaises(AssertionError):
+                BinarySharedTensor(tensor, src=src)
+
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)

@@ -35,6 +35,8 @@ class ArithmeticSharedTensor(CrypTensor):
     def __init__(self, tensor=None, size=None, precision=None, src=0):
         if src == SENTINEL:
             return
+        assert isinstance(src, int) and src >= 0 and src < comm.get_world_size(), \
+            "invalid tensor source"
 
         self.encoder = FixedPointEncoder(precision_bits=precision)
         if tensor is not None:
