@@ -93,7 +93,7 @@ class BinarySharedTensor(CrypTensor):
         """__bool__ for backwards compatibility with Python 2"""
         raise RuntimeError("Cannot evaluate BinarySharedTensors to boolean values")
 
-    def XOR_(self, y):
+    def __ixor__(self, y):
         """Bitwise XOR operator (element-wise) in place"""
         if torch.is_tensor(y) or isinstance(y, int):
             if self.rank == 0:
@@ -104,7 +104,7 @@ class BinarySharedTensor(CrypTensor):
             raise TypeError("Cannot XOR %s with %s." % (type(y), type(self)))
         return self
 
-    def XOR(self, y):
+    def __xor__(self, y):
         """Bitwise XOR operator (element-wise)"""
         result = self.clone()
         if isinstance(y, BinarySharedTensor):
@@ -117,9 +117,9 @@ class BinarySharedTensor(CrypTensor):
                 result._tensor, y
             )
             result._tensor = broadcast_tensors[0].clone()
-        return result.XOR_(y)
+        return result.__ixor__(y)
 
-    def AND_(self, y):
+    def __iand__(self, y):
         """Bitwise AND operator (element-wise) in place"""
         if torch.is_tensor(y) or isinstance(y, int):
             self._tensor &= y
@@ -129,7 +129,7 @@ class BinarySharedTensor(CrypTensor):
             raise TypeError("Cannot AND %s with %s." % (type(y), type(self)))
         return self
 
-    def AND(self, y):
+    def __and__(self, y):
         """Bitwise AND operator (element-wise)"""
         result = self.clone()
         if isinstance(y, BinarySharedTensor):
@@ -142,16 +142,16 @@ class BinarySharedTensor(CrypTensor):
                 result._tensor, y
             )
             result._tensor = broadcast_tensors[0].clone()
-        return result.AND_(y)
+        return result.__iand__(y)
 
-    def OR_(self, y):
+    def __ior__(self, y):
         """Bitwise OR operator (element-wise) in place"""
         xor_result = self ^ y
-        return self.AND_(y).XOR_(xor_result)
+        return self.__iand__(y).__ixor__(xor_result)
 
-    def OR(self, y):
+    def __or__(self, y):
         """Bitwise OR operator (element-wise)"""
-        return self.AND(y) ^ self ^ y
+        return self.__and__(y) ^ self ^ y
 
     def __invert__(self):
         """Bitwise NOT operator (element-wise)"""
@@ -251,16 +251,10 @@ class BinarySharedTensor(CrypTensor):
         return self.encoder.decode(self.reveal())
 
     # Bitwise operators
-    __xor__ = XOR
-    __and__ = AND
-    __or__ = OR
     __lshift__ = lshift
     __rshift__ = rshift
 
     # In-place bitwise operators
-    __ixor__ = XOR_
-    __iand__ = AND_
-    __ior__ = OR_
     __ilshift__ = lshift_
     __irshift__ = rshift_
 
