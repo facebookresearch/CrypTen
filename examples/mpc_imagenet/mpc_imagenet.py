@@ -13,12 +13,21 @@ import torch
 import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
+try:
+    from crypten.nn.tensorboard import SummaryWriter
+except ImportError:  # tensorboard not installed
+    SummaryWriter = None
+
 from examples.meters import AccuracyMeter
 from examples.util import NoopContextManager
 
 
 def run_experiment(
-    model_name, imagenet_folder=None, num_samples=None, context_manager=None
+    model_name,
+    imagenet_folder=None,
+    tensorboard_folder="/tmp",
+    num_samples=None,
+    context_manager=None,
 ):
     """Runs inference using specified vision model on specified dataset."""
 
@@ -40,22 +49,28 @@ def run_experiment(
         model.eval()
         dataset = datasets.ImageNet(imagenet_folder, split="val", download=download)
 
-    # apply appropriate transforms:
+    # define appropriate transforms:
     transform = transforms.Compose(
         [
-            transforms.Scale(256),
+            transforms.Resize(256),
             transforms.CenterCrop(224),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-
     to_tensor_transform = transforms.ToTensor()
+
+    # encrypt model:
     dummy_input = to_tensor_transform(dataset[0][0])
     dummy_input.unsqueeze_(0)
-    # encrypt model:
     encrypted_model = crypten.nn.from_pytorch(model, dummy_input=dummy_input)
     encrypted_model.encrypt()
+
+    # show encrypted model in tensorboard:
+    if SummaryWriter is not None:
+        writer = SummaryWriter(log_dir=tensorboard_folder)
+        writer.add_graph(encrypted_model)
+        writer.close()
 
     # loop over dataset:
     meter = AccuracyMeter()

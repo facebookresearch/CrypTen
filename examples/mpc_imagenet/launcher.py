@@ -27,6 +27,12 @@ parser.add_argument(
     help="folder containing the ImageNet dataset",
 )
 parser.add_argument(
+    "--tensorboard_folder",
+    default="/tmp",
+    type=str,
+    help="folder in which tensorboard performs logging (default: /tmp)",
+)
+parser.add_argument(
     "--num_samples",
     default=None,
     type=int,
@@ -37,7 +43,10 @@ parser.add_argument(
 def main():
     args = parser.parse_args()
     run_experiment(
-        args.model, imagenet_folder=args.imagenet_folder, num_samples=args.num_samples
+        args.model,
+        imagenet_folder=args.imagenet_folder,
+        tensorboard_folder=args.tensorboard_folder,
+        num_samples=args.num_samples
     )
 
 
