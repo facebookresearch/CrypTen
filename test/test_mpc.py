@@ -42,7 +42,7 @@ class TestMPC(MultiProcessTestCase):
 
     def setUp(self):
         super().setUp()
-        # We don't want the main process (rank -1) to initialize the communcator
+        # We don't want the main process (rank -1) to initialize the communicator
         if self.rank >= 0:
             import_crypten()
 

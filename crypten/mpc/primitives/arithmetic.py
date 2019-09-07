@@ -454,11 +454,15 @@ class ArithmeticSharedTensor(CrypTensor):
 
     def cos(self, iterations=10):
         """Computes the cosine of the input using cos(x) = Re{exp(i * x)}"""
-        return self._eix(iterations=iterations)[0]
+        return self.cossin(iterations=iterations)[0]
 
     def sin(self, iterations=10):
         """Computes the sine of the input using sin(x) = Im{exp(i * x)}"""
-        return self._eix(iterations=iterations)[1]
+        return self.cossin(iterations=iterations)[1]
+
+    def cossin(self, iterations=10):
+        """Computes cosine and sine of input via exp(i * x)."""
+        return self._eix(iterations=iterations)
 
     # copy between CPU and GPU:
     def cuda(self):

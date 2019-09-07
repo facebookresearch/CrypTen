@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# This source code is licensed under the MIT license found in the
+# LICENSE file in the root directory of this source tree.
+
+import torch
+
+from .gradients import get_grad_fn
+
+
+class AutogradContext(object):
+    """
+    Object that can be used by AutogradFunction for saving context information.
+    """
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.context = []
+
+    def save_for_backward(self, value):
+        self.context.append(value)
+
+    def save_multiple_for_backward(self, values):
+        for value in values:
+            self.save_for_backward(value)
+
+    @property
+    def saved_tensors(self):
+        return self.context
+
+
+class AutogradCrypTensor(object):
+    """
+    CrypTensor with support for autograd, akin to the `Variable` originally in
+    PyTorch.
+    """
+
+    # attributes that should not be dispatched to underlying tensor:
+    PROTECTED_ATTRIBUTES = [
+        "__dict__",
+        "_tensor",
+        "requires_grad",
+        "grad",
+        "grad_fn",
+        "grad_computed",
+        "parents",
+        "children",
+        "ctx",
+        "backward",
+        "detach",
+        "detach_",
+        "_reset_gradients",
+    ]
+
+    def __init__(self, tensor, requires_grad=True):
+        self._tensor = tensor               # value of tensor
+        self.requires_grad = requires_grad  # whether tensors needs gradient
+        self._reset_gradients()
+
+    def _reset_gradients(self):
+        """Resets gradient information in tensor."""
+        self.grad = None                    # gradient itself
+        self.grad_fn = None                 # functions to call for gradient
+        self.grad_computed = False          # whether gradient already computed
+        self.parents = []                   # parents of node in graph
+        self.children = []                  # children of node in graph
+        self.ctx = AutogradContext()        # contexts for AutogradFunctions
+
+    def backward(self, grad_input=None):
+        """
+        Backpropagates gradient through the computation graph. The function
+        only maintains the gradients in leaf nodes of the graph.
+        """
+        if self.requires_grad:
+
+            # if we are in a leaf or if not all parents have backpropagated:
+            parents_done = all(parent.grad_computed for parent in self.parents)
+            if len(self.children) == 0 or not parents_done:
+                if self.grad is None:
+                    self.grad = grad_input      # store gradient...
+                else:
+                    self.grad.add_(grad_input)  # ... or accumulate gradient...
+                return                          # ... and do not proceed.
+
+            # if undefined, set gradient input to all ones:
+            if grad_input is None:
+                grad_input = self._tensor.new(torch.ones(self._tensor.size()))
+
+            # check that we can actually backpropagate:
+            if self.grad_fn is None:
+                raise ValueError("Cannot call backward() before forward().")
+            if not self.grad_fn.differentiable:
+                raise ValueError("Function {} not differentiable.".format(self.grad_fn))
+            if self.grad_fn is None:
+                raise NotImplementedError(
+                    "Gradient for {} not implemented.".format(self.grad_fn)
+                )
+
+            # perform backpropagation:
+            grad = self.grad_fn.backward(self.ctx, grad_input)
+            self.grad_computed = True  # mark gradient as computed
+            self.ctx.reset()           # free up memory used for context
+            if not isinstance(grad, (list, tuple)):
+                grad = (grad,)
+            assert len(self.children) <= len(grad), \
+                "number of gradients to backpropagate does not match number of children"
+            for idx, child in enumerate(self.children):
+                child.backward(grad_input=grad[idx])
+
+            # clean up gradients except in leaf nodes:
+            if len(self.children) > 0:
+                self.grad = None
+
+            # remove node from graph:
+            self.parents = []
+            self.children = []
+
+    def detach_(self):
+        """Detaches tensor from the autograd graph (in-place), making it a leaf."""
+        self.requires_grad = False
+        return self
+
+    def detach(self):
+        """Detaches tensor from the autograd graph, making it a leaf."""
+        return AutogradCrypTensor(self._tensor.clone(), requires_grad=False)
+
+    def __getattribute__(self, name):
+        """
+        Makes sure that any function call on the tensor gets recorded in order
+        to facilitate gradient computation using autograd.
+        """
+        if name in AutogradCrypTensor.PROTECTED_ATTRIBUTES:
+            return object.__getattribute__(self, name)
+        else:
+
+            # determine if we are applying an autograd function:
+            grad_fn = get_grad_fn(name)
+
+            # dispatch calls to size(), etc. to underlying CrypTensor:
+            if grad_fn is None:
+                return getattr(self.__dict__["_tensor"], name)
+
+            def autograd_forward(*args, **kwargs):
+                """Forward function that stores data for autograd in result."""
+
+                # mark gradient as not computed:
+                self.grad_computed = False
+
+                # only AutogradCrypTensors can be children:
+                tensor_args, non_autograd_found = [], False
+                for arg in args:
+                    if isinstance(arg, AutogradCrypTensor):
+                        if non_autograd_found:
+                            raise ValueError(
+                                "In the inputs, an object that is not an "
+                                "AutogradCrypTensor cannot be followed by an "
+                                "AutogradCrypTensor."
+                            )  # backward() assumes this when iterating over children
+                        tensor_args.append(arg)
+                    else:
+                        non_autograd_found = True
+
+                # identify children and whether result requires gradient:
+                children = [self, *tensor_args]
+                requires_grad = any(child.requires_grad for child in children)
+
+                # prepare inputs and context for forward call:
+                ctx = AutogradContext()
+                inputs = [self] + list(args)
+                inputs = [input._tensor if isinstance(input, AutogradCrypTensor)
+                          else input for input in inputs]
+                if len(inputs) == 1:
+                    inputs = inputs[0]  # unpack input list if possible
+
+                # apply correct autograd function and wrap result:
+                result = AutogradCrypTensor(
+                    grad_fn.forward(ctx, inputs, **kwargs),
+                    requires_grad=requires_grad,
+                )
+                if result.requires_grad:
+                    result.children = children
+                    result.grad_fn = grad_fn
+                    result.ctx = ctx
+
+                # stroe reference to parent in graph:
+                self.parents.append(result)
+                return result
+
+            return autograd_forward

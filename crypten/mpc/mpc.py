@@ -422,6 +422,7 @@ OOP_UNARY_FUNCTIONS = {
     "__neg__": Ptype.arithmetic,
     "cos": Ptype.arithmetic,
     "sin": Ptype.arithmetic,
+    "cossin": Ptype.arithmetic,
     "invert": Ptype.binary,
     "lshift": Ptype.binary,
     "rshift": Ptype.binary,
