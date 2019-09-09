@@ -7,8 +7,8 @@
 
 
 from .benchmark_mpc import MPCBenchmark, import_crypten
+from .benchmark_helper import BenchmarkRun
 from .multiprocess_test_case import (
-    BenchmarkRun,
     MultiProcessTestCase,
     get_random_test_tensor,
 )
