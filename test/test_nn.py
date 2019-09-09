@@ -245,9 +245,6 @@ class TestNN(MultiProcessTestCase):
             module = getattr(torch.nn, module_name)(*module_args[module_name])
             module.eval()
 
-            # if module_name == "Conv2d":
-            #     crypten.pdb.set_trace()
-
             # create encrypted CrypTen module:
             encr_module = crypten.nn.from_pytorch(module, input)
             encr_module.encrypt()
