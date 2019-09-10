@@ -6,7 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from .benchmark_mpc import MPCBenchmark, import_crypten
+from .benchmark_mpc import MPCBenchmark
 from .benchmark_helper import BenchmarkRun
 from .multiprocess_test_case import (
     MultiProcessTestCase,
@@ -16,7 +16,6 @@ from .multiprocess_test_case import (
 
 # expose classes and functions in package:
 __all__ = [
-    "import_crypten",
     "MPCBenchmark",
     "BenchmarkRun",
     "get_random_test_tensor",

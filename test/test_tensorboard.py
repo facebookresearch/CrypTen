@@ -7,23 +7,9 @@
 
 import unittest
 
+import crypten
 import crypten.nn.tensorboard as tensorboard
 from test.multiprocess_test_case import MultiProcessTestCase
-
-# we cannot import crypten here because WORLD_SIZE, etc. are not yet set:
-crypten = None
-
-
-def import_crypten():
-    """
-    Imports CrypTen. This function is called after environment variables in
-    MultiProcessTestCase.setUp() are set, and updates the class references for
-    all test functions.
-    """
-    global crypten
-    import crypten as _crypten
-    crypten = _crypten
-
 
 class TestTensorboard(MultiProcessTestCase):
     """This class tests the crypten.nn.tensorboad package."""
@@ -33,7 +19,7 @@ class TestTensorboard(MultiProcessTestCase):
     def setUp(self):
         super().setUp()
         if self.rank >= 0:
-            import_crypten()
+            crypten.init()
 
     def test_tensorboard(self):
 
