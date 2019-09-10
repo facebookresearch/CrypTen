@@ -7,7 +7,7 @@
 
 
 from crypten.common.tensor_types import is_float_tensor
-from crypten.mpc import MPCTensor
+from crypten.mpc import MPCTensor, ptype
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
@@ -49,6 +49,18 @@ class TestMPC(MultiProcessTestCase):
             logging.info(msg)
             logging.info("Result = %s;\nreference = %s" % (tensor, reference))
         self.assertTrue(test_passed, msg=msg)
+
+    def test_repr(self):
+        a = get_random_test_tensor(size=(1,))
+        arithmetic = MPCTensor(a, ptype=ptype.arithmetic)
+        binary = MPCTensor(a, ptype=ptype.binary)
+
+        # Make sure these don't crash
+        print(arithmetic)
+        repr(arithmetic)
+
+        print(binary)
+        repr(binary)
 
     def test_encrypt_decrypt(self):
         """

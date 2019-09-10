@@ -107,6 +107,13 @@ class MPCTensor(CrypTensor):
         """__bool__ for backwards compatibility with Python 2"""
         raise RuntimeError("Cannot evaluate MPCTensors to boolean values")
 
+    def __repr__(self):
+        """Returns a representation of the tensor useful for debugging."""
+        share = self._tensor
+        plain_text = self._tensor.get_plain_text()
+        ptype = self.ptype
+        return f"MPCTensor(_tensor={share}, plain_text={plain_text}, ptype={ptype})"
+
     def __setitem__(self, index, value):
         """Set tensor values by index"""
         if not isinstance(value, MPCTensor):

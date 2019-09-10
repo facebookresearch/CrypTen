@@ -83,7 +83,7 @@ class BinarySharedTensor(CrypTensor):
         return result
 
     def __repr__(self):
-        return "%s BinarySharedTensor" % str(tuple(self.size()))
+        return f"BinarySharedTensor({self._tensor})"
 
     def __bool__(self):
         """Override bool operator since encrypted tensors cannot evaluate"""

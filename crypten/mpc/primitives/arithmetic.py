@@ -86,7 +86,7 @@ class ArithmeticSharedTensor(CrypTensor):
         return result
 
     def __repr__(self):
-        return "%s ArithmeticSharedTensor" % str(tuple(self.size()))
+        return f"ArithmeticSharedTensor({self._tensor})"
 
     def __bool__(self):
         """Override bool operator since encrypted tensors cannot evaluate"""
