@@ -11,9 +11,10 @@ from crypten.mpc import provider  # noqa: F40
 
 from .mpc import MPCTensor
 from .ptype import ptype
+from .context import run_multiprocess
 
 
-__all__ = ["MPCTensor", "primitives", "provider", "ptype"]
+__all__ = ["MPCTensor", "primitives", "provider", "ptype", "run_multiprocess"]
 
 
 def __cat_stack_helper(op, tensors, *args, **kwargs):
