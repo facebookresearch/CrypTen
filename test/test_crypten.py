@@ -5,35 +5,17 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import logging
-import math
-import unittest
+
+from crypten.common.tensor_types import is_float_tensor
+from crypten.mpc.primitives import ArithmeticSharedTensor
+from crypten.mpc.primitives import BinarySharedTensor
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
+import crypten
+import logging
+import math
 import torch
-
-
-# placeholders for class references, to be filled later by import_crypten():
-is_float_tensor, crypten = None, None
-ArithmeticSharedTensor, BinarySharedTensor = None, None
-
-
-def import_crypten():
-    """
-    Imports CrypTen types. This function is called after environment variables
-    in MultiProcessTestCase.setUp() are set, and sets the class references for
-    all test functions.
-    """
-    global is_float_tensor, crypten
-    global ArithmeticSharedTensor, BinarySharedTensor
-
-    from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
-    import crypten as _crypten
-
-    is_float_tensor = _is_float_tensor
-    crypten = _crypten
-    ArithmeticSharedTensor = crypten.mpc.primitives.arithmetic.ArithmeticSharedTensor
-    BinarySharedTensor = crypten.mpc.primitives.binary.BinarySharedTensor
+import unittest
 
 
 class TestCrypten(MultiProcessTestCase):
@@ -46,7 +28,7 @@ class TestCrypten(MultiProcessTestCase):
     def setUp(self):
         super().setUp()
         if self.rank >= 0:
-            import_crypten()
+            crypten.init()
             crypten.set_default_backend(crypten.mpc)
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):

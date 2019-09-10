@@ -5,28 +5,14 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import logging
-import unittest
-import itertools
+from crypten.common.tensor_types import is_int_tensor
+from crypten.mpc.primitives import BinarySharedTensor
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
-
-BinarySharedTensor, is_int_tensor = None, None
-
-
-def import_crypten():
-    """
-    Imports CrypTen types. This function is called after environment variables
-    in MultiProcessTestCase.setUp() are set, and sets the class references for
-    all test functions.
-    """
-    global BinarySharedTensor
-    global is_int_tensor
-    from crypten.mpc.primitives import BinarySharedTensor as _BinarySharedTensor
-    from crypten.common.tensor_types import is_int_tensor as _is_int_tensor
-
-    BinarySharedTensor = _BinarySharedTensor
-    is_int_tensor = _is_int_tensor
+import crypten
+import itertools
+import logging
+import unittest
 
 
 class TestBinary(MultiProcessTestCase):
@@ -40,7 +26,7 @@ class TestBinary(MultiProcessTestCase):
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communcator
         if self.rank >= 0:
-            import_crypten()
+            crypten.init()
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:

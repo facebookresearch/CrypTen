@@ -5,29 +5,18 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import crypten
+import crypten.gradients as gradients
 import logging
 import torch
-import unittest
 import torch.nn.functional as F
+import unittest
 
-import crypten.gradients as gradients
 from crypten.autograd_cryptensor import AutogradContext, AutogradCrypTensor
+from crypten.common.tensor_types import is_float_tensor
 from crypten.gradients import AutogradFunction
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
-
-def import_crypten():
-    """
-    Imports CrypTen types. This function is called after environment variables
-    in MultiProcessTestCase.setUp() are set, and sets the class references for
-    all test functions.
-    """
-    global crypten, is_float_tensor
-    import crypten as _crypten
-    from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
-
-    crypten = _crypten
-    is_float_tensor = _is_float_tensor
 
 
 class TestAutograd(MultiProcessTestCase):
@@ -42,7 +31,7 @@ class TestAutograd(MultiProcessTestCase):
 
         # we do not want main process (rank -1) initializing the communicator:
         if self.rank >= 0:
-            import_crypten()
+            crypten.init()
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
@@ -142,7 +131,7 @@ class TestAutograd(MultiProcessTestCase):
             "softmax": [1],
             "avg_pool2d": [5],
             "max_pool2d": [3],
-            "conv2d": [torch.randn(2, 4, 3, 3)],
+            "conv2d": [get_random_test_tensor(size=(2, 4, 3, 3), is_float=True)],
         }
         binary_functions = ["add", "sub", "mul", "dot", "ger", "matmul"]
         positive_only = ["pow", "sqrt", "log"]

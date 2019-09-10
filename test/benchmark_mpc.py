@@ -5,33 +5,14 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from crypten.common.tensor_types import is_float_tensor
+from crypten.common.tensor_types import is_int_tensor
+from crypten.mpc.primitives import ArithmeticSharedTensor
+from crypten.mpc.primitives import BinarySharedTensor
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
+import crypten
 import torch
-
-
-# placeholders for class references, to be filled later by import_crypten():
-BinarySharedTensor, ArithmeticSharedTensor = None, None
-is_float_tensor, is_int_tensor = None, None
-
-
-def import_crypten():
-    """
-    Imports CrypTen types. This function is called after environment variables
-    in MultiProcessTestCase.setUp() are set, and sets the class references for
-    all test functions.
-    """
-    global BinarySharedTensor, ArithmeticSharedTensor
-    global is_float_tensor, is_int_tensor
-    from crypten.mpc.primitives import ArithmeticSharedTensor as _ArithmeticSharedTensor
-    from crypten.mpc.primitives import BinarySharedTensor as _BinarySharedTensor
-    from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
-    from crypten.common.tensor_types import is_int_tensor as _is_int_tensor
-
-    BinarySharedTensor = _BinarySharedTensor
-    ArithmeticSharedTensor = _ArithmeticSharedTensor
-    is_float_tensor = _is_float_tensor
-    is_int_tensor = _is_int_tensor
 
 
 class MPCBenchmark(MultiProcessTestCase):
@@ -39,6 +20,13 @@ class MPCBenchmark(MultiProcessTestCase):
     benchmarks_enabled = True
 
     def setUp(self):
+        super().setUp()
+        # We don't want the main process (rank -1) to initialize the communcator
+        if self.rank == self.MAIN_PROCESS_RANK:
+            return
+
+        crypten.init()
+
         torch.manual_seed(0)
 
         self.sizes = [(1, 8), (1, 16), (1, 32)]
@@ -68,10 +56,6 @@ class MPCBenchmark(MultiProcessTestCase):
         self.operands = self.int_operands + self.float_operands
         self.sizes = self.sizes + self.sizes
 
-        super().setUp()
-        # We don't want the main process (rank -1) to initialize the communcator
-        if self.rank >= 0:
-            import_crypten()
 
     @staticmethod
     def is_float(tensor):

@@ -5,32 +5,18 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+
+from crypten.common.tensor_types import is_float_tensor
+from crypten.mpc import MPCTensor
+from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+
+import crypten
 import itertools
 import logging
 import math
-import unittest
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
-
 import torch
 import torch.nn.functional as F
-
-
-# placeholders for class references, to be filled later by import_crypten():
-MPCTensor, is_float_tensor = None, None
-
-
-def import_crypten():
-    """
-    Imports CrypTen types. This function is called after environment variables
-    in MultiProcessTestCase.setUp() are set, and sets the class references for
-    all test functions.
-    """
-    global MPCTensor, is_float_tensor
-    from crypten.mpc import MPCTensor as _MPCTensor
-    from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
-
-    MPCTensor = _MPCTensor
-    is_float_tensor = _is_float_tensor
+import unittest
 
 
 class TestMPC(MultiProcessTestCase):
@@ -44,7 +30,7 @@ class TestMPC(MultiProcessTestCase):
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communicator
         if self.rank >= 0:
-            import_crypten()
+            crypten.init()
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:

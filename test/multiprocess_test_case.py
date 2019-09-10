@@ -16,6 +16,7 @@ from functools import wraps
 import numpy as np
 import torch
 import torch.distributed as dist
+import crypten.communicator as comm
 
 from .benchmark_helper import BenchmarkHelper
 
@@ -44,11 +45,10 @@ def get_random_test_tensor(max_value=6,
         # replace 0 with 1
         tensor[tensor == 0] = 1
 
-    if dist.is_initialized():
-        # Broadcast this tensor to the world so that the generated random tensor
-        # is in sync in all distributed processes. See T45688819 for more
-        # information.
-        dist.broadcast(tensor, 0)
+    # Broadcast this tensor to the world so that the generated random tensor
+    # is in sync in all distributed processes. See T45688819 for more
+    # information.
+    tensor = comm.get().broadcast(tensor, 0)
 
     return tensor
 

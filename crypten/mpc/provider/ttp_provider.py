@@ -6,7 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-from crypten import comm
+import crypten.communicator as comm
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.util import count_wraps
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
@@ -55,7 +55,7 @@ class TrustedThirdParty:
         r = [generate_random_ring_element(size) for _ in range(num_parties)]
         theta_r = count_wraps(r)
 
-        shares = comm.scatter(r, src=0)
+        shares = comm.get().scatter(r, src=0)
         r = ArithmeticSharedTensor.from_shares(shares, precision=0)
         theta_r = ArithmeticSharedTensor(theta_r, precision=0, src=0)
 

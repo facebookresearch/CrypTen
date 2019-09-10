@@ -26,6 +26,10 @@ class TestCommon(unittest.TestCase):
     Test cases for common functionality.
     """
 
+    def setUp(self):
+        super().setUp()
+        crypten.init()
+
     def _check(self, tensor, reference, msg):
         test_passed = (tensor == reference).all().item() == 1
         self.assertTrue(test_passed, msg=msg)

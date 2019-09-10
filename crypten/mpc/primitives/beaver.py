@@ -6,8 +6,8 @@
 # LICENSE file in the root directory of this source tree.
 
 import crypten
+import crypten.communicator as comm
 import torch
-from crypten import comm
 from crypten.common.util import count_wraps
 
 
@@ -91,12 +91,12 @@ def wraps(x):
     can make the assumption that [eta_xr] = 0 with high probability.
     """
     provider = crypten.mpc.get_default_provider()
-    r, theta_r = provider.wrap_rng(x.size(), comm.get_world_size())
+    r, theta_r = provider.wrap_rng(x.size(), comm.get().get_world_size())
     beta_xr = theta_r.clone()
     beta_xr._tensor = count_wraps([x._tensor, r._tensor])
 
     z = x + r
-    theta_z = comm.gather(z._tensor, 0)
+    theta_z = comm.get().gather(z._tensor, 0)
     theta_x = beta_xr - theta_r
 
     # TODO: Incorporate eta_xr
@@ -138,7 +138,7 @@ def B2A_single_bit(xB):
     3. If xB ^ rB = 0, then return [rA], otherwise return 1 - [rA]
         Note: This is an arithmetic xor of a single bit.
     """
-    if comm.get_world_size() < 2:
+    if comm.get().get_world_size() < 2:
         from .arithmetic import ArithmeticSharedTensor
 
         return ArithmeticSharedTensor(xB._tensor, precision=0, src=0)

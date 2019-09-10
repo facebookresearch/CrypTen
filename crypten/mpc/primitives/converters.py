@@ -6,7 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-from crypten import comm
+import crypten.communicator as comm
 from crypten.encoder import FixedPointEncoder
 
 from ..ptype import ptype as Ptype
@@ -19,7 +19,7 @@ def _A2B(arithmetic_tensor):
     binary_tensor = BinarySharedTensor.stack(
         [
             BinarySharedTensor(arithmetic_tensor._tensor, src=i)
-            for i in range(comm.get_world_size())
+            for i in range(comm.get().get_world_size())
         ]
     )
     binary_tensor = binary_tensor.sum(dim=0)

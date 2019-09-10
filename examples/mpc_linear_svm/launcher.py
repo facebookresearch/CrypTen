@@ -64,9 +64,6 @@ parser.add_argument(
 
 
 def _run_experiment(args):
-    # only import here to initialize crypten within the subprocesses
-    from mpc_linear_svm import run_mpc_linear_svm
-
     level = logging.INFO
     if "RANK" in os.environ and os.environ["RANK"] != "0":
         level = logging.CRITICAL
@@ -75,6 +72,7 @@ def _run_experiment(args):
         level=level,
         format="%(asctime)s - %(process)d - %(name)s - %(levelname)s - %(message)s",
     )
+    from mpc_linear_svm import run_mpc_linear_svm
     run_mpc_linear_svm(
         args.epochs, args.examples, args.features, args.lr, args.skip_plaintext
     )

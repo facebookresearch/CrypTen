@@ -100,6 +100,9 @@ class DistributedCommunicator(Communicator):
         self.g0.manual_seed(next_seed.item())
         self.g1.manual_seed(prev_seed.item())
 
+    def shutdown(self):
+        dist.destroy_process_group()
+
     @_logging
     def send(self, tensor, dst):
         """Sends the specified tensor to the destination dst."""

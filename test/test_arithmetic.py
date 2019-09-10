@@ -5,31 +5,20 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import itertools
-import logging
-import unittest
+
+from crypten.common.rng import generate_random_ring_element
+from crypten.common.tensor_types import is_float_tensor
+from crypten.common.util import count_wraps
+from crypten.mpc.primitives import ArithmeticSharedTensor
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
+import crypten
+import crypten.communicator as comm
+import itertools
+import logging
 import torch
 import torch.nn.functional as F
-
-
-# placeholders for class references, to be filled later by import_crypten():
-ArithmeticSharedTensor, is_float_tensor = None, None
-
-
-def import_crypten():
-    """
-    Imports CrypTen types. This function is called after environment variables
-    in MultiProcessTestCase.setUp() are set, and sets the class references for
-    all test functions.
-    """
-    global ArithmeticSharedTensor, is_float_tensor
-    from crypten.mpc.primitives import ArithmeticSharedTensor as _ArithmeticSharedTensor
-    from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
-
-    ArithmeticSharedTensor = _ArithmeticSharedTensor
-    is_float_tensor = _is_float_tensor
+import unittest
 
 
 class TestArithmetic(MultiProcessTestCase):
@@ -43,7 +32,7 @@ class TestArithmetic(MultiProcessTestCase):
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communcator
         if self.rank >= 0:
-            import_crypten()
+            crypten.init()
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
@@ -202,10 +191,6 @@ class TestArithmetic(MultiProcessTestCase):
             self._check(encrypted_out, reference, "mean failed")
 
     def test_wraps(self):
-        from crypten.common.util import count_wraps
-        from crypten.common.rng import generate_random_ring_element
-        from crypten import comm
-
         num_parties = int(self.world_size)
 
         size = (5, 5)
@@ -220,7 +205,7 @@ class TestArithmetic(MultiProcessTestCase):
         reference = count_wraps(shares)
 
         # Sync shares between parties
-        share = comm.scatter(shares, 0)
+        share = comm.get().scatter(shares, 0)
 
         encrypted_tensor = ArithmeticSharedTensor.from_shares(share)
         encrypted_wraps = encrypted_tensor.wraps()

@@ -5,31 +5,15 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import logging
-import unittest
+from crypten.common.tensor_types import is_float_tensor
 from test.multiprocess_test_case import \
     MultiProcessTestCase, get_random_test_tensor, get_random_linear
 
+import crypten
+import crypten.communicator as comm
+import logging
 import torch
-
-
-# we cannot import crypten here because WORLD_SIZE, etc. are not yet set:
-crypten = None
-is_float_tensor = None
-
-
-def import_crypten():
-    """
-    Imports CrypTen. This function is called after environment variables in
-    MultiProcessTestCase.setUp() are set, and updates the class references for
-    all test functions.
-    """
-    global crypten, is_float_tensor
-    import crypten as _crypten
-    from crypten.common.tensor_types import is_float_tensor as _is_float_tensor
-
-    crypten = _crypten
-    is_float_tensor = _is_float_tensor
+import unittest
 
 
 class TestNN(MultiProcessTestCase):
@@ -63,7 +47,7 @@ class TestNN(MultiProcessTestCase):
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communcator
         if self.rank >= 0:
-            import_crypten()
+            crypten.init()
 
     def test_global_avg_pool_module(self):
         """
@@ -272,7 +256,7 @@ class TestNN(MultiProcessTestCase):
                     # with different values on each process, we only want to
                     # check that they are consistent with source parameter value
                     reference = getattr(module, key)
-                    src_reference = crypten.comm.broadcast(reference, src=0)
+                    src_reference = comm.get().broadcast(reference, src=0)
 
                     msg = "parameter %s in %s incorrect" % (key, module_name)
                     self._check(encr_param, src_reference, msg)

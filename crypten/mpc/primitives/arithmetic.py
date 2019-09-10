@@ -9,7 +9,7 @@ from functools import reduce
 
 # dependencies:
 import torch
-from crypten import comm
+import crypten.communicator as comm
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 from crypten.cryptensor import CrypTensor
@@ -35,8 +35,8 @@ class ArithmeticSharedTensor(CrypTensor):
     def __init__(self, tensor=None, size=None, precision=None, src=0):
         if src == SENTINEL:
             return
-        assert isinstance(src, int) and src >= 0 and src < comm.get_world_size(), \
-            "invalid tensor source"
+        assert isinstance(src, int) and src >= 0 \
+            and src < comm.get().get_world_size(), "invalid tensor source"
 
         self.encoder = FixedPointEncoder(precision_bits=precision)
         if tensor is not None:
@@ -69,14 +69,14 @@ class ArithmeticSharedTensor(CrypTensor):
         this number while the other subtracts this number.
         """
         tensor = ArithmeticSharedTensor(src=SENTINEL)
-        current_share = generate_random_ring_element(*size, generator=comm.g0)
-        next_share = generate_random_ring_element(*size, generator=comm.g1)
+        current_share = generate_random_ring_element(*size, generator=comm.get().g0)
+        next_share = generate_random_ring_element(*size, generator=comm.get().g1)
         tensor._tensor = current_share - next_share
         return tensor
 
     @property
     def rank(self):
-        return comm.get_rank()
+        return comm.get().get_rank()
 
     def shallow_copy(self):
         """Create a shallow copy"""
@@ -158,7 +158,7 @@ class ArithmeticSharedTensor(CrypTensor):
     def reveal(self):
         """Get plaintext without any downscaling"""
         tensor = self._tensor.clone()
-        return comm.all_reduce(tensor)
+        return comm.get().all_reduce(tensor)
 
     def get_plain_text(self):
         """Decrypt the tensor"""
@@ -262,7 +262,7 @@ class ArithmeticSharedTensor(CrypTensor):
         """Divide two tensors element-wise"""
         # Truncate protocol for dividing by public integers:
         if isinstance(y, int) or is_int_tensor(y):
-            if comm.get_world_size() > 2:
+            if comm.get().get_world_size() > 2:
                 wraps = self.wraps()
                 self._tensor /= y
                 # NOTE: The multiplication here must be split into two parts

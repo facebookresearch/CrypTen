@@ -5,29 +5,16 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-
-def communicator():
-    """Returns distributed communicator."""
-    import os
-    from .communicator import DistributedCommunicator
-
-    # set default arguments for communicator:
-    default_args = {
-        "DISTRIBUTED_BACKEND": "gloo",
-        "RENDEZVOUS": "file:///tmp/sharedfile",
-        "WORLD_SIZE": 1,
-        "RANK": 0,
-    }
-    for key, val in default_args.items():
-        if key not in os.environ:
-            os.environ[key] = str(val)
-
-    # return communicator:
-    return DistributedCommunicator()
+import crypten.communicator
 
 
-# initialize communicator:
-comm = communicator()
+def init():
+    return crypten.communicator.init()
+
+
+def uninit():
+    return crypten.communicator.uninit()
+
 
 import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
@@ -42,17 +29,13 @@ from .multiprocessing_pdb import pdb
 arithmetic = ptype.arithmetic
 binary = ptype.binary
 
-# expose classes and functions in package:
-__all__ = ["CrypTensor", "pdb", "mpc", "nn"]
-
 
 def print_communication_stats():
-    comm.print_communication_stats()
+    crypten.communicator.get().print_communication_stats()
 
 
 def reset_communication_stats():
-    comm.reset_communication_stats()
-
+    crypten.communicator.get().reset_communication_stats()
 
 # Set backend
 __SUPPORTRED_BACKENDS = [crypten.mpc]
@@ -107,3 +90,13 @@ def __add_top_level_function(func_name):
 
 for func in __PASSTHROUGH_FUNCTIONS:
     __add_top_level_function(func)
+
+# expose classes and functions in package:
+__all__ = [
+    "CrypTensor",
+    "init",
+    "mpc",
+    "nn",
+    "pdb",
+    "uninit",
+]

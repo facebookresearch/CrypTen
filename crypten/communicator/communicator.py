@@ -80,6 +80,9 @@ class Communicator:
         """Updates log of communication statistics."""
         raise NotImplementedError("_log_communication is not implemented")
 
+    def shutdown(self):
+        raise NotImplementedError("shutdown is not implemented")
+
 
 def _logging(func):
     """Decorator that performs logging of communication statistics."""

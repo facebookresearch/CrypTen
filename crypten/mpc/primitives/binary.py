@@ -7,7 +7,7 @@
 
 # dependencies:
 import torch
-from crypten import comm
+import crypten.communicator as comm
 from crypten.common.rng import generate_kbit_random_tensor
 from crypten.common.tensor_types import is_int_tensor
 from crypten.cryptensor import CrypTensor
@@ -32,8 +32,8 @@ class BinarySharedTensor(CrypTensor):
     def __init__(self, tensor=None, size=None, src=0):
         if src == SENTINEL:
             return
-        assert isinstance(src, int) and src >= 0 and src < comm.get_world_size(), \
-            "invalid tensor source"
+        assert isinstance(src, int) and src >= 0 \
+            and src < comm.get().get_world_size(), "invalid tensor source"
 
         #  Assume 0 bits of precision unless encoder is set outside of init
         self.encoder = FixedPointEncoder(precision_bits=0)
@@ -66,14 +66,14 @@ class BinarySharedTensor(CrypTensor):
         numbers together.
         """
         tensor = BinarySharedTensor(src=SENTINEL)
-        current_share = generate_kbit_random_tensor(*size, generator=comm.g0)
-        next_share = generate_kbit_random_tensor(*size, generator=comm.g1)
+        current_share = generate_kbit_random_tensor(*size, generator=comm.get().g0)
+        next_share = generate_kbit_random_tensor(*size, generator=comm.get().g1)
         tensor._tensor = current_share ^ next_share
         return tensor
 
     @property
     def rank(self):
-        return comm.get_rank()
+        return comm.get().get_rank()
 
     def shallow_copy(self):
         """Create a shallow copy"""
@@ -240,7 +240,7 @@ class BinarySharedTensor(CrypTensor):
 
     def reveal(self):
         """Get plaintext without any downscaling"""
-        shares = comm.all_gather(self._tensor)
+        shares = comm.get().all_gather(self._tensor)
         result = shares[0]
         for x in shares[1:]:
             result = result ^ x
