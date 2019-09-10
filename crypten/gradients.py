@@ -626,15 +626,21 @@ class AutogradMaxPool2D(AutogradFunction):
         )
 
         # store information for backward pass:
-        ctx.save_multiple_for_backward((input, indices, kernel_size, padding, stride))
+        ctx.save_multiple_for_backward(
+            (input.size(), indices, kernel_size, padding, stride)
+        )
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, indices, kernel_size, padding, stride = ctx.saved_tensors
-        return grad_output.mul(
-            input.max_unpool2d(indices, kernel_size, padding=padding, stride=stride)
-        )  # D17226966
+        output_size, indices, kernel_size, padding, stride = ctx.saved_tensors
+        return grad_output._max_pool2d_backward(
+            indices,
+            kernel_size,
+            padding=padding,
+            stride=stride,
+            output_size=output_size,
+        )
 
 
 @register_function("conv2d")

@@ -312,7 +312,7 @@ class MPCTensor(CrypTensor):
 
         Note: This deviates from PyTorch's implementation since PyTorch returns
         the index values for each element rather than a one-hot kernel. This
-        deviation is useful for implementing max_unpool2d later.
+        deviation is useful for implementing _max_pool2d_backward later.
         """
         max_input = self.shallow_copy()
         max_input._tensor._tensor, output_size = pool_reshape(
@@ -333,6 +333,76 @@ class MPCTensor(CrypTensor):
             argmax_vals = argmax_vals.view(output_size + kernel_size)
             return max_vals, argmax_vals
         return max_vals
+
+    @mode(Ptype.arithmetic)
+    def _max_pool2d_backward(
+        self, indices, kernel_size, padding=None, stride=None, output_size=None
+    ):
+        """Implements the backwards for a `max_pool2d` call where `self` is
+        the output gradients and `indices` is the 2nd result of a `max_pool2d`
+        call where `return_indices` is True.
+
+        The output of this function back-propagates the gradient (from `self`)
+        to be computed with respect to the input parameters of the `max_pool2d`
+        call.
+
+        `max_pool2d` can map several input sizes to the same output sizes. Hence,
+        the inversion process can get ambiguous. To accommodate this, you can
+        provide the needed output size as an additional argument `output_size`.
+        Otherwise, this will return a tensor the minimal size that will produce
+        the correct mapping.
+        """
+        # Setup padding
+        if padding is None:
+            padding = 0
+        if isinstance(padding, int):
+            padding = padding, padding
+        assert isinstance(padding, tuple), "padding must be a int, tuple, or None"
+        p0, p1 = padding
+
+        # Setup stride
+        if stride is None:
+            stride = kernel_size
+        if isinstance(stride, int):
+            stride = stride, stride
+        assert isinstance(padding, tuple), "stride must be a int, tuple, or None"
+        s0, s1 = stride
+
+        # Setup kernel_size
+        if isinstance(kernel_size, int):
+            kernel_size = kernel_size, kernel_size
+        assert isinstance(padding, tuple), "padding must be a int or tuple"
+        k0, k1 = kernel_size
+
+        assert self.dim() == 4, "Input to _max_pool2d_backward must have 4 dimensions"
+        assert indices.dim() == 6, \
+            "Indices input for _max_pool2d_backward must have 6 dimensions"
+
+        # Computes one-hot gradient blocks from each output variable that
+        # has non-zero value corresponding to the argmax of the corresponding
+        # block of the max_pool2d input.
+        kernels = self.view(self.size() + (1, 1)) * indices
+
+        # Use minimal size if output_size is not specified.
+        if output_size is None:
+            output_size = (
+                self.size(0), self.size(1),
+                s0 * self.size(2) - 2 * p0,
+                s1 * self.size(3) - 2 * p1,
+            )
+
+        # Sum the one-hot gradient blocks at corresponding index locations.
+        result = MPCTensor(torch.zeros(output_size)).pad([p0, p0, p1, p1])
+        for i in range(self.size(2)):
+            for j in range(self.size(3)):
+                left_ind = s0 * i
+                top_ind = s1 * j
+
+                result[:, :, left_ind:left_ind + k0, top_ind:top_ind + k1] \
+                    += kernels[:, :, i, j]
+
+        result = result[:, :, p0:result.size(2) - p0, p1:result.size(3) - p1]
+        return result
 
     # Logistic Functions
     @mode(Ptype.arithmetic)

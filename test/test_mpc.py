@@ -348,24 +348,23 @@ class TestMPC(MultiProcessTestCase):
     def test_pooling(self):
         """Test avg_pool, sum_pool, max_pool of encrypted tensor."""
         for width in range(2, 5):
-            for width2 in range(1, width):
+            for kernel_size in range(1, width):
                 matrix_size = (1, 4, 5, width)
                 matrix = get_random_test_tensor(size=matrix_size, is_float=True)
-                pool_size = width2
-                for stride in range(1, width2):
-                    for padding in range(2):
+                for stride in range(1, kernel_size + 1):
+                    for padding in range(kernel_size // 2 + 1):
                         for func in ["avg_pool2d", "sum_pool2d"]:
                             reference = F.avg_pool2d(
-                                matrix, pool_size, stride=stride, padding=padding
+                                matrix, kernel_size, stride=stride, padding=padding
                             )
                             if func == "sum_pool2d":
-                                reference *= width2 * width2
+                                reference *= kernel_size * kernel_size
 
                             encrypted_matrix = MPCTensor(matrix)
                             with self.benchmark(func=func, width=width) as bench:
                                 for _ in bench.iters:
                                     encrypted_pool = getattr(encrypted_matrix, func)(
-                                        pool_size, stride=stride, padding=padding
+                                        kernel_size, stride=stride, padding=padding
                                     )
                             self._check(encrypted_pool, reference, "%s failed" % func)
 
@@ -376,21 +375,45 @@ class TestMPC(MultiProcessTestCase):
                                 'padding' : padding,
                                 'return_indices' : return_indices,
                             }
+                            matrix.requires_grad = True
                             reference = F.max_pool2d(
-                                matrix, pool_size, **kwargs
+                                matrix, kernel_size, **kwargs
                             )
                             encrypted_matrix = MPCTensor(matrix)
                             with self.benchmark(
                                     func="max_pool2d", width=width) as bench:
                                 for _ in bench.iters:
                                     encrypted_pool = encrypted_matrix.max_pool2d(
-                                        pool_size, **kwargs
+                                        kernel_size, **kwargs
                                     )
                             if return_indices:
                                 self._check(
                                     encrypted_pool[0], reference[0], "max_pool2d failed"
                                 )
-                                # TODO: add test for argmax_pool2d result
+
+                                # Compute max_pool2d backward with random grad
+                                grad_output = get_random_test_tensor(
+                                    size=reference[0].size(), is_float=True
+                                )
+
+                                if matrix.grad is not None:
+                                    matrix.grad.data.zero_()
+                                reference[0].backward(grad_output)
+                                grad_ref = matrix.grad
+
+                                # Compute encrypted backward with same grad
+                                encrypted_grad = MPCTensor(grad_output)
+                                kwargs = {
+                                    'stride' : stride,
+                                    'padding' : padding,
+                                    'output_size' : encrypted_matrix.size()
+                                }
+                                encrypted_grad = encrypted_grad._max_pool2d_backward(
+                                    encrypted_pool[1], kernel_size, **kwargs
+                                )
+
+                                msg = "max_pool2d_backward failed"
+                                self._check(encrypted_grad, grad_ref, msg)
                             else:
                                 self._check(
                                     encrypted_pool, reference, "max_pool2d failed"

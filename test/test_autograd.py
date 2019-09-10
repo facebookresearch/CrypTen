@@ -118,7 +118,7 @@ class TestAutograd(MultiProcessTestCase):
             "sigmoid": (4, 7),
             "softmax": (10, 5),
             "avg_pool2d": (1, 3, 21, 21),
-            # "max_pool2d": (1, 3, 21, 21),  # TODO: Activate after T53389692 is closed.
+            "max_pool2d": (1, 3, 21, 21),
             "conv2d": (1, 4, 21, 21),
         }
         additional_args = {
