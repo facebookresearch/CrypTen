@@ -22,7 +22,8 @@ jobs:
           name: Unit tests
           command: |
             . ~/crypten-test/bin/activate
-            python3 -m unittest discover test
+            echo 'for i in $(ls test/test_*.py); do python3 -m unittest $i; (($? != 0)) && exit 1; done; exit 0' > run_tests.sh
+            bash ./run_tests.sh
 
 
 # -------------------------------------------------------------------------------------
