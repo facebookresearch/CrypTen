@@ -13,9 +13,7 @@ import torch
 
 
 def set_precision(bits):
-    from crypten.common import constants
-
-    constants.PRECISION = int(bits)
+    crypten.encoder.set_default_precision(bits)
 
 
 def online_learner(
@@ -99,7 +97,7 @@ def online_learner(
         denominator = A_inv_context.matmul(context).add(1.0).view(-1, 1, 1)
         update = numerator.mul_(denominator.reciprocal(nr_iters=nr_iters))
         A_inv.sub_(update.mul_(onehot.view(-1, 1, 1)))
-        b.add_(context.mul(reward).unsqueeze(0).mul_(onehot.unsqueeze(1)))
+        b.add_(context.mul(reward).unsqueeze(0).mul_(onehot.unsqueeze(0)))
 
         # update model weights:
         weights = b.unsqueeze(1).matmul(A_inv).squeeze(1)

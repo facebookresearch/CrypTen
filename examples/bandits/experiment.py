@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import argparse
+import crypten
 import logging
 import os
 import random
@@ -327,6 +328,7 @@ def main():
         pca=pca, clusters=clusters, bandwidth=args.bandwidth, permfile=args.permfile
     )
     assert hasattr(bandits, args.learner), "unknown learner: %s" % args.learner
+    crypten.init()
     getattr(bandits, args.learner)(
         sampler,
         epsilon=args.epsilon,
