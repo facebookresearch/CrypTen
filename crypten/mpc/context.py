@@ -7,6 +7,7 @@
 
 from operator import itemgetter
 
+import crypten
 import functools
 import logging
 import multiprocessing
@@ -15,7 +16,6 @@ import tempfile
 
 
 def _launch(func, rank, world_size, rendezvous_file, queue):
-    import crypten
 
     communicator_args = {
         "WORLD_SIZE": world_size,
@@ -47,11 +47,26 @@ def run_multiprocess(world_size):
                 for rank in range(world_size)
             ]
 
+            # This process will be forked and we need to re-initialize the
+            # communicator in the children. If the parent process happened to
+            # call crypten.init(), which might be valid in a Jupyter notebook
+            # for instance, then the crypten.init() call on the children
+            # process will not do anything. The call to uninit here makes sure
+            # we actually get to initialize the communicator on the child
+            # process.  An alternative fix for this issue would be to use spawn
+            # instead of fork, but we run into issues serializing the function
+            # in that case.
+            was_initialized = crypten.communicator.__is_initialized
+            crypten.uninit()
+
             for process in processes:
                 process.start()
 
             for process in processes:
                 process.join()
+
+            if was_initialized:
+                crypten.init()
 
             successful = [process.exitcode == 0 for process in processes]
             if not all(successful):
