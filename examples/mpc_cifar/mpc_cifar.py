@@ -13,21 +13,25 @@ import time
 import warnings
 
 import crypten
+import crypten.communicator as comm
+
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 from examples.meters import AverageMeter
+from examples.util import NoopContextManager
+from torchvision import datasets, transforms
 
 
 def run_mpc_cifar(
-    data,
     epochs=25,
     start_epoch=0,
-    batch_size=256,
-    lr=0.01,
+    batch_size=1,
+    lr=0.001,
     momentum=0.9,
     weight_decay=1e-6,
     print_freq=10,
@@ -35,6 +39,7 @@ def run_mpc_cifar(
     evaluate=True,
     seed=None,
     skip_plaintext=False,
+    context_manager=None,
 ):
     if seed is not None:
         random.seed(seed)
@@ -51,12 +56,9 @@ def run_mpc_cifar(
     # create model
     model = LeNet()
 
-    # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss()
-
-    optimizer = torch.optim.SGD(
-        model.parameters(), lr, momentum=momentum, weight_decay=weight_decay
-    )
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum,
+                                weight_decay=weight_decay)
 
     # optionally resume from a checkpoint
     best_prec1 = 0
@@ -77,48 +79,36 @@ def run_mpc_cifar(
             logging.info("=> no checkpoint found at '{}'".format(resume))
 
     # Data loading code
-    def preprocess_data(file):
-        def unpickle(file):
-            import pickle
+    def preprocess_data(context_manager):
+        transform = transforms.Compose([transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        with context_manager:
+            trainset = datasets.CIFAR10(root='/tmp', train=True,
+                            download=True, transform=transform)
+            testset = datasets.CIFAR10(root='/tmp', train=False,
+                            download=True, transform=transform)
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
+                                                  shuffle=True, num_workers=2)
+        testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
+                                                 shuffle=False, num_workers=2)
+        return trainloader, testloader
 
-            with open(file, "rb") as fo:
-                dict = pickle.load(fo, encoding="bytes")
-            return dict
-
-        raw_data = unpickle(file)
-        labels = raw_data[b"labels"]
-        loader = []
-        for i in range(len(labels) // batch_size):
-            inds = slice(i * batch_size, (i + 1) * batch_size)
-            loader.append(
-                (
-                    torch.from_numpy(
-                        raw_data[b"data"][inds].reshape((batch_size, 3, 32, 32))
-                    ).to(dtype=torch.float32),
-                    torch.tensor(labels[inds]),
-                )
-            )
-        return loader
-
-    valdir = os.path.join(data, "test_batch")
-    val_loader = preprocess_data(valdir)
+    context_manager = NoopContextManager()
+    train_loader, val_loader = preprocess_data(context_manager)
 
     if evaluate:
         if not skip_plaintext:
             logging.info("===== Evaluating plaintext LeNet network =====")
             validate(val_loader, model, criterion, print_freq)
-        dummy_input = torch.rand((1, 3, 32, 32))
-        private_model = crypten.nn.from_pytorch(model, dummy_input).encrypt()
         logging.info("===== Evaluating Private LeNet network =====")
+        input_size = get_input_size(val_loader, batch_size)
+        private_model = construct_private_model(input_size, model)
         validate(val_loader, private_model, criterion, print_freq)
+        #logging.info("===== Validating side-by-side ======")
+        #validate_side_by_side(val_loader, model, private_model)
         return
 
-    train_loader = []
-    for i in range(1, 6):
-        train_dir_i = os.path.join(data, "data_batch_%d" % i)
-        train_loader_i = preprocess_data(train_dir_i)
-        train_loader.extend(train_loader_i)
-
+    # define loss function (criterion) and optimizer
     for epoch in range(start_epoch, epochs):
         adjust_learning_rate(optimizer, epoch, lr)
 
@@ -153,6 +143,7 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq=10):
     model.train()
 
     end = time.time()
+
     for i, (input, target) in enumerate(train_loader):
 
         # compute output
@@ -197,20 +188,62 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq=10):
             )
 
 
-def validate_side_by_side(val_loader, model0, model1):
+def validate_side_by_side(val_loader, plaintext_model, private_model):
+    """Validate the plaintext and private models side-by-side on each example"""
     # switch to evaluate mode
-    model0.eval()
-    val_loader = val_loader[:1000]
+    plaintext_model.eval()
+    private_model.eval()
 
     with torch.no_grad():
         for i, (input, target) in enumerate(val_loader):
-            # compute output
-            output0 = model0(input)
-            output1 = model1(input)
+            # compute output for plaintext
+            output_plaintext = plaintext_model(input)
+            # encrypt input and compute output for private
+            # assumes that private model is encrypted with src=0
+            input_encr = encrypt_data_tensor_with_src(input)
+            output_encr = private_model(input_encr)
+            #log all info
             logging.info("==============================")
             logging.info("Example %d\t target = %d" % (i, target))
-            logging.info("Plaintext:\n%s" % output0)
-            logging.info("Encrypted:\n%s\n" % output1)
+            logging.info("Plaintext:\n%s" % output_plaintext)
+            logging.info("Encrypted:\n%s\n" % output_encr.get_plain_text())
+            #only use the first 1000 examples
+            if i > 1000:
+                break
+
+
+def get_input_size(val_loader, batch_size):
+    input, target = next(iter(val_loader))
+    return input.size()
+
+
+def construct_private_model(input_size, model):
+    """Encrypt and validate trained model for multi-party setting."""
+    #get rank of current process
+    rank = comm.get().get_rank()
+    dummy_input = torch.empty(input_size)
+
+    # party 0 always gets the actual model; remaining parties get dummy model
+    if rank == 0:
+        model_upd = model
+    else:
+        model_upd = LeNet()
+    private_model = crypten.nn.from_pytorch(model_upd, dummy_input).encrypt(src=0)
+    return private_model
+
+
+def encrypt_data_tensor_with_src(input):
+    """Encrypt data tensor for multi-party setting"""
+    #get rank of current process
+    rank = comm.get().get_rank()
+
+    #party 1 always gets the actual tensor; remaining parties get dummy model
+    if rank == 1:
+        input_upd = input
+    else:
+        input_upd = torch.empty(input.size())
+    private_input = crypten.cryptensor(input_upd, src=1)
+    return private_input
 
 
 def validate(val_loader, model, criterion, print_freq=10):
@@ -221,7 +254,6 @@ def validate(val_loader, model, criterion, print_freq=10):
 
     # switch to evaluate mode
     model.eval()
-    val_loader = val_loader[:100]
 
     with torch.no_grad():
         end = time.time()
@@ -229,7 +261,7 @@ def validate(val_loader, model, criterion, print_freq=10):
             if isinstance(model, crypten.nn.Module) and not crypten.is_encrypted_tensor(
                 input
             ):
-                input = crypten.cryptensor(input)
+                input = encrypt_data_tensor_with_src(input)
             # compute output
             output = model(input)
             if crypten.is_encrypted_tensor(output):
@@ -270,14 +302,17 @@ def validate(val_loader, model, criterion, print_freq=10):
         logging.info(
             " * Prec@1 {:.3f} Prec@5 {:.3f}".format(top1.value(), top5.value())
         )
-
     return top1.value()
 
 
 def save_checkpoint(state, is_best, filename="checkpoint.pth.tar"):
-    torch.save(state, filename)
-    if is_best:
-        shutil.copyfile(filename, "model_best.pth.tar")
+    """Saves checkpoint of plaintext model"""
+    #only save from rank 0 process to avoid race condition
+    rank = crypten.comm.get_rank()
+    if rank == 0:
+        torch.save(state, filename)
+        if is_best:
+            shutil.copyfile(filename, "model_best.pth.tar")
 
 
 def adjust_learning_rate(optimizer, epoch, lr=0.01):
@@ -304,39 +339,26 @@ def accuracy(output, target, topk=(1,)):
         return res
 
 
-class Reshape(nn.Module):
-    def __init__(self, *args):
-        super(Reshape, self).__init__()
-        self.shape = args
-
-    def forward(self, x):
-        return x.view(self.shape)
-
-
 class LeNet(nn.Sequential):
     """
-    Adaptation of LeNet that uses ReLU activations.
+    Adaptation of LeNet that uses ReLU activations
     """
 
+    # network architecture:
     def __init__(self):
         super(LeNet, self).__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 10)
 
-        # network architecture:
-        modules = [
-            nn.Conv2d(3, 6, 5),
-            nn.ReLU(),
-            nn.AvgPool2d(2),
-            nn.Conv2d(6, 16, 5),
-            nn.ReLU(),
-            nn.AvgPool2d(2),
-            Reshape(-1, 16 * 5 * 5),
-            nn.Linear(16 * 5 * 5, 120),
-            nn.ReLU(),
-            nn.Linear(120, 84),
-            nn.ReLU(),
-            nn.Linear(84, 10),
-        ]
-
-        # register all modules:
-        for idx, module in enumerate(modules):
-            self.add_module(str(idx), module)
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))
+        x = self.pool(F.relu(self.conv2(x)))
+        x = x.view(-1, 16 * 5 * 5)
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return x

@@ -17,6 +17,7 @@ class MultiProcessLauncher:
     def __init__(self, world_size, run_process_fn, fn_args=None):
         env = os.environ.copy()
         env["WORLD_SIZE"] = str(world_size)
+        multiprocessing.set_start_method('spawn')
 
         # Use random file so multiple jobs can be run simultaneously
         INIT_METHOD = "file:///tmp/crypten-rendezvous-{}".format(uuid.uuid1())

@@ -24,12 +24,6 @@ $ python3 aws_launcher.py \
       --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
       --aux_files=examples/mpc_cifar/mpc_cifar.py,\
 path-to-model/model.pth.tar,\
-path-to-data-dir/test_batch,\
-path-to-data-dir/data_batch_1,\
-path-to-data-dir/data_batch_2,\
-path-to-data-dir/data_batch_3,\
-path-to-data-dir/data_batch_4,\
-path-to-data-dir/data_batch_5 \
       examples/mpc_cifar/launcher.py . \
       --evaluate \
       --resume model.pth.tar \
@@ -52,7 +46,6 @@ parser.add_argument(
     default=2,
     help="The number of parties to launch. Each party acts as its own process",
 )
-parser.add_argument("data", metavar="DIR", help="path to dataset")
 parser.add_argument(
     "--epochs", default=25, type=int, metavar="N", help="number of total epochs to run"
 )
@@ -74,7 +67,7 @@ parser.add_argument(
 parser.add_argument(
     "--lr",
     "--learning-rate",
-    default=0.01,
+    default=0.001,
     type=float,
     metavar="LR",
     help="initial learning rate",
