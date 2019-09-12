@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
 import pdb as pythondebugger
 import sys
 
@@ -25,4 +26,13 @@ class MultiprocessingPdb(pythondebugger.Pdb):
             sys.stdin = _stdin
 
 
-pdb = MultiprocessingPdb()
+def configure_logging():
+    """Configures a logging template useful for debugging multiple processes."""
+
+    level = logging.INFO
+    logging.getLogger().setLevel(level)
+    logging.basicConfig(
+        level=level,
+        format=("[%(asctime)s][%(levelname)s][%(filename)s:%(lineno)d]"
+                + "[%(processName)s] %(message)s"),
+    )

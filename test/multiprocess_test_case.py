@@ -17,6 +17,7 @@ import numpy as np
 import torch
 import torch.distributed as dist
 import crypten.communicator as comm
+import crypten.debug
 
 from .benchmark_helper import BenchmarkHelper
 
@@ -110,6 +111,8 @@ class MultiProcessTestCase(unittest.TestCase):
 
     def setUp(self):
         super(MultiProcessTestCase, self).setUp()
+
+        crypten.debug.configure_logging()
 
         self.benchmark_iters = 100 if self.benchmarks_enabled else 1
         self.default_tolerance = 0.5

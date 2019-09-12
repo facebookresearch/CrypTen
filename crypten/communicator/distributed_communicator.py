@@ -42,8 +42,6 @@ class DistributedCommunicator(Communicator):
             self.reset_communication_stats()
 
             # logging:
-            level = logging.getLogger().level
-            logging.getLogger().setLevel(logging.INFO)
             logging.info("==================")
             logging.info("DistributedCommunicator with rank %d" % state["rank"])
             logging.info("==================")
@@ -56,7 +54,6 @@ class DistributedCommunicator(Communicator):
                 rank=state["rank"],
             )
             logging.info("World size = %d" % dist.get_world_size())
-            logging.getLogger().setLevel(level)
 
             self.__setup_shared_rng()
 

@@ -22,7 +22,6 @@ import crypten.nn  # noqa: F401
 # other imports:
 from .cryptensor import CrypTensor
 from .mpc import ptype
-from .multiprocessing_pdb import pdb
 
 
 # the different private type attributes of an mpc encrypted tensor
@@ -94,9 +93,9 @@ for func in __PASSTHROUGH_FUNCTIONS:
 # expose classes and functions in package:
 __all__ = [
     "CrypTensor",
+    "debug",
     "init",
     "mpc",
     "nn",
-    "pdb",
     "uninit",
 ]
