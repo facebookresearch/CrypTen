@@ -5,16 +5,33 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""
+To run bandits example in multiprocess mode:
+
+$ python3 examples/bandits/launcher.py --multiprocess
+
+To run bandits example on AWS EC2 instances:
+
+$ python3 aws_launcher.py \
+      --ssh_key_file=$HOME/.aws/fair-$USER.pem \
+      --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
+      --aux_files=\
+examples/bandits/membership_inference.py,\
+examples/bandits/plain_contextual_bandits.py,\
+examples/bandits/private_contextual_bandits.py \
+      examples/bandits/launcher.py
+"""
+
 import argparse
-import crypten
 import logging
 import os
 import random
 
 import torch
-import examples.fb.util
 import examples.util
 import visdom
+from examples.util import NoopContextManager
+from examples.multiprocess_launcher import MultiProcessLauncher
 from torchvision.datasets.mnist import MNIST
 
 
@@ -34,14 +51,27 @@ def learning_curve(visualizer, idx, value, window=None, title=""):
     return window
 
 
-def load_data(split="train", pca=None, clusters=None, bandwidth=1.0):
+def _download_mnist(split="train"):
     """
     Loads split from the MNIST dataset and returns data.
     """
 
     # download the MNIST dataset:
-    with examples.fb.util.PublicDownloadContext():
+    with NoopContextManager():
         mnist = MNIST("/tmp", download=True, train=(split == "train"))
+    return mnist
+
+
+def load_data(
+    split="train", pca=None, clusters=None, bandwidth=1.0,
+    download_mnist=_download_mnist,
+):
+    """
+    Loads split from the MNIST dataset and returns data.
+    """
+
+    # download the MNIST dataset:
+    mnist = download_mnist(split)
 
     # preprocess the MNIST dataset:
     context = mnist.data.float().div_(255.0)
@@ -69,7 +99,8 @@ def load_data(split="train", pca=None, clusters=None, bandwidth=1.0):
 
 
 def load_data_sampler(
-    split="train", pca=None, clusters=None, bandwidth=1.0, permfile=None
+    split="train", pca=None, clusters=None, bandwidth=1.0, permfile=None,
+    download_mnist=_download_mnist,
 ):
     """
     Loads split from the MNIST dataset and returns sampler.
@@ -77,7 +108,8 @@ def load_data_sampler(
 
     # load dataset:
     context, rewards = load_data(
-        split=split, pca=pca, clusters=clusters, bandwidth=bandwidth
+        split=split, pca=pca, clusters=clusters, bandwidth=bandwidth,
+        download_mnist=download_mnist,
     )
     if permfile is not None:
         perm = torch.load(permfile)
@@ -102,6 +134,12 @@ def parse_args(hostname):
     """
     parser = argparse.ArgumentParser(
         description="Train contextual bandit model using encrypted learning signal"
+    )
+    parser.add_argument(
+        "--world_size",
+        type=int,
+        default=2,
+        help="The number of parties to launch. Each party acts as its own process",
     )
     parser.add_argument(
         "--plaintext", action="store_true", help="use a non-private algorithm"
@@ -179,6 +217,12 @@ def parse_args(hostname):
         "--permfile", default=None, type=str, help="file with sampling permutation"
     )
     parser.add_argument("--seed", default=None, type=int, help="Seed the torch rng")
+    parser.add_argument(
+        "--multiprocess",
+        default=False,
+        action="store_true",
+        help="Run example in multiprocess mode",
+    )
     return parser.parse_args()
 
 
@@ -238,14 +282,7 @@ def get_checkpoint_func(args):
     return checkpoint_func
 
 
-def main():
-    """
-    Runs encrypted contextual bandits learning experiment on MNIST.
-    """
-
-    # parse input arguments:
-    args = parse_args(os.environ.get("HOSTNAME", "localhost"))
-
+def build_learner(args, bandits, download_mnist):
     # set up loggers:
     logger = logging.getLogger()
     level = logging.INFO
@@ -262,7 +299,6 @@ def main():
     if args.plaintext:
         logging.info("Using plain text bandit")
         kwargs = {"dtype": torch.double, "device": "cpu"}
-        import plain_contextual_bandits as bandits
     else:
         logging.info(f"Using encrypted bandit with {args.backend}")
         kwargs = {
@@ -270,7 +306,6 @@ def main():
             "precision": args.precision,
             "nr_iters": args.nr_iters,
         }
-        import private_contextual_bandits as bandits
 
     # set up variables for progress monitoring:
     window = [None]
@@ -326,20 +361,51 @@ def main():
 
     # run contextual bandit algorithm on MNIST:
     sampler = load_data_sampler(
-        pca=pca, clusters=clusters, bandwidth=args.bandwidth, permfile=args.permfile
+        pca=pca, clusters=clusters, bandwidth=args.bandwidth, permfile=args.permfile,
+        download_mnist=download_mnist
     )
     assert hasattr(bandits, args.learner), "unknown learner: %s" % args.learner
+
+    def learner_func():
+        getattr(bandits, args.learner)(
+            sampler,
+            epsilon=args.epsilon,
+            monitor_func=monitor_func,
+            checkpoint_func=checkpoint_func,
+            checkpoint_every=args.checkpoint_every,
+            **kwargs,
+        )
+    return learner_func
+
+
+def _run_experiment(args):
+    if args.plaintext:
+        import plain_contextual_bandits as bandits
+    else:
+        import private_contextual_bandits as bandits
+
+    learner_func = build_learner(args, bandits, _download_mnist)
+    import crypten
     crypten.init()
-    getattr(bandits, args.learner)(
-        sampler,
-        epsilon=args.epsilon,
-        monitor_func=monitor_func,
-        checkpoint_func=checkpoint_func,
-        checkpoint_every=args.checkpoint_every,
-        **kwargs,
-    )
+    learner_func()
+
+
+def main(run_experiment):
+    """
+    Runs encrypted contextual bandits learning experiment on MNIST.
+    """
+    # parse input arguments:
+    args = parse_args(os.environ.get("HOSTNAME", "localhost"))
+
+    if args.multiprocess:
+        launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
+        launcher.start()
+        launcher.join()
+        launcher.terminate()
+    else:
+        run_experiment(args)
 
 
 # run all the things:
 if __name__ == "__main__":
-    main()
+    main(_run_experiment)

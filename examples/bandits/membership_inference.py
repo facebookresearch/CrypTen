@@ -10,9 +10,9 @@ import logging
 import os
 import pickle
 
+import examples.util
 import experiment
 import torch
-import util
 import visdom
 
 
@@ -118,7 +118,7 @@ def main():
 
     # load dataset:
     train_data, _ = experiment.load_data(split="train")
-    components = util.pca(train_data, args.pca)
+    components = examples.util.pca(train_data, args.pca)
     positive_set = experiment.load_data(
         split="train", pca=components, clusters=clusters, bandwidth=args.bandwidth
     )
