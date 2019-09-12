@@ -75,9 +75,19 @@ class DistributedCommunicator(Communicator):
         self.g1 = torch.Generator()
 
         # Generate random seeds for Generators
-        # NOTE: Chosen seed can be any number, but it chooses as a random 64-bit
-        # integer so other parties cannot guess its value.
-        next_seed = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,))
+        # NOTE: Chosen seed can be any number, but we choose as a random 64-bit
+        # integer here so other parties cannot guess its value.
+
+        # We sometimes get here from a forked process, which causes all parties
+        # to have the same RNG state. Reset the seed to make sure RNG streams
+        # are different in all the parties. We use numpy's random here since
+        # setting its seed to None will produce different seeds even from
+        # forked proecesses.
+        import numpy
+        numpy.random.seed(seed=None)
+        next_seed = numpy.random.randint(-2 ** 63, 2 ** 63 - 1, (1,)).item()
+
+        next_seed = torch.tensor(next_seed, dtype=torch.long)
         prev_seed = torch.LongTensor([0])  # placeholder
 
         # Send random seed to next party, receive random seed from prev party

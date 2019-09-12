@@ -25,6 +25,12 @@ class TestCommunicator(MultiProcessTestCase):
         if self.rank >= 0:
             crypten.init()
 
+    def test_przs_generators(self):
+        """Tests that przs generators are initialized independently"""
+        t0 = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,), generator=comm.get().g0)
+        t1 = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,), generator=comm.get().g1)
+        self.assertNotEqual(t0.item(), t1.item())
+
     def test_send_recv(self):
         tensor = torch.LongTensor([self.rank])
 
