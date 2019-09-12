@@ -13,6 +13,8 @@ import time
 import warnings
 
 import crypten
+import crypten.communicator as comm
+
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
@@ -124,10 +126,10 @@ def run_tfe_benchmarks(
         if not skip_plaintext:
             logging.info("===== Evaluating plaintext benchmark network =====")
             validate(val_loader, model, criterion, print_freq, flatten=flatten)
-        private_model = create_private_benchmark_model(model)
+        private_model = create_private_benchmark_model(model, flatten=flatten)
         logging.info("===== Evaluating Private benchmark network =====")
         validate(val_loader, private_model, criterion, print_freq, flatten=flatten)
-        # validate_side_by_side(val_loader, model, private_model, flatten=flatten)
+        #validate_side_by_side(val_loader, model, private_model, flatten=flatten)
         return
 
     for epoch in range(start_epoch, epochs):
@@ -223,21 +225,23 @@ def train(
             )
 
 
-def validate_side_by_side(val_loader, model0, model1, flatten=False):
+def validate_side_by_side(val_loader, plaintext_model, private_model, flatten=False):
     # switch to evaluate mode
-    model0.eval()
+    plaintext_model.eval()
+    private_model.eval()
 
     with torch.no_grad():
         for i, (input, target) in enumerate(val_loader):
             # compute output
             if flatten:
                 input = input.view(input.size(0), -1)
-            output0 = model0(input)
-            output1 = model1(input)
+            output0 = plaintext_model(input)
+            encr_input = crypten.cryptensor(input)
+            output1 = private_model(encr_input)
             logging.info("==============================")
             logging.info("Example %d\t target = %d" % (i, target))
             logging.info("Plaintext:\n%s" % output0)
-            logging.info("Encrypted:\n%s\n" % output1)
+            logging.info("Encrypted:\n%s\n" % output1.get_plain_text())
             if i > 1000:
                 break
 
@@ -311,9 +315,12 @@ def validate(val_loader, model, criterion, print_freq=10, flatten=False):
 def save_checkpoint(
     state, is_best, filename="checkpoint.pth.tar", model_best="model_best.pth.tar"
 ):
-    torch.save(state, filename)
-    if is_best:
-        shutil.copyfile(filename, model_best)
+    rank = comm.get().get_rank()
+    #only save for process rank = 0
+    if rank == 0:
+        torch.save(state, filename)
+        if is_best:
+            shutil.copyfile(filename, model_best)
 
 
 def adjust_learning_rate(optimizer, epoch, lr=0.01):
@@ -351,8 +358,10 @@ def create_benchmark_model(benchmark):
         raise RuntimeError("Invalid benchmark network")
 
 
-def create_private_benchmark_model(model):
-    dummy_input = torch.rand((1, 1, 28, 28))
+def create_private_benchmark_model(model, flatten=False):
+    dummy_input = torch.empty((1, 1, 28, 28))
+    if flatten:
+        dummy_input = torch.empty((1, 28 * 28))
     private_model = crypten.nn.from_pytorch(model, dummy_input)
     private_model.encrypt()
     return private_model
