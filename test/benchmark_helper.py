@@ -24,10 +24,10 @@ class BenchmarkRun(NamedTuple):
 class BenchmarkHelper:
     _benchmark_results = defaultdict(list)
 
-    def __init__(self, benchmarks_enabled, benchmark_iters):
+    def __init__(self, benchmarks_enabled, benchmark_iters, queue):
         self.benchmarks_enabled = benchmarks_enabled
         self.benchmark_iters = benchmark_iters
-        self.queue = multiprocessing.Queue()
+        self.queue = queue
 
     def _add_benchmark_results(self, test_name, rank, args, time, niters):
         args_str = ", ".join([f"{k}={v}" for k, v in args.items()])

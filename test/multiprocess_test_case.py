@@ -90,12 +90,6 @@ class MultiProcessTestCase(unittest.TestCase):
     # or run the underlying test function.
     @classmethod
     def setUpClass(cls):
-        try:
-            multiprocessing.set_start_method("spawn")
-        except RuntimeError:
-            logging.warning("Failed to set start method to spawn")
-            pass
-
         for attr in dir(cls):
             if attr.startswith("test"):
                 fn = getattr(cls, attr)
@@ -108,6 +102,7 @@ class MultiProcessTestCase(unittest.TestCase):
         super().__init__(methodName)
 
         self.rank = self.MAIN_PROCESS_RANK
+        self.mp_context = multiprocessing.get_context('spawn')
 
     def setUp(self):
         super(MultiProcessTestCase, self).setUp()
@@ -118,8 +113,10 @@ class MultiProcessTestCase(unittest.TestCase):
         self.default_tolerance = 0.5
 
         cls = self.__class__
+        queue = self.mp_context.Queue()
         cls.benchmark_helper = BenchmarkHelper(self.benchmarks_enabled,
-                                               self.benchmark_iters)
+                                               self.benchmark_iters,
+                                               queue)
         if hasattr(self, 'benchmark_queue'):
             cls.benchmark_helper.queue = self.benchmark_queue
 
@@ -151,7 +148,7 @@ class MultiProcessTestCase(unittest.TestCase):
     def _spawn_process(self, rank):
         name = "process " + str(rank)
         test_name = self._current_test_name()
-        process = multiprocessing.Process(
+        process = self.mp_context.Process(
             target=self.__class__._run,
             name=name,
             args=(test_name, rank, self.__class__.benchmark_helper.queue, self.file),
