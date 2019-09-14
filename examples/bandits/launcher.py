@@ -15,9 +15,7 @@ To run bandits example on AWS EC2 instances:
 $ python3 aws_launcher.py \
       --ssh_key_file=$HOME/.aws/fair-$USER.pem \
       --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
-      --aux_files=\
-examples/bandits/membership_inference.py,\
-examples/bandits/plain_contextual_bandits.py,\
+      --aux_files=examples/bandits/plain_contextual_bandits.py,\
 examples/bandits/private_contextual_bandits.py \
       examples/bandits/launcher.py
 """

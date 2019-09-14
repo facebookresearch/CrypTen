@@ -5,15 +5,30 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""
+To run bandits example in multiprocess mode:
+
+$ python3 examples/bandits/membership_inference.py --multiprocess
+
+To run bandits example on AWS EC2 instances:
+
+$ python3 aws_launcher.py \
+      --ssh_key_file=$HOME/.aws/fair-$USER.pem \
+      --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
+      --aux_files=examples/bandits/launcher.py \
+      examples/bandits/membership_inference.py
+"""
+
 import argparse
 import logging
 import os
 import pickle
 
 import examples.util
-import experiment
 import torch
 import visdom
+
+from examples.multiprocess_launcher import MultiProcessLauncher
 
 
 def compute_rewards(weights, dataset, epsilon=0.0):
@@ -100,29 +115,37 @@ def parse_args():
     parser.add_argument(
         "--visualize", action="store_true", help="visualize results with visdom"
     )
+    parser.add_argument(
+        "--world_size",
+        type=int,
+        default=2,
+        help="The number of parties to launch. Each party acts as its own process",
+    )
+    parser.add_argument(
+        "--multiprocess",
+        default=False,
+        action="store_true",
+        help="Run example in multiprocess mode",
+    )
     return parser.parse_args()
 
 
-def main():
-
-    # parse command-line arguments:
-    args = parse_args()
-
+def membership_inference(args, load_data_module):
     # load clusters:
     clusters = None
     if args.number_arms is not None:
         clusters_file = "clusters_K=%d_pca=%d.torch" % (args.number_arms, args.pca)
-        clusters_file = os.path.join(experiment.MEMOIZE_FOLDER, clusters_file)
+        clusters_file = os.path.join(load_data_module.MEMOIZE_FOLDER, clusters_file)
         logging.info("Loading clusters from file...")
         clusters = torch.load(clusters_file)
 
     # load dataset:
-    train_data, _ = experiment.load_data(split="train")
+    train_data, _ = load_data_module.load_data(split="train")
     components = examples.util.pca(train_data, args.pca)
-    positive_set = experiment.load_data(
+    positive_set = load_data_module.load_data(
         split="train", pca=components, clusters=clusters, bandwidth=args.bandwidth
     )
-    negative_set = experiment.load_data(
+    negative_set = load_data_module.load_data(
         split="test", pca=components, clusters=clusters, bandwidth=args.bandwidth
     )
 
@@ -136,7 +159,7 @@ def main():
     iterations = [int(os.path.splitext(f)[0].split("_")[-1]) for f in model_files]
 
     # load permutation used in training:
-    perm = torch.load(args.permfile)
+    perm = load_data_module.load_data_sampler(permfile=args.permfile)
 
     def subset(dataset, iteration):
         ids = perm[:iteration]
@@ -167,5 +190,23 @@ def main():
         visdom.line(iterations, advantage, opts=opts)
 
 
+def _run_experiment(args):
+    import launcher
+    membership_inference(args, launcher)
+
+
+def main(run_experiment):
+    # parse command-line arguments:
+    args = parse_args()
+
+    if args.multiprocess:
+        launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
+        launcher.start()
+        launcher.join()
+        launcher.terminate()
+    else:
+        run_experiment(args)
+
+
 if __name__ == "__main__":
-    main()
+    main(_run_experiment)
