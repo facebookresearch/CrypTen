@@ -231,35 +231,42 @@ class TestNN(MultiProcessTestCase):
 
             # create encrypted CrypTen module:
             encr_module = crypten.nn.from_pytorch(module, input)
-            encr_module.encrypt()
-            self.assertTrue(encr_module.encrypted, "module not encrypted")
 
-            # check module:
-            for key in ["weight", "bias"]:
-                if hasattr(module, key):  # if PyTorch model has key
-                    encr_param = None
+            # check that module properly encrypts / decrypts and
+            # check that encrypting with current mode properly performs no-op
+            for encrypted in [False, True, True, False]:
+                encr_module.encrypt(mode=encrypted)
+                if encrypted:
+                    self.assertTrue(encr_module.encrypted, "module not encrypted")
+                else:
+                    self.assertFalse(encr_module.encrypted, "module encrypted")
+                for key in ["weight", "bias"]:
+                    if hasattr(module, key):  # if PyTorch model has key
+                        encr_param = None
 
-                    # find that key in the crypten.nn.Graph:
-                    if isinstance(encr_module, crypten.nn.Graph):
-                        for encr_node in encr_module.modules():
-                            if hasattr(encr_node, key):
-                                encr_param = getattr(encr_node, key)
-                                break
+                        # find that key in the crypten.nn.Graph:
+                        if isinstance(encr_module, crypten.nn.Graph):
+                            for encr_node in encr_module.modules():
+                                if hasattr(encr_node, key):
+                                    encr_param = getattr(encr_node, key)
+                                    break
 
-                    # or get it from the crypten Module directly:
-                    else:
-                        encr_param = getattr(encr_module, key)
+                        # or get it from the crypten Module directly:
+                        else:
+                            encr_param = getattr(encr_module, key)
 
-                    # compare with reference:
+                        # compare with reference:
 
-                    # NOTE: Because some parameters are initialized randomly
-                    # with different values on each process, we only want to
-                    # check that they are consistent with source parameter value
-                    reference = getattr(module, key)
-                    src_reference = comm.get().broadcast(reference, src=0)
+                        # NOTE: Because some parameters are initialized randomly
+                        # with different values on each process, we only want to
+                        # check that they are consistent with source parameter value
+                        reference = getattr(module, key)
+                        src_reference = comm.get().broadcast(reference, src=0)
 
-                    msg = "parameter %s in %s incorrect" % (key, module_name)
-                    self._check(encr_param, src_reference, msg)
+                        msg = "parameter %s in %s incorrect" % (key, module_name)
+                        if not encrypted:
+                            encr_param = crypten.cryptensor(encr_param)
+                        self._check(encr_param, src_reference, msg)
             self.assertFalse(encr_module.training, "training value incorrect")
 
             # compare model outputs:

@@ -98,10 +98,11 @@ class Module:
         """Encrypts the model."""
         if mode != self.encrypted:
             self.encrypted = mode
-            tensor_type = crypten.cryptensor if mode else torch.FloatTensor
-            kwargs = {'src': src} if mode else {}
             for name, param in self.named_parameters(recurse=False):
-                self._parameters[name] = tensor_type(param, **kwargs)
+                if mode:
+                    self._parameters[name] = crypten.cryptensor(param, src=src)
+                else:
+                    self._parameters[name] = param.get_plain_text()
                 setattr(self, name, self._parameters[name])
             return self._apply(lambda m: m.encrypt(mode=mode, src=src))
         return self
@@ -756,7 +757,14 @@ class _BatchNorm(Module):
         for dimension in dimensions:
             alpha = alpha.unsqueeze(dimension)
             beta = beta.unsqueeze(dimension)
-        return alpha * input + beta
+
+        # TODO: implement right operations with torch tensors:
+        # e.g. torch.tensor(...) * crypten.cryptensor(...)
+        # This is needed since the former implementation will break if `input`
+        # is encrypted but `alpha` is plaintext and vice-versa for the latter
+        if crypten.is_encrypted_tensor(alpha):
+            return alpha * input + beta
+        return input * alpha + beta
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
