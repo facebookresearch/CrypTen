@@ -457,7 +457,6 @@ class MPCTensor(CrypTensor):
         maximum_value = self.max(dim, keepdim=True)[0]
         logits = self - maximum_value
         numerator = logits.exp()
-        # correction should be approximately the maximum value
         denominator = numerator.sum(dim, keepdim=True)
         return numerator / denominator
 
@@ -471,6 +470,45 @@ class MPCTensor(CrypTensor):
         return result
 
     # Approximations:
+    def exp(self, iterations=8):
+        """Approximates the exponential function using a limit approximation:
+
+            exp(x) = lim (1 + x / n) ^ n
+
+        Here we compute exp by choosing n = 2 ** d for some large d and then
+        computing (1 + x / n) once and squaring d times.
+        """
+        result = 1 + self.div(2 ** iterations)
+        for _ in range(iterations):
+            result = result.square()
+        return result
+
+    def log(self, iterations=1, exp_iterations=8):
+        """Approximates the natural logarithm using 6th order modified
+        Householder iterations:
+
+        Iterations are computed by:
+                              h = 1 - x * exp(-y_n)
+        y_{n+1} = y_n - h * (1 + h / 2 + h^2 / 3 + h^3 / 6 + h^4 / 5 + h^5 / 7)
+        """
+
+        # Initialization to a decent estimate (found by qualitative inspection):
+        #                ln(x) = x/40 - 8exp(-2x - .3) + 1.9
+        term1 = self / 40
+        term2 = 8 * (-2 * self - 0.3).exp()
+        y = term1 - term2 + 1.9
+
+        # 6th order Householder iterations
+        for _ in range(iterations):
+            h = 1 - self * (-y).exp(iterations=exp_iterations)
+            h2 = h.square()
+            h3 = h2 * h
+            h4 = h2.square()
+            h5 = h4 * h
+            y -= h * (1 + h.div(2) + h2.div_(3) + h3.div_(6) + h4.div_(5) + h5.div_(7))
+
+        return y
+
     def reciprocal(self, method="NR", nr_iters=10, log_iters=1, all_pos=False):
         """
         Methods:
@@ -612,20 +650,48 @@ class MPCTensor(CrypTensor):
         else:
             raise ValueError(f"Improper value p ({p})for p-norm")
 
+    def _eix(self, iterations=10):
+        """Computes e^(i * self) where i is the imaginary unit.
+        Returns (Re{e^(i * self)}, Im{e^(i * self)} = cos(self), sin(self)
+        """
+        re = 1
+        im = self.div(2 ** iterations)
+
+        # First iteration uses knowledge that `re` is public and = 1
+        re -= im.square()
+        im *= 2
+
+        # Compute (a + bi)^2 -> (a^2 - b^2) + (2ab)i `iterations` times
+        for _ in range(iterations - 1):
+            a2 = re.square()
+            b2 = im.square()
+            im = im.mul_(re)
+            im._tensor *= 2
+            re = a2 - b2
+
+        return re, im
+
+    def cos(self, iterations=10):
+        """Computes the cosine of the input using cos(x) = Re{exp(i * x)}"""
+        return self.cossin(iterations=iterations)[0]
+
+    def sin(self, iterations=10):
+        """Computes the sine of the input using sin(x) = Im{exp(i * x)}"""
+        return self.cossin(iterations=iterations)[1]
+
+    def cossin(self, iterations=10):
+        """Computes cosine and sine of input via exp(i * x)."""
+        return self._eix(iterations=iterations)
+
 
 OOP_UNARY_FUNCTIONS = {
     "avg_pool2d": Ptype.arithmetic,
     "sum_pool2d": Ptype.arithmetic,
     "take": Ptype.arithmetic,
-    "exp": Ptype.arithmetic,
-    "log": Ptype.arithmetic,
     "square": Ptype.arithmetic,
     "mean": Ptype.arithmetic,
     "neg": Ptype.arithmetic,
     "__neg__": Ptype.arithmetic,
-    "cos": Ptype.arithmetic,
-    "sin": Ptype.arithmetic,
-    "cossin": Ptype.arithmetic,
     "invert": Ptype.binary,
     "lshift": Ptype.binary,
     "rshift": Ptype.binary,

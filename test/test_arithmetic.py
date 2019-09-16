@@ -394,31 +394,6 @@ class TestArithmetic(MultiProcessTestCase):
                                     )
                             self._check(encrypted_pool, reference, "%s failed" % func)
 
-    def test_approximations(self):
-        """Test appoximate functions (exp, log)"""
-        tensor = torch.tensor([0.01 * i for i in range(1, 1001, 1)])
-        encrypted_tensor = ArithmeticSharedTensor(tensor)
-
-        cases = ["exp", "log"]
-        for func in cases:
-            reference = getattr(tensor, func)()
-            with self.benchmark(niters=10, func=func) as bench:
-                for _ in bench.iters:
-                    encrypted_out = getattr(encrypted_tensor, func)()
-            self._check(encrypted_out, reference, "%s failed" % func)
-
-    def test_cos_sin(self):
-        tensor = torch.tensor([0.01 * i for i in range(-800, 801, 1)])
-        encrypted_tensor = ArithmeticSharedTensor(tensor)
-
-        cases = ["cos", "sin"]
-        for func in cases:
-            reference = getattr(tensor, func)()
-            with self.benchmark(niters=10, func=func) as bench:
-                for _ in bench.iters:
-                    encrypted_out = getattr(encrypted_tensor, func)()
-            self._check(encrypted_out, reference, "%s failed" % func)
-
     def test_take(self):
         """Tests take function of encrypted tensor"""
         tensor_size = [5, 5, 5, 5]
