@@ -768,6 +768,7 @@ class TestMPC(MultiProcessTestCase):
             self._check(encrypted_out, reference, f"pos_pow failed with power {p}")
 
     def test_pow(self):
+        """Tests pow function"""
         tensor = get_random_test_tensor(is_float=True)
         encrypted_tensor = MPCTensor(tensor)
 
@@ -779,17 +780,23 @@ class TestMPC(MultiProcessTestCase):
             self._check(encrypted_out, reference, "pow failed with power %s" % power)
 
     def test_norm(self):
-        # Test 2-norm
-        tensor = get_random_test_tensor(is_float=True)
-        reference = tensor.norm()
+        """Tests p-norm"""
+        for p in [1, 1.5, 2, 3, float('inf'), 'fro']:
+            for dim in [None, 0, 1, 2]:
+                tensor = get_random_test_tensor(size=(3, 3, 3), is_float=True) / 5
+                if dim is None:
+                    reference = tensor.norm(p=p)
+                else:
+                    reference = tensor.norm(p=p, dim=dim)
 
-        encrypted = MPCTensor(tensor)
-        with self.benchmark() as bench:
-            for _ in bench.iters:
-                encrypted_out = encrypted.norm()
-        self._check(encrypted_out, reference, "2-norm failed", tolerance=0.5)
+                encrypted = MPCTensor(tensor)
+                with self.benchmark() as bench:
+                    for _ in bench.iters:
+                        encrypted_out = encrypted.norm(p=p, dim=dim)
+                self._check(encrypted_out, reference, f"{p}-norm failed", tolerance=0.5)
 
     def test_logistic(self):
+        """Tests logistic functions (sigmoid, tanh)"""
         tensor = torch.tensor([0.01 * i for i in range(-1000, 1001, 1)])
         encrypted_tensor = MPCTensor(tensor)
 
@@ -802,6 +809,7 @@ class TestMPC(MultiProcessTestCase):
             self._check(encrypted_out, reference, "%s failed" % func)
 
     def test_cos_sin(self):
+        """Tests trigonometric functions (cos, sin)"""
         tensor = torch.tensor([0.01 * i for i in range(-1000, 1001, 1)])
         encrypted_tensor = MPCTensor(tensor)
 
@@ -814,6 +822,7 @@ class TestMPC(MultiProcessTestCase):
             self._check(encrypted_out, reference, "%s failed" % func)
 
     def test_bernoulli(self):
+        """Tests bernoulli sampling"""
         for size in [(10,), (10, 10), (10, 10, 10)]:
             probs = MPCTensor(torch.rand(size))
             with self.benchmark(size=size) as bench:
@@ -867,6 +876,7 @@ class TestMPC(MultiProcessTestCase):
                 self._check(encrypted_out, reference, "softmax failed")
 
     def test_get_set(self):
+        """Tests element setting and getting by index"""
         for tensor_type in [lambda x: x, MPCTensor]:
             for size in range(1, 5):
                 # Test __getitem__
@@ -906,6 +916,7 @@ class TestMPC(MultiProcessTestCase):
                 )
 
     def test_pad(self):
+        """Tests padding"""
         sizes = [(1,), (5,), (1, 1), (5, 5), (5, 5, 5), (5, 3, 32, 32)]
         pads = [
             (0, 0, 0, 0),
