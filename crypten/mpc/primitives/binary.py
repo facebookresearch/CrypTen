@@ -9,7 +9,6 @@
 import torch
 import crypten.communicator as comm
 from crypten.common.rng import generate_kbit_random_tensor
-from crypten.common.tensor_types import is_int_tensor
 from crypten.cryptensor import CrypTensor
 from crypten.encoder import FixedPointEncoder
 
@@ -42,16 +41,16 @@ class BinarySharedTensor(CrypTensor):
             size = tensor.size()
 
         # Generate Psuedo-random Sharing of Zero and add source's tensor
-        self._tensor = BinarySharedTensor.PRZS(size)._tensor
+        self.share = BinarySharedTensor.PRZS(size).share
         if self.rank == src:
             assert tensor is not None, "Source must provide a data tensor"
-            self._tensor ^= tensor
+            self.share ^= tensor
 
     @staticmethod
     def from_shares(share, src=0):
         """Generate a BinarySharedTensor from a share from each party"""
         result = BinarySharedTensor(src=SENTINEL)
-        result._tensor = share
+        result.share = share
         result.encoder = FixedPointEncoder(precision_bits=0)
         return result
 
@@ -68,22 +67,32 @@ class BinarySharedTensor(CrypTensor):
         tensor = BinarySharedTensor(src=SENTINEL)
         current_share = generate_kbit_random_tensor(*size, generator=comm.get().g0)
         next_share = generate_kbit_random_tensor(*size, generator=comm.get().g1)
-        tensor._tensor = current_share ^ next_share
+        tensor.share = current_share ^ next_share
         return tensor
 
     @property
     def rank(self):
         return comm.get().get_rank()
 
+    @property
+    def share(self):
+        """Returns underlying _tensor"""
+        return self._tensor
+
+    @share.setter
+    def share(self, value):
+        """Sets _tensor to value"""
+        self._tensor = value
+
     def shallow_copy(self):
         """Create a shallow copy"""
         result = BinarySharedTensor(src=SENTINEL)
         result.encoder = self.encoder
-        result._tensor = self._tensor
+        result.share = self.share
         return result
 
     def __repr__(self):
-        return f"BinarySharedTensor({self._tensor})"
+        return f"BinarySharedTensor({self.share})"
 
     def __bool__(self):
         """Override bool operator since encrypted tensors cannot evaluate"""
@@ -97,9 +106,9 @@ class BinarySharedTensor(CrypTensor):
         """Bitwise XOR operator (element-wise) in place"""
         if torch.is_tensor(y) or isinstance(y, int):
             if self.rank == 0:
-                self._tensor ^= y
+                self.share ^= y
         elif isinstance(y, BinarySharedTensor):
-            self._tensor ^= y._tensor
+            self.share ^= y.share
         else:
             raise TypeError("Cannot XOR %s with %s." % (type(y), type(self)))
         return self
@@ -109,22 +118,22 @@ class BinarySharedTensor(CrypTensor):
         result = self.clone()
         if isinstance(y, BinarySharedTensor):
             broadcast_tensors = torch.broadcast_tensors(
-                result._tensor, y._tensor
+                result.share, y.share
             )
-            result._tensor = broadcast_tensors[0].clone()
+            result.share = broadcast_tensors[0].clone()
         elif torch.is_tensor(y):
             broadcast_tensors = torch.broadcast_tensors(
-                result._tensor, y
+                result.share, y
             )
-            result._tensor = broadcast_tensors[0].clone()
+            result.share = broadcast_tensors[0].clone()
         return result.__ixor__(y)
 
     def __iand__(self, y):
         """Bitwise AND operator (element-wise) in place"""
         if torch.is_tensor(y) or isinstance(y, int):
-            self._tensor &= y
+            self.share &= y
         elif isinstance(y, BinarySharedTensor):
-            self._tensor.data = beaver.AND(self, y)._tensor.data
+            self.share.data = beaver.AND(self, y).share.data
         else:
             raise TypeError("Cannot AND %s with %s." % (type(y), type(self)))
         return self
@@ -134,14 +143,14 @@ class BinarySharedTensor(CrypTensor):
         result = self.clone()
         if isinstance(y, BinarySharedTensor):
             broadcast_tensors = torch.broadcast_tensors(
-                result._tensor, y._tensor
+                result.share, y.share
             )
-            result._tensor = broadcast_tensors[0].clone()
+            result.share = broadcast_tensors[0].clone()
         elif torch.is_tensor(y):
             broadcast_tensors = torch.broadcast_tensors(
-                result._tensor, y
+                result.share, y
             )
-            result._tensor = broadcast_tensors[0].clone()
+            result.share = broadcast_tensors[0].clone()
         return result.__iand__(y)
 
     def __ior__(self, y):
@@ -157,13 +166,13 @@ class BinarySharedTensor(CrypTensor):
         """Bitwise NOT operator (element-wise)"""
         result = self.clone()
         if result.rank == 0:
-            result._tensor ^= -1
+            result.share ^= -1
         return result
 
     def lshift_(self, value):
         """Left shift elements by `value` bits"""
         assert isinstance(value, int), "lshift must take an integer argument."
-        self._tensor <<= value
+        self.share <<= value
         return self
 
     def lshift(self, value):
@@ -173,7 +182,7 @@ class BinarySharedTensor(CrypTensor):
     def rshift_(self, value):
         """Right shift elements by `value` bits"""
         assert isinstance(value, int), "rshift must take an integer argument."
-        self._tensor >>= value
+        self.share >>= value
         return self
 
     def rshift(self, value):
@@ -192,7 +201,7 @@ class BinarySharedTensor(CrypTensor):
         assert isinstance(
             value, BinarySharedTensor
         ), "Unsupported input type %s for __setitem__" % type(value)
-        self._tensor.__setitem__(index, value._tensor)
+        self.share.__setitem__(index, value.share)
 
     @staticmethod
     def stack(seq, *args, **kwargs):
@@ -202,8 +211,8 @@ class BinarySharedTensor(CrypTensor):
             seq[0], BinarySharedTensor
         ), "Sequence must contain BinarySharedTensors"
         result = seq[0].shallow_copy()
-        result._tensor = torch.stack(
-            [BinarySharedTensor._tensor for BinarySharedTensor in seq], *args, **kwargs
+        result.share = torch.stack(
+            [BinarySharedTensor.share for BinarySharedTensor in seq], *args, **kwargs
         )
         return result
 
@@ -224,7 +233,7 @@ class BinarySharedTensor(CrypTensor):
             x1 = x[(x.size(0) // 2) :]
             x = x0 + x1
             if extra is not None:
-                x._tensor = torch.cat([x._tensor, extra._tensor.unsqueeze(0)])
+                x.share = torch.cat([x.share, extra.share.unsqueeze(0)])
 
         if dim is None:
             x = x.squeeze()
@@ -240,7 +249,7 @@ class BinarySharedTensor(CrypTensor):
 
     def reveal(self):
         """Get plaintext without any downscaling"""
-        shares = comm.get().all_gather(self._tensor)
+        shares = comm.get().all_gather(self.share)
         result = shares[0]
         for x in shares[1:]:
             result = result ^ x
@@ -293,7 +302,7 @@ PROPERTY_FUNCTIONS = ["__len__", "nelement", "dim", "size", "numel"]
 def _add_regular_function(function_name):
     def regular_func(self, *args, **kwargs):
         result = self.shallow_copy()
-        result._tensor = getattr(result._tensor, function_name)(*args, **kwargs)
+        result.share = getattr(result.share, function_name)(*args, **kwargs)
         return result
 
     setattr(BinarySharedTensor, function_name, regular_func)
@@ -301,7 +310,7 @@ def _add_regular_function(function_name):
 
 def _add_property_function(function_name):
     def property_func(self, *args, **kwargs):
-        return getattr(self._tensor, function_name)(*args, **kwargs)
+        return getattr(self.share, function_name)(*args, **kwargs)
 
     setattr(BinarySharedTensor, function_name, property_func)
 

@@ -52,6 +52,20 @@ class TestArithmetic(MultiProcessTestCase):
             logging.info("Result = %s;\nreference = %s" % (tensor, reference))
         self.assertTrue(test_passed, msg=msg)
 
+    def test_share_attr(self):
+        """Tests share attribute getter and setter"""
+        for is_float in (True, False):
+            reference = get_random_test_tensor(is_float=is_float)
+            encrypted_tensor = ArithmeticSharedTensor(reference)
+            self.assertTrue(
+                torch.equal(encrypted_tensor.share, encrypted_tensor.share),
+                "share getter failed")
+
+            new_share = get_random_test_tensor(is_float=False)
+            encrypted_tensor.share = new_share
+            self.assertTrue(torch.equal(encrypted_tensor.share, new_share),
+                            "share setter failed")
+
     def test_encrypt_decrypt(self):
         """
             Tests tensor encryption and decryption for both positive
@@ -554,8 +568,9 @@ class TestArithmetic(MultiProcessTestCase):
 
                     # ArithmeticSharedTensors can't divide by negative
                     # private values - MPCTensor overrides this to allow negatives
+                    # multiply denom by 10 to avoid division by small num
                     if func == "div" and tensor_type == ArithmeticSharedTensor:
-                        tensor2 = tensor2.abs()
+                        tensor2 = tensor2.abs() * 10
 
                     encrypted1 = ArithmeticSharedTensor(tensor1)
                     encrypted2 = tensor_type(tensor2)
@@ -609,7 +624,7 @@ class TestArithmetic(MultiProcessTestCase):
                 encrypted1 = ArithmeticSharedTensor(tensor1)
                 encrypted2 = tensor_type(tensor2)
 
-                input_plain_id = id(encrypted1._tensor)
+                input_plain_id = id(encrypted1.share)
                 input_encrypted_id = id(encrypted1)
 
                 # Test that out-of-place functions do not modify the input
@@ -627,7 +642,7 @@ class TestArithmetic(MultiProcessTestCase):
                     "%s out-of-place %s produces incorrect output"
                     % ("private" if private else "public", op),
                 )
-                self.assertFalse(id(encrypted_out._tensor) == input_plain_id)
+                self.assertFalse(id(encrypted_out.share) == input_plain_id)
                 self.assertFalse(id(encrypted_out) == input_encrypted_id)
 
                 # Test that in-place functions modify the input
@@ -644,7 +659,7 @@ class TestArithmetic(MultiProcessTestCase):
                     "%s in-place %s_ produces incorrect output"
                     % ("private" if private else "public", op),
                 )
-                self.assertTrue(id(encrypted_out._tensor) == input_plain_id)
+                self.assertTrue(id(encrypted_out.share) == input_plain_id)
                 self.assertTrue(id(encrypted_out) == input_encrypted_id)
 
     def test_control_flow_failure(self):

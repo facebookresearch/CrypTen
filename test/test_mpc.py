@@ -62,6 +62,21 @@ class TestMPC(MultiProcessTestCase):
         print(binary)
         repr(binary)
 
+    def test_share_attr(self):
+        """Tests share attribute getter and setter"""
+        for is_float in (True, False):
+            reference = get_random_test_tensor(is_float=is_float)
+            encrypted_tensor = MPCTensor(reference)
+            underlying_tensor = encrypted_tensor.share
+            self.assertTrue(
+                torch.equal(encrypted_tensor.share, underlying_tensor),
+                "share getter failed")
+
+            new_share = get_random_test_tensor(is_float=False)
+            encrypted_tensor.share = new_share
+            self.assertTrue(torch.equal(encrypted_tensor.share, new_share),
+                            "share setter failed")
+
     def test_encrypt_decrypt(self):
         """
             Tests tensor encryption and decryption for both positive
@@ -1116,11 +1131,10 @@ class TestMPC(MultiProcessTestCase):
 
             for dims in expand_dims:
                 encrypted_tensor_expanded = encrypted_tensor.expand(*dims)
-                # TODO: create .get_tensor() to replace ._tensor._tensor
                 # test that expand creates a view into the same underlying tensor
                 self.assertNotEqual(
-                    id(encrypted_tensor_expanded._tensor._tensor),
-                    id(encrypted_tensor._tensor._tensor),
+                    id(encrypted_tensor_expanded.share),
+                    id(encrypted_tensor.share),
                 )
                 self._check(
                     encrypted_tensor_expanded,

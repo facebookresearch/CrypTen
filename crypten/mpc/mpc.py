@@ -120,6 +120,16 @@ class MPCTensor(CrypTensor):
             value = MPCTensor(value, ptype=self.ptype)
         self._tensor.__setitem__(index, value._tensor)
 
+    @property
+    def share(self):
+        """Returns underlying _tensor"""
+        return self._tensor.share
+
+    @share.setter
+    def share(self, value):
+        """Sets _tensor to value"""
+        self._tensor.share = value
+
     def bernoulli(self):
         """Draws a random tensor of {0, 1} with given probabilities"""
         return self > crypten.mpc.rand(self.size())
@@ -322,8 +332,8 @@ class MPCTensor(CrypTensor):
         deviation is useful for implementing _max_pool2d_backward later.
         """
         max_input = self.shallow_copy()
-        max_input._tensor._tensor, output_size = pool_reshape(
-            self._tensor._tensor,
+        max_input.share, output_size = pool_reshape(
+            self.share,
             kernel_size,
             padding=padding,
             stride=stride,
@@ -465,11 +475,11 @@ class MPCTensor(CrypTensor):
         """Divide by a given tensor"""
         result = self.clone()
         if isinstance(y, CrypTensor):
-            result._tensor._tensor = torch.broadcast_tensors(
-                result._tensor._tensor, y._tensor._tensor
+            result.share = torch.broadcast_tensors(
+                result.share, y.share
             )[0].clone()
         elif torch.is_tensor(y):
-            result._tensor._tensor = torch.broadcast_tensors(result._tensor._tensor, y)[
+            result.share = torch.broadcast_tensors(result.share, y)[
                 0
             ].clone()
         return result.div_(y)

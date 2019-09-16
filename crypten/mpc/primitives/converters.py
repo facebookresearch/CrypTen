@@ -18,7 +18,7 @@ from . import beaver
 def _A2B(arithmetic_tensor):
     binary_tensor = BinarySharedTensor.stack(
         [
-            BinarySharedTensor(arithmetic_tensor._tensor, src=i)
+            BinarySharedTensor(arithmetic_tensor.share, src=i)
             for i in range(comm.get().get_world_size())
         ]
     )

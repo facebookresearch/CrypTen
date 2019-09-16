@@ -45,8 +45,8 @@ def __cat_stack_helper(op, tensors, *args, **kwargs):
 
     # Operate on all input tensors
     result = tensors[0].clone()
-    result._tensor._tensor = getattr(torch, op)(
-        [tensor._tensor._tensor for tensor in tensors], *args, **kwargs
+    result.share = getattr(torch, op)(
+        [tensor.share for tensor in tensors], *args, **kwargs
     )
     return result
 

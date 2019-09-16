@@ -46,16 +46,26 @@ class ArithmeticSharedTensor(CrypTensor):
             size = tensor.size()
 
         # Generate psuedo-random sharing of zero (PRZS) and add source's tensor
-        self._tensor = ArithmeticSharedTensor.PRZS(size)._tensor
+        self.share = ArithmeticSharedTensor.PRZS(size).share
         if self.rank == src:
             assert tensor is not None, "Source must provide a data tensor"
-            self._tensor += tensor
+            self.share += tensor
+
+    @property
+    def share(self):
+        """Returns underlying _tensor"""
+        return self._tensor
+
+    @share.setter
+    def share(self, value):
+        """Sets _tensor to value"""
+        self._tensor = value
 
     @staticmethod
     def from_shares(share, precision=None, src=0):
         """Generate an ArithmeticSharedTensor from a share from each party"""
         result = ArithmeticSharedTensor(src=SENTINEL)
-        result._tensor = share
+        result.share = share
         result.encoder = FixedPointEncoder(precision_bits=precision)
         return result
 
@@ -71,7 +81,7 @@ class ArithmeticSharedTensor(CrypTensor):
         tensor = ArithmeticSharedTensor(src=SENTINEL)
         current_share = generate_random_ring_element(*size, generator=comm.get().g0)
         next_share = generate_random_ring_element(*size, generator=comm.get().g1)
-        tensor._tensor = current_share - next_share
+        tensor.share = current_share - next_share
         return tensor
 
     @property
@@ -82,11 +92,11 @@ class ArithmeticSharedTensor(CrypTensor):
         """Create a shallow copy"""
         result = ArithmeticSharedTensor(src=SENTINEL)
         result.encoder = self.encoder
-        result._tensor = self._tensor
+        result.share = self.share
         return result
 
     def __repr__(self):
-        return f"ArithmeticSharedTensor({self._tensor})"
+        return f"ArithmeticSharedTensor({self.share})"
 
     def __bool__(self):
         """Override bool operator since encrypted tensors cannot evaluate"""
@@ -103,7 +113,7 @@ class ArithmeticSharedTensor(CrypTensor):
         assert isinstance(
             value, ArithmeticSharedTensor
         ), "Unsupported input type %s for __setitem__" % type(value)
-        self._tensor.__setitem__(index, value._tensor)
+        self.share.__setitem__(index, value.share)
 
     def pad(self, pad, mode="constant", value=0):
         """
@@ -117,20 +127,20 @@ class ArithmeticSharedTensor(CrypTensor):
         if isinstance(value, (int, float)):
             value = self.encoder.encode(value).item()
             if result.rank == 0:
-                result._tensor = torch.nn.functional.pad(
-                    result._tensor, pad, mode=mode, value=value
+                result.share = torch.nn.functional.pad(
+                    result.share, pad, mode=mode, value=value
                 )
             else:
-                result._tensor = torch.nn.functional.pad(
-                    result._tensor, pad, mode=mode, value=0
+                result.share = torch.nn.functional.pad(
+                    result.share, pad, mode=mode, value=0
                 )
         elif isinstance(value, ArithmeticSharedTensor):
             assert (
                 value.dim() == 0
             ), "Private values used for padding must be 0-dimensional"
-            value = value._tensor.item()
-            result._tensor = torch.nn.functional.pad(
-                result._tensor, pad, mode=mode, value=value
+            value = value.share.item()
+            result.share = torch.nn.functional.pad(
+                result.share, pad, mode=mode, value=value
             )
         else:
             raise TypeError(
@@ -150,14 +160,14 @@ class ArithmeticSharedTensor(CrypTensor):
             ), "Can't stack %s with ArithmeticSharedTensor" % type(tensor)
 
         result = tensors[0].shallow_copy()
-        result._tensor = torch.stack(
-            [tensor._tensor for tensor in tensors], *args, **kwargs
+        result.share = torch.stack(
+            [tensor.share for tensor in tensors], *args, **kwargs
         )
         return result
 
     def reveal(self):
         """Get plaintext without any downscaling"""
-        tensor = self._tensor.clone()
+        tensor = self.share.clone()
         return comm.get().all_reduce(tensor)
 
     def get_plain_text(self):
@@ -193,22 +203,22 @@ class ArithmeticSharedTensor(CrypTensor):
 
             if additive_func:  # ['add', 'sub']
                 if result.rank == 0:
-                    result._tensor = getattr(result._tensor, op)(y)
+                    result.share = getattr(result.share, op)(y)
                 else:
-                    result._tensor = torch.broadcast_tensors(result._tensor, y)[0]
+                    result.share = torch.broadcast_tensors(result.share, y)[0]
             elif op == "mul_":  # ['mul_']
-                result._tensor = result._tensor.mul_(y)
+                result.share = result.share.mul_(y)
             else:  # ['mul', 'matmul', 'conv2d', 'conv_transpose2d']
-                result._tensor = getattr(torch, op)(result._tensor, y, *args, **kwargs)
+                result.share = getattr(torch, op)(result.share, y, *args, **kwargs)
         elif private:
             if additive_func:  # ['add', 'sub', 'add_', 'sub_']
-                result._tensor = getattr(result._tensor, op)(y._tensor)
+                result.share = getattr(result.share, op)(y.share)
             else:  # ['mul', 'matmul', 'conv2d', 'conv_transpose2d']
                 # NOTE: 'mul_' calls 'mul' here
                 # Must copy _tensor.data here to support 'mul_' being inplace
-                result._tensor.data = getattr(beaver, op)(
+                result.share.data = getattr(beaver, op)(
                     result, y, *args, **kwargs
-                )._tensor.data
+                ).share.data
         else:
             raise TypeError("Cannot %s %s with %s" % (op, type(y), type(self)))
 
@@ -236,14 +246,14 @@ class ArithmeticSharedTensor(CrypTensor):
         """Perform element-wise multiplication"""
         if isinstance(y, int) or is_int_tensor(y):
             result = self.clone()
-            result._tensor = self._tensor * y
+            result.share = self.share * y
             return result
         return self._arithmetic_function(y, "mul")
 
     def mul_(self, y):
         """Perform element-wise multiplication"""
         if isinstance(y, int) or is_int_tensor(y):
-            self._tensor *= y
+            self.share *= y
             return self
         return self._arithmetic_function_(y, "mul")
 
@@ -251,11 +261,11 @@ class ArithmeticSharedTensor(CrypTensor):
         """Divide by a given tensor"""
         result = self.clone()
         if isinstance(y, CrypTensor):
-            result._tensor = torch.broadcast_tensors(result._tensor, y._tensor)[
+            result.share = torch.broadcast_tensors(result.share, y.share)[
                 0
             ].clone()
         elif torch.is_tensor(y):
-            result._tensor = torch.broadcast_tensors(result._tensor, y)[0].clone()
+            result.share = torch.broadcast_tensors(result.share, y)[0].clone()
         return result.div_(y)
 
     def div_(self, y):
@@ -264,13 +274,13 @@ class ArithmeticSharedTensor(CrypTensor):
         if isinstance(y, int) or is_int_tensor(y):
             if comm.get().get_world_size() > 2:
                 wraps = self.wraps()
-                self._tensor /= y
+                self.share /= y
                 # NOTE: The multiplication here must be split into two parts
                 # to avoid long out-of-bounds when y <= 2 since (2 ** 63) is
                 # larger than the largest long integer.
                 self -= wraps * 4 * (int(2 ** 62) // y)
             else:
-                self._tensor /= y
+                self.share /= y
             return self
 
         # Otherwise multiply by reciprocal
@@ -319,8 +329,8 @@ class ArithmeticSharedTensor(CrypTensor):
     def sum_pool2d(self, *args, **kwargs):
         """Perform a sum pooling on each 2D matrix of the given tensor"""
         result = self.shallow_copy()
-        result._tensor = torch.nn.functional.avg_pool2d(
-            self._tensor, *args, **kwargs, divisor_override=1
+        result.share = torch.nn.functional.avg_pool2d(
+            self.share, *args, **kwargs, divisor_override=1
         )
         return result
 
@@ -331,17 +341,17 @@ class ArithmeticSharedTensor(CrypTensor):
         """
         result = self.shallow_copy()
         if dimension is None:
-            result._tensor = torch.take(self._tensor, index)
+            result.share = torch.take(self.share, index)
         else:
             all_indices = [slice(0, x) for x in self.size()]
             all_indices[dimension] = index
-            result._tensor = self._tensor[all_indices]
+            result.share = self.share[all_indices]
         return result
 
     # negation and reciprocal:
     def neg_(self):
         """Negate the tensor's values"""
-        self._tensor.neg_()
+        self.share.neg_()
         return self
 
     def neg(self):
@@ -425,7 +435,7 @@ class ArithmeticSharedTensor(CrypTensor):
 
     def square(self):
         result = self.clone()
-        result._tensor = beaver.square(self).div_(self.encoder.scale)._tensor
+        result.share = beaver.square(self).div_(self.encoder.scale).share
         return result
 
     def norm(self, *args, **kwargs):
@@ -447,7 +457,7 @@ class ArithmeticSharedTensor(CrypTensor):
             a2 = re.square()
             b2 = im.square()
             im = im.mul_(re)
-            im._tensor *= 2
+            im.share *= 2
             re = a2 - b2
 
         return re, im
@@ -519,7 +529,7 @@ PROPERTY_FUNCTIONS = ["__len__", "nelement", "dim", "size", "numel"]
 def _add_regular_function(function_name):
     def regular_func(self, *args, **kwargs):
         result = self.shallow_copy()
-        result._tensor = getattr(result._tensor, function_name)(*args, **kwargs)
+        result.share = getattr(result.share, function_name)(*args, **kwargs)
         return result
 
     setattr(ArithmeticSharedTensor, function_name, regular_func)
@@ -527,7 +537,7 @@ def _add_regular_function(function_name):
 
 def _add_property_function(function_name):
     def property_func(self, *args, **kwargs):
-        return getattr(self._tensor, function_name)(*args, **kwargs)
+        return getattr(self.share, function_name)(*args, **kwargs)
 
     setattr(ArithmeticSharedTensor, function_name, property_func)
 
