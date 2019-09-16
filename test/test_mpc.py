@@ -721,24 +721,62 @@ class TestMPC(MultiProcessTestCase):
             self._check(encrypted_out, reference, "%s failed" % op)
 
     def test_approximations(self):
-        """Test appoximate functions (exp, log, sqrt, reciprocal, pow)"""
-        tensor = torch.tensor([0.01 * i for i in range(1, 1001, 1)])
-        encrypted_tensor = MPCTensor(tensor)
-
-        cases = ["exp", "log", "sqrt", "reciprocal"]
-        for func in cases:
+        """Test appoximate functions (exp, log, sqrt, reciprocal, pos_pow)"""
+        def test_with_inputs(func, input):
+            encrypted_tensor = MPCTensor(input)
             reference = getattr(tensor, func)()
             with self.benchmark(niters=10, func=func) as bench:
                 for _ in bench.iters:
                     encrypted_out = getattr(encrypted_tensor, func)()
             self._check(encrypted_out, reference, "%s failed" % func)
 
-        for power in [-2, -1, -0.5, 0, 0.5, 1, 2]:
+        # Test on [-10, 10] range
+        full_range_cases = ["exp"]
+        tensor = torch.tensor([0.01 * i for i in range(-1000, 1001, 1)])
+        for func in full_range_cases:
+            test_with_inputs(func, tensor)
+
+        # Test on [0, 10] range
+        tensor[tensor == 0] = 1.0
+        non_zero_cases = ["reciprocal"]
+        for func in non_zero_cases:
+            test_with_inputs(func, tensor)
+
+        # Test on [0, 10] range
+        tensor = tensor[1001:]
+        pos_cases = ["log", "sqrt"]
+        for func in pos_cases:
+            test_with_inputs(func, tensor)
+
+        # Test pos_pow with several exponents
+        encrypted_tensor = MPCTensor(tensor)
+
+        # Reduced the max_value so approximations have less absolute error
+        tensor_exponent = get_random_test_tensor(
+            max_value=2, size=tensor.size(), is_float=True
+        )
+        exponents = [-3, -2, -1, 0, 1, 2, 3, tensor_exponent]
+        exponents += [MPCTensor(tensor_exponent)]
+        for p in exponents:
+            if isinstance(p, MPCTensor):
+                reference = tensor.pow(p.get_plain_text())
+            else:
+                reference = tensor.pow(p)
+            with self.benchmark(niters=10, func=func) as bench:
+                for _ in bench.iters:
+                    encrypted_out = encrypted_tensor.pos_pow(p)
+            self._check(encrypted_out, reference, f"pos_pow failed with power {p}")
+
+    def test_pow(self):
+        tensor = get_random_test_tensor(is_float=True)
+        encrypted_tensor = MPCTensor(tensor)
+
+        for power in [-3, -2, -1, 0, 1, 2, 3]:
             reference = tensor.pow(power)
             with self.benchmark(niters=10, func="pow", power=power) as bench:
                 for _ in bench.iters:
                     encrypted_out = encrypted_tensor.pow(power)
-            self._check(encrypted_out, reference, "pow failed with %s power" % power)
+            self._check(encrypted_out, reference, "pow failed with power %s" % power)
 
     def test_norm(self):
         # Test 2-norm
@@ -901,6 +939,7 @@ class TestMPC(MultiProcessTestCase):
     def test_broadcast_arithmetic_ops(self):
         """Test broadcast of arithmetic functions."""
         arithmetic_functions = ["add", "sub", "mul", "div"]
+        # TODO: Add broadcasting for pos_pow since it can take a tensor argument
         arithmetic_sizes = [
             (),
             (1,),

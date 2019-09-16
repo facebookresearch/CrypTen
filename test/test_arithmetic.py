@@ -395,35 +395,17 @@ class TestArithmetic(MultiProcessTestCase):
                             self._check(encrypted_pool, reference, "%s failed" % func)
 
     def test_approximations(self):
-        """Test appoximate functions (exp, log, sqrt, reciprocal, pow)"""
+        """Test appoximate functions (exp, log)"""
         tensor = torch.tensor([0.01 * i for i in range(1, 1001, 1)])
         encrypted_tensor = ArithmeticSharedTensor(tensor)
 
-        cases = ["exp", "log", "sqrt", "reciprocal"]
+        cases = ["exp", "log"]
         for func in cases:
             reference = getattr(tensor, func)()
             with self.benchmark(niters=10, func=func) as bench:
                 for _ in bench.iters:
                     encrypted_out = getattr(encrypted_tensor, func)()
             self._check(encrypted_out, reference, "%s failed" % func)
-
-        for power in [-2, -1, -0.5, 0, 0.5, 1, 2]:
-            reference = tensor.pow(power)
-            with self.benchmark(niters=10, func="pow", power=power) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted_tensor.pow(power)
-            self._check(encrypted_out, reference, "pow failed with %s power" % power)
-
-    def test_norm(self):
-        # Test 2-norm
-        tensor = get_random_test_tensor(is_float=True)
-        reference = tensor.norm()
-
-        encrypted = ArithmeticSharedTensor(tensor)
-        with self.benchmark() as bench:
-            for _ in bench.iters:
-                encrypted_out = encrypted.norm()
-        self._check(encrypted_out, reference, "2-norm failed", tolerance=0.5)
 
     def test_cos_sin(self):
         tensor = torch.tensor([0.01 * i for i in range(-800, 801, 1)])
@@ -570,7 +552,7 @@ class TestArithmetic(MultiProcessTestCase):
                     # private values - MPCTensor overrides this to allow negatives
                     # multiply denom by 10 to avoid division by small num
                     if func == "div" and tensor_type == ArithmeticSharedTensor:
-                        tensor2 = tensor2.abs() * 10
+                        continue
 
                     encrypted1 = ArithmeticSharedTensor(tensor1)
                     encrypted2 = tensor_type(tensor2)
@@ -617,7 +599,7 @@ class TestArithmetic(MultiProcessTestCase):
                 # ArithmeticSharedTensors can't divide by negative
                 # private values - MPCTensor overrides this to allow negatives
                 if op == "div" and tensor_type == ArithmeticSharedTensor:
-                    tensor2 = tensor2.abs()
+                    continue
 
                 reference = getattr(torch, op)(tensor1, tensor2)
 

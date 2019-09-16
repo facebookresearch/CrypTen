@@ -270,8 +270,14 @@ class ArithmeticSharedTensor(CrypTensor):
 
     def div_(self, y):
         """Divide two tensors element-wise"""
-        # Truncate protocol for dividing by public integers:
+        # TODO: Add test converage for this code path (next 4 lines)
+        if isinstance(y, float) and int(y) == y:
+            y = int(y)
+        if is_float_tensor(y) and y.long().sub(y).eq(0).all():
+            y = y.long()
+
         if isinstance(y, int) or is_int_tensor(y):
+            # Truncate protocol for dividing by public integers:
             if comm.get().get_world_size() > 2:
                 wraps = self.wraps()
                 self.share /= y
@@ -287,10 +293,7 @@ class ArithmeticSharedTensor(CrypTensor):
         if isinstance(y, float):
             y = torch.FloatTensor([y])
 
-        assert is_float_tensor(y) or isinstance(
-            y, ArithmeticSharedTensor
-        ), "Unsupported type for div_: %s" % type(y)
-
+        assert is_float_tensor(y), "Unsupported type for div_: %s" % type(y)
         return self.mul_(y.reciprocal())
 
     def wraps(self):
@@ -398,48 +401,10 @@ class ArithmeticSharedTensor(CrypTensor):
 
         return y
 
-    def pow(self, p):
-        """
-        Approximates self ^ p by computing:
-            x ^ p = exp(p * log(x))
-        """
-        return self.log().mul_(p).exp(iterations=9)
-
-    def reciprocal(self, method="NR", nr_iters=10, log_iters=1, exp_iters=9):
-        """
-        Methods:
-            'NR' : Newton Raphson method computes the reciprocal using iterations
-                    of x[i+1] = (2x[i] - self * x[i]^2) and uses
-                    3exp(-(x-.5)) + 0.003 as an initial guess
-
-            'log' : Computes the reciprocal of the input from the observation that:
-                    x ^ -1 = exp(-log(x))
-        """
-        if method == "NR":
-            # Initialization to a decent estimate (found by qualitative inspection):
-            #                1/x = 3exp(.5 - x) + 0.003
-            result = 3 * (0.5 - self).exp() + 0.003
-            for _ in range(nr_iters):
-                result += result - result.square().mul_(self)
-            return result
-        elif method == "log":
-            return (-self.log(iterations=log_iters)).exp(iterations=exp_iters)
-        else:
-            raise ValueError("Invalid method %s given for reciprocal function" % method)
-
-    def sqrt(self):
-        """
-        Computes the square root of the input by raising it to the 0.5 power
-        """
-        return self.pow(0.5)
-
     def square(self):
         result = self.clone()
         result.share = beaver.square(self).div_(self.encoder.scale).share
         return result
-
-    def norm(self, *args, **kwargs):
-        return self.square().sum(*args, **kwargs).pow(0.5)
 
     def _eix(self, iterations=10):
         """Computes e^(i * self) where i is the imaginary unit.

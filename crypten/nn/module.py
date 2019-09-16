@@ -732,7 +732,11 @@ class _BatchNorm(Module):
 
     def precompute_alpha_beta(self):
         """Precompute values for multiplication and addition."""
-        inv_var = (self.running_var + self.eps).pow(-0.5)
+        inv_var = (self.running_var + self.eps)
+        if crypten.is_encrypted_tensor(inv_var):
+            inv_var = inv_var.pos_pow(-0.5)
+        else:
+            inv_var = inv_var.pow_(-0.5)
         self.alpha = inv_var * self.weight
         self.beta = self.bias - self.running_mean * self.alpha
 

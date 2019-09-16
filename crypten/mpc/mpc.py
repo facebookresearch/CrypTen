@@ -471,8 +471,48 @@ class MPCTensor(CrypTensor):
         return result
 
     # Approximations:
+    def reciprocal(self, method="NR", nr_iters=10, log_iters=1, all_pos=False):
+        """
+        Methods:
+            'NR' : Newton Raphson method computes the reciprocal using iterations
+                    of x[i+1] = (2x[i] - self * x[i]^2) and uses
+                    3exp(-(x-.5)) + 0.003 as an initial guess
+
+            'log' : Computes the reciprocal of the input from the observation that:
+                    x ^ -1 = exp(-log(x))
+
+        Parameters:
+            `nr_iters`:  determines the number of Newton-Raphson iterations to run
+                         for the `NR` method
+
+            `log_iters`: determines the number of Householder iterations to run
+                         when computing logarithms for the `log` method
+
+            `all_pos`: an optional boolean input to determine whether all elements
+                       of the input are known to be positive, which optimizes
+                       the step of computing the sign of the input.
+        """
+        if not all_pos:
+            sgn = self.sign()
+            abs = sgn * self
+            return sgn * abs.reciprocal(
+                method=method, nr_iters=nr_iters, log_iters=log_iters, all_pos=True
+            )
+
+        if method == "NR":
+            # Initialization to a decent estimate (found by qualitative inspection):
+            #                1/x = 3exp(.5 - x) + 0.003
+            result = 3 * (0.5 - self).exp() + 0.003
+            for _ in range(nr_iters):
+                result += result - result.square().mul_(self)
+            return result
+        elif method == "log":
+            return (-self.log(iterations=log_iters)).exp()
+        else:
+            raise ValueError("Invalid method %s given for reciprocal function" % method)
+
     def div(self, y):
-        """Divide by a given tensor"""
+        """Divide by a given scalar or tensor"""
         result = self.clone()
         if isinstance(y, CrypTensor):
             result.share = torch.broadcast_tensors(
@@ -486,11 +526,69 @@ class MPCTensor(CrypTensor):
 
     def div_(self, y):
         if isinstance(y, MPCTensor):
-            sign_y = y.sign()
-            abs_y = y * sign_y
-            return self.mul_(abs_y.reciprocal()).mul_(sign_y)
+            return self.mul_(y.reciprocal())
         self._tensor.div_(y)
         return self
+
+    def pow(self, p, **kwargs):
+        """
+        Computes an element-wise exponent `p` of a tensor, where `p` is an
+        integer.
+        """
+        # TODO: Make an inplace version to be consistent with PyTorch
+        if isinstance(p, float) and int(p) == p:
+            p = int(p)
+
+        if not isinstance(p, int):
+            raise TypeError(
+                "pow must take an integer exponent. For non-integer powers, use"
+                " pos_pow with positive-valued base."
+            )
+        if p < -1:
+            return self.reciprocal(**kwargs).pow(-p)
+        elif p == -1:
+            return self.reciprocal(**kwargs)
+        elif p == 0:
+            # Note: This returns 0 ** 0 -> 1 when inputs have zeros.
+            # This is consistent with PyTorch's pow function.
+            return MPCTensor(torch.ones(self.size()))
+        elif p == 1:
+            return self
+        elif p == 2:
+            return self.square()
+        elif p % 2 == 0:
+            return self.square().pow(p // 2)
+        else:
+            return self.square().mul_(self).pow((p - 1) // 2)
+
+    def pos_pow(self, p):
+        """
+        Approximates self ** p by computing:
+            x ^ p = exp(p * log(x))
+
+        Note that this requires that the base `self` contain only positive values
+        since log can only be computed on positive numbers.
+
+        Note that the value of `p` can be an integer, float, public tensor, or
+        encrypted tensor.
+        """
+        if isinstance(p, int) or (isinstance(p, float) and int(p) == p):
+            return self.pow(p)
+        return self.log().mul_(p).exp()
+
+    def sqrt(self):
+        """
+        Computes the square root of the input by raising it to the 0.5 power
+        """
+        return self.pos_pow(0.5)
+
+    def norm(self, dim=None):
+        """
+        Computes the 2-norm of the input tensor (or along a dimsion)
+        """
+        if dim is None:
+            return self.square().sum().pos_pow(0.5)
+        return self.square().sum(dim).pos_pow(0.5)
 
 
 OOP_UNARY_FUNCTIONS = {
@@ -499,11 +597,7 @@ OOP_UNARY_FUNCTIONS = {
     "take": Ptype.arithmetic,
     "exp": Ptype.arithmetic,
     "log": Ptype.arithmetic,
-    "pow": Ptype.arithmetic,
-    "reciprocal": Ptype.arithmetic,
-    "sqrt": Ptype.arithmetic,
     "square": Ptype.arithmetic,
-    "norm": Ptype.arithmetic,
     "mean": Ptype.arithmetic,
     "neg": Ptype.arithmetic,
     "__neg__": Ptype.arithmetic,
