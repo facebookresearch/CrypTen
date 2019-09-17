@@ -92,7 +92,7 @@ class Module:
             yield name, param
         if recurse:
             for module in self.modules():
-                module.named_parameters(recurse=recurse)
+                yield from module.named_parameters(recurse=recurse)
 
     def zero_grad(self):
         """Sets gradients of all parameters to zero."""
@@ -102,7 +102,7 @@ class Module:
     def update_parameters(self, learning_rate):
         """Performs gradient step on parameters."""
         for param in self.parameters():
-            param.tensor.add(param.grad.mul(learning_rate))
+            param.tensor.sub_(param.grad.mul(learning_rate))
 
     def register_buffer(self, name, buffer):
         """
@@ -132,7 +132,7 @@ class Module:
             yield name, buffer
         if recurse:
             for module in self.modules():
-                module.named_buffers(recurse=recurse)
+                yield from module.named_buffers(recurse=recurse)
 
     def _apply(self, fn):
         """Applies a function recursively on all modules."""

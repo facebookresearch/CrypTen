@@ -44,6 +44,25 @@ class TestNN(MultiProcessTestCase):
             logging.info("Result = %s;\nreference = %s" % (tensor, reference))
         self.assertTrue(test_passed, msg=msg)
 
+    def _compute_reference_parameters(self, init_name, reference, model, learning_rate):
+        for name, param in model.named_parameters(recurse=False):
+            local_name = init_name + "_" + name
+            reference[local_name] = param.get_plain_text() - \
+                learning_rate * param.grad.get_plain_text()
+        for name, module in model._modules.items():
+            local_name = init_name + "_" + name
+            reference = self._compute_reference_parameters(local_name, reference,
+                module, learning_rate)
+        return reference
+
+    def _check_reference_parameters(self, init_name, reference, model):
+        for name, param in model.named_parameters(recurse=False):
+            local_name = init_name + "_" + name
+            self._check(param, reference[local_name], "parameter update failed")
+        for name, module in model._modules.items():
+            local_name = init_name + "_" + name
+            self._check_reference_parameters(local_name, reference, module)
+
     def setUp(self):
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communicator
@@ -419,12 +438,10 @@ class TestNN(MultiProcessTestCase):
 
             # perform parameter update:
             reference = {}
-            for name, param in model.named_parameters():
-                reference[name] = param.get_plain_text() + \
-                    learning_rate * param.grad.get_plain_text()
+            reference = self._compute_reference_parameters("", reference, model,
+                learning_rate)
             model.update_parameters(learning_rate)
-            for name, param in model.named_parameters():
-                self._check(param, reference[name], "parameter update failed")
+            self._check_reference_parameters("", reference, model)
 
 
 # This code only runs when executing the file outside the test harness (e.g.
