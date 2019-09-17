@@ -33,12 +33,44 @@ def get_grad_fn(name):
     """
     Returns gradient function for the CrypTen function with the specified name.
     """
-    if name.endswith("_"):
+    if name.endswith("_") and not name.endswith("__"):  # TODO: Make less hacky.
         raise NotImplementedError("Autograd on in-place operations not supported.")
     if name in FUNCTION_REGISTRY:
         return FUNCTION_REGISTRY[name]
     else:
         return None
+
+
+def _ensure_tensors(inputs):
+    """
+    Converts scalars in inputs to correct tensor type.
+    """
+    for idx in range(len(inputs)):
+        if isinstance(inputs[idx], (int, float)):
+            inputs[idx] = torch.tensor(inputs[idx])
+    return inputs
+
+
+def _inverse_broadcast(grad_output, input_size):
+    """
+    Performs the inverse operation of a broadcast.
+    """
+
+    # special case where input was a scalar:
+    if input_size == torch.Size():
+        return grad_output.sum().unsqueeze(-1)
+
+    # remove batch dimension:
+    if grad_output.dim() == len(input_size) + 1:
+        grad_output = grad_output.sum(0, keepdim=False)
+    assert grad_output.dim() == len(input_size), \
+        "cannot perform inverse broadcast"
+
+    # perform accumulation across broadcast dimensions:
+    for dim in range(grad_output.dim()):
+        if input_size[dim] == 1 and grad_output.size(dim) > 1:
+            grad_output = grad_output.sum(dim, keepdim=True)
+    return grad_output
 
 
 class AutogradFunction(object):
@@ -196,11 +228,17 @@ class AutogradAdd(AutogradFunction):
 
     @staticmethod
     def forward(ctx, input):
+        input = _ensure_tensors(input)
+        ctx.save_multiple_for_backward([input[0].size(), input[1].size()])
         return input[0].add(input[1])
 
     @staticmethod
     def backward(ctx, grad_output):
-        return (grad_output.clone(), grad_output.clone())
+        input_size1, input_size2 = ctx.saved_tensors
+        return (
+            _inverse_broadcast(grad_output.clone(), input_size1),
+            _inverse_broadcast(grad_output.clone(), input_size2),
+        )
 
 
 @register_function("sub")
@@ -208,11 +246,17 @@ class AutogradSub(AutogradFunction):
 
     @staticmethod
     def forward(ctx, input):
+        input = _ensure_tensors(input)
+        ctx.save_multiple_for_backward([input[0].size(), input[1].size()])
         return input[0].sub(input[1])
 
     @staticmethod
     def backward(ctx, grad_output):
-        return (grad_output.clone(), grad_output.neg())
+        input_size1, input_size2 = ctx.saved_tensors
+        return (
+            _inverse_broadcast(grad_output.clone(), input_size1),
+            _inverse_broadcast(grad_output.clone(), input_size2).neg(),
+        )
 
 
 @register_function("mul")
@@ -220,6 +264,7 @@ class AutogradMul(AutogradFunction):
 
     @staticmethod
     def forward(ctx, input):
+        input = _ensure_tensors(input)
         ctx.save_for_backward(input)
         return input[0].mul(input[1])
 
@@ -227,7 +272,10 @@ class AutogradMul(AutogradFunction):
     def backward(ctx, grad_output):
         input, = ctx.saved_tensors
         self_, other = input
-        return (grad_output.mul(other), grad_output.mul(self_))
+        return (
+            _inverse_broadcast(grad_output.mul(other), self_.size()),
+            _inverse_broadcast(grad_output.mul(self_), other.size()),
+        )
 
 
 @register_function("matmul")
@@ -465,7 +513,7 @@ class AutogradMean(AutogradFunction):
     @staticmethod
     def forward(ctx, input, dim=None, keepdim=False):
         ctx.save_multiple_for_backward((input.size(), dim, keepdim))
-        return input.mean(dim=dim, keepdim=keepdim) if dim is not None \
+        return input.mean(dim, keepdim=keepdim) if dim is not None \
             else input.mean()
 
     @staticmethod
@@ -476,6 +524,26 @@ class AutogradMean(AutogradFunction):
         nelement = float(reduce(lambda x, y: x * y, input_size)
                          if dim is None else input_size[dim])
         return grad_output.new(torch.ones(input_size)).mul_(grad_output).div_(nelement)
+
+
+@register_function("var")
+class AutogradVariance(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input, dim=None, keepdim=False):
+        ctx.save_multiple_for_backward((input, dim, keepdim))
+        return input.var(dim, keepdim=keepdim) if dim is not None \
+            else input.var()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, dim, keepdim = ctx.saved_tensors
+        if not keepdim and dim is not None:
+            grad_output.unsqueeze(dim)
+        nelement = float(reduce(lambda x, y: x * y, input.size())
+                         if dim is None else input.size(dim))
+        mean = input.mean() if dim is None else input.mean(dim=dim, keepdim=keepdim)
+        return (input - mean).mul_(2.0).mul_(grad_output).div_(nelement)
 
 
 @register_function("min")
@@ -561,6 +629,27 @@ class AutogradSoftmax(AutogradFunction):
     def backward(ctx, grad_output):
         probs, = ctx.saved_tensors
         return grad_output.add(-probs.mul(grad_output).sum(1, keepdim=True)).mul_(probs)
+
+
+@register_function("pad")
+class AutogradPad(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input, value=0., mode="constant"):
+        input, padding = input
+        ctx.save_for_backward(padding)
+        output = input.pad(padding, value=value, mode=mode)
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        padding, = ctx.saved_tensors
+        for idx in range(0, len(padding), 2):
+            dim = grad_output.dim() - (idx // 2) - 1
+            start = padding[idx]
+            end = grad_output.size(dim) - padding[idx + 1] - padding[idx]
+            grad_output = grad_output.narrow(dim, start, end)
+        return grad_output
 
 
 @register_function("avg_pool2d")
@@ -709,3 +798,64 @@ class AutogradConv2D(AutogradFunction):
         grad_kernel = grad_kernel.narrow(2, 0, kernel_size_y)
         grad_kernel = grad_kernel.narrow(3, 0, kernel_size_x)
         return (grad_input, grad_kernel)
+
+
+@register_function("batchnorm")
+class AutogradBatchNorm(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input, running_mean=None, running_var=None,
+                training=False, eps=1e-05, momentum=0.1):
+
+        # unpack inputs:
+        input, weight, bias = input
+
+        # determine dimensions over which means and variances are computed:
+        dimensions = []
+        if input.dim() == 3:    # 1D input
+            dimensions = [0, 2]
+        elif input.dim() == 4:  # 2D input
+            dimensions = [0, 2, 3]
+        elif input.dim() == 5:  # 3D input
+            dimensions = [0, 2, 3, 4]
+
+        # track batch statistics:
+        if training:
+            mean = input.mean(dimensions)
+            variance = input.var(dimensions)
+            if running_mean is not None and running_var is not None:
+                pass
+                # TODO: Add CrypTensor.set() method for this to work.
+                # running_mean.set(running_mean.mul(1.0 - momentum)
+                #                              .add(mean.mul(momentum)))
+                # running_var.set(running_var.mul(1.0 - momentum)
+                #                            .add(variance.mul(momentum)))
+        else:
+            mean = running_mean
+            variance = running_var
+
+        # compute bias and gain:
+        inv_var = (variance + eps).pow(-0.5)
+        alpha = inv_var * weight
+        beta = bias - mean * alpha
+
+        # ensure dimensionality of bias and gain matches input dimensionality:
+        for dimension in dimensions:
+            inv_var = inv_var.unsqueeze(dimension)
+            alpha = alpha.unsqueeze(dimension)
+            beta = beta.unsqueeze(dimension)
+
+        # apply bias and gain:
+        ctx.save_multiple_for_backward((input, alpha, inv_var, alpha.size()))
+        return alpha * input + beta
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, alpha, inv_var, weight_size = ctx.saved_tensors
+        weight_grad = grad_output.mul(input).mul(inv_var)
+        bias_grad = grad_output.clone()
+        return (
+            grad_output.mul(alpha),
+            _inverse_broadcast(weight_grad, weight_size).squeeze(),
+            _inverse_broadcast(bias_grad, weight_size).squeeze(),
+        )  # FIXME: Unit tests claim gradients are incorrect.

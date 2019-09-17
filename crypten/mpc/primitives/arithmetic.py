@@ -307,12 +307,27 @@ class ArithmeticSharedTensor(CrypTensor):
     def mean(self, *args, **kwargs):
         """Computes mean of given tensor"""
         result = self.sum(*args, **kwargs)
-        sizes_summed = self.size(*args, **kwargs)
-        if isinstance(sizes_summed, int):
-            divisor = sizes_summed
+        size = self.size()
+        if len(args) > 0:  # dimension is specified
+            dims = [args[0]] if isinstance(args[0], int) else args[0]
+            size = [size[dim] for dim in dims]
+        assert len(size) > 0, "cannot reduce over zero dimensions"
+        divisor = reduce(lambda x, y: x * y, size)
+        return result.div(divisor)
+
+    def var(self, *args, **kwargs):
+        """Computes variance of tensor along specified dimensions."""
+        if len(args) > 0:  # dimension is specified
+            mean = self.mean(*args, **{"keepdim": True})
         else:
-            assert len(sizes_summed) > 0, "size of input tensor cannot be 0"
-            divisor = reduce(lambda x, y: x * y, sizes_summed)
+            mean = self.mean()
+        result = (self - mean).square().sum(*args, **kwargs)
+        size = self.size()
+        if len(args) > 0:  # dimension is specified
+            dims = [args[0]] if isinstance(args[0], int) else args[0]
+            size = [size[dim] for dim in dims]
+        assert len(size) > 0, "cannot reduce over zero dimensions"
+        divisor = reduce(lambda x, y: x * y, size)
         return result.div(divisor)
 
     def conv2d(self, kernel, **kwargs):

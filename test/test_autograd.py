@@ -18,7 +18,6 @@ from crypten.gradients import AutogradFunction
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 
-
 class TestAutograd(MultiProcessTestCase):
     """
     This class tests all autograd-related functionality.
@@ -113,10 +112,12 @@ class TestAutograd(MultiProcessTestCase):
             "norm": (3, 2),  # NOTE: Flaky because sqrt only works for values up to 200.
             "sum": (4, 3),
             "mean": (2, 9),
+            "var": (3, 4),
             "max": (6, 7),
             "min": (4, 5),
             "sigmoid": (4, 7),
             "softmax": (10, 5),
+            "pad": (6, 3),
             "avg_pool2d": (1, 3, 21, 21),
             "max_pool2d": (1, 3, 21, 21),
             "conv2d": (1, 4, 21, 21),
@@ -129,6 +130,7 @@ class TestAutograd(MultiProcessTestCase):
             "div": [4.0],
             "pow": [2.0],
             "softmax": [1],
+            "pad": [(1, 2, 3, 4)],
             "avg_pool2d": [5],
             "max_pool2d": [3],
             "conv2d": [get_random_test_tensor(size=(2, 4, 3, 3), is_float=True)],

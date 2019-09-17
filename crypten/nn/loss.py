@@ -36,7 +36,7 @@ class MSELoss(_Loss):
         assert (
             yhat.nelement() == N
         ), "input and target must have the same number of elements"
-        return (yhat - y).square().sum().div_(N)
+        return (yhat - y).square().sum().div(N)
 
 
 class L1Loss(_Loss):
@@ -49,7 +49,7 @@ class L1Loss(_Loss):
         assert (
             yhat.nelement() == N
         ), "input and target must have the same number of elements"
-        return (yhat - y).abs().sum().div_(N)
+        return (yhat - y).abs().sum().div(N)
 
 
 class BCELoss(_Loss):
@@ -63,7 +63,7 @@ class BCELoss(_Loss):
             yhat.nelement() == N
         ), "input and target must have the same number of elements"
         retval = y * yhat.log() + ((1 - y) * (1 - yhat).log())
-        return -retval.sum().div_(N)
+        return -retval.sum().div(N)
 
     # def backward(self, p, y):
     #     retval = ((1 - p).reciprocal() * (1 - y)) - p.reciprocal() * y

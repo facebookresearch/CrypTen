@@ -7,9 +7,7 @@
 
 import crypten
 import torch.nn
-
-
-# FIXME(lvdmaaten): Make crypten.nn work for any CrypTensor.
+from crypten.autograd_cryptensor import AutogradCrypTensor
 
 
 class Module:
@@ -19,6 +17,7 @@ class Module:
 
     def __init__(self):
         self._parameters = {}
+        self._buffers = {}
         self._modules = {}
         self.encrypted = False
         self.train()
@@ -39,6 +38,8 @@ class Module:
 
     def train(self, mode=True):
         """Sets the module in the specified training mode."""
+        for param in self.parameters():
+            param.requires_grad = mode
         self.training = mode
         return self
 
@@ -60,11 +61,17 @@ class Module:
         for name, module in self._modules.items():
             yield name, module
 
-    def register_parameter(self, name, param):
+    def register_parameter(self, name, param, requires_grad=True):
         """Register parameter in the module."""
         if name in self._parameters or hasattr(self, name):
             raise ValueError("Parameter or field %s already exists." % name)
-        self._parameters[name] = param
+        if torch.is_tensor(param):  # unencrypted model
+            param.requires_grad = requires_grad
+            self._parameters[name] = param
+        else:                       # encryped model
+            self._parameters[name] = AutogradCrypTensor(
+                param, requires_grad=requires_grad
+            )
         setattr(self, name, param)
 
     def set_parameter(self, name, param):
@@ -87,6 +94,46 @@ class Module:
             for module in self.modules():
                 module.named_parameters(recurse=recurse)
 
+    def zero_grad(self):
+        """Sets gradients of all parameters to zero."""
+        for param in self.parameters():
+            param.grad = None
+
+    def update_parameters(self, learning_rate):
+        """Performs gradient step on parameters."""
+        for param in self.parameters():
+            param.tensor.add(param.grad.mul(learning_rate))
+
+    def register_buffer(self, name, buffer):
+        """
+        Register buffer in the module. Buffers are encrypted like parameters but
+        they are not updated by parameter updates.
+        """
+        if name in self._buffers or hasattr(self, name):
+            raise ValueError("Buffer or field %s already exists." % name)
+        self._buffers[name] = buffer
+        setattr(self, name, buffer)
+
+    def set_buffer(self, name, buffer):
+        """Sets value of buffer in the module."""
+        if name not in self._buffers or not hasattr(self, name):
+            raise ValueError("Buffer %s does not exist." % name)
+        self._buffers[name] = buffer
+        setattr(self, name, buffer)
+
+    def buffers(self, recurse=True):
+        """Iterator over buffers."""
+        for _, buffer in self.named_buffers(recurse=recurse):
+            yield buffer
+
+    def named_buffers(self, recurse=True):
+        """Iterator over named buffers."""
+        for name, buffer in self._buffers.items():
+            yield name, buffer
+        if recurse:
+            for module in self.modules():
+                module.named_buffers(recurse=recurse)
+
     def _apply(self, fn):
         """Applies a function recursively on all modules."""
         fn(self)
@@ -97,13 +144,31 @@ class Module:
     def encrypt(self, mode=True, src=0):
         """Encrypts the model."""
         if mode != self.encrypted:
+
+            # encrypt / decrypt parameters:
             self.encrypted = mode
             for name, param in self.named_parameters(recurse=False):
-                if mode:
-                    self._parameters[name] = crypten.cryptensor(param, src=src)
-                else:
-                    self._parameters[name] = param.get_plain_text()
-                setattr(self, name, self._parameters[name])
+                requires_grad = param.requires_grad
+                if mode:  # encrypt parameter
+                    self.set_parameter(name, AutogradCrypTensor(
+                        crypten.cryptensor(param, **{'src': src}),
+                        requires_grad=requires_grad,
+                    ))
+                else:     # decrypt parameter
+                    self.set_parameter(name, param.get_plain_text())
+                    self._parameters[name].requires_grad = requires_grad
+
+            # encrypt / decrypt buffers:
+            for name, buffer in self.named_buffers(recurse=False):
+                if mode:  # encrypt buffer
+                    self.set_buffer(name, AutogradCrypTensor(
+                        crypten.cryptensor(param, **{'src': src}),
+                        requires_grad=False,
+                    ))
+                else:     # decrypt buffer
+                    self.set_buffer(name, buffer.get_plain_text())
+
+            # apply encryption recursively:
             return self._apply(lambda m: m.encrypt(mode=mode, src=src))
         return self
 
@@ -548,7 +613,7 @@ class Conv2d(Module):
     def forward(self, x):
         x = x.conv2d(self.weight, stride=self.stride, padding=self.padding)
         if hasattr(self, "bias"):
-            x += self.bias.unsqueeze(-1).unsqueeze(-1)
+            x = x.add(self.bias.unsqueeze(-1).unsqueeze(-1))
         return x
 
     @staticmethod
@@ -608,14 +673,13 @@ class _Pool2d(Module):
     """
 
     def __init__(
-        self, pool_type, kernel_size, stride=1, padding=0, return_indices=False
+        self, pool_type, kernel_size, stride=1, padding=0
     ):
         super().__init__()
         self.pool_type = pool_type
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
-        self.return_indices = return_indices
 
     def forward(self, x):
         args = [self.kernel_size]
@@ -623,7 +687,6 @@ class _Pool2d(Module):
         if self.pool_type == "average":
             return x.avg_pool2d(*args, **kwargs)
         elif self.pool_type == "max":
-            kwargs["return_indices"] = self.return_indices
             return x.max_pool2d(*args, **kwargs)
         else:
             raise ValueError("Unknown pooling type: %s" % self.pool_type)
@@ -675,13 +738,12 @@ class MaxPool2d(_Pool2d):
     Module that performs 2D max pooling.
     """
 
-    def __init__(self, kernel_size, stride=1, padding=0, return_indices=False):
+    def __init__(self, kernel_size, stride=1, padding=0):
         super().__init__(
             "max",
             kernel_size,
             stride=stride,
             padding=padding,
-            return_indices=return_indices
         )
 
     @staticmethod
@@ -721,50 +783,26 @@ class _BatchNorm(Module):
     def __init__(self, num_features, eps=1e-05, momentum=0.1):
         super().__init__()
 
-        # initialize model parameters:
+        # initialize model parameters and buffers:
         pytorch_module = torch.nn.BatchNorm1d(num_features)
-        for param in ["weight", "bias", "running_mean", "running_var"]:
+        for param in ["weight", "bias"]:
             self.register_parameter(param, getattr(pytorch_module, param))
+        for buffer in ["running_mean", "running_var"]:
+            self.register_buffer(buffer, getattr(pytorch_module, buffer))
 
         # set model attributes:
         self.eps = eps
         self.momentum = momentum
-        self.precompute_alpha_beta()
-
-    def precompute_alpha_beta(self):
-        """Precompute values for multiplication and addition."""
-        inv_var = (self.running_var + self.eps)
-        if crypten.is_encrypted_tensor(inv_var):
-            inv_var = inv_var.pos_pow(-0.5)
-        else:
-            inv_var = inv_var.pow_(-0.5)
-        self.alpha = inv_var * self.weight
-        self.beta = self.bias - self.running_mean * self.alpha
-
-    def encrypt(self, mode=True, src=0):
-        super().encrypt(mode=mode, src=src)
-        self.precompute_alpha_beta()
 
     def forward(self, input):
-        dimensions = []
-        alpha, beta = self.alpha, self.beta
-        if input.dim() == 3:  # 1D input
-            dimensions = [0, 2]
-        elif input.dim() == 4:  # 2D input
-            dimensions = [1, 1]
-        elif input.dim() == 5:  # 3D input
-            dimensions = [0, 2, 3, 4]
-        for dimension in dimensions:
-            alpha = alpha.unsqueeze(dimension)
-            beta = beta.unsqueeze(dimension)
-
-        # TODO: implement right operations with torch tensors:
-        # e.g. torch.tensor(...) * crypten.cryptensor(...)
-        # This is needed since the former implementation will break if `input`
-        # is encrypted but `alpha` is plaintext and vice-versa for the latter
-        if crypten.is_encrypted_tensor(alpha):
-            return alpha * input + beta
-        return input * alpha + beta
+        return input.batchnorm(
+            self.weight, self.bias,
+            running_mean=self.running_mean,
+            running_var=self.running_var,
+            training=self.training,
+            eps=self.eps,
+            momentum=self.momentum,
+        )
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
@@ -782,7 +820,10 @@ class _BatchNorm(Module):
 
         # set parameters:
         for key, value in parameters.items():
-            module.set_parameter(key, value)
+            if key in ["running_mean", "running_var"]:
+                module.set_buffer(key, value)
+            else:
+                module.set_parameter(key, value)
         return module
 
 

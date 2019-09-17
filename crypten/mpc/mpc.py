@@ -690,6 +690,7 @@ OOP_UNARY_FUNCTIONS = {
     "take": Ptype.arithmetic,
     "square": Ptype.arithmetic,
     "mean": Ptype.arithmetic,
+    "var": Ptype.arithmetic,
     "neg": Ptype.arithmetic,
     "__neg__": Ptype.arithmetic,
     "invert": Ptype.binary,

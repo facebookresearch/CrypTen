@@ -220,6 +220,17 @@ class TestMPC(MultiProcessTestCase):
             encrypted_out = encrypted.mean(dim)
             self._check(encrypted_out, reference, "mean failed")
 
+    def test_var(self):
+        """Tests computing variances of encrypted tensors."""
+        tensor = get_random_test_tensor(size=(5, 10, 15), is_float=True)
+        encrypted = MPCTensor(tensor)
+        self._check(encrypted.var(), tensor.var(), "var failed")
+
+        for dim in [0, 1, 2]:
+            reference = tensor.var(dim)
+            encrypted_out = encrypted.var(dim)
+            self._check(encrypted_out, reference, "var failed")
+
     def test_matmul(self):
         """Test matrix multiplication."""
         for tensor_type in [lambda x: x, MPCTensor]:

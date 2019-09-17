@@ -36,15 +36,16 @@ def print_communication_stats():
 def reset_communication_stats():
     crypten.communicator.get().reset_communication_stats()
 
+
 # Set backend
-__SUPPORTRED_BACKENDS = [crypten.mpc]
-__default_backend = __SUPPORTRED_BACKENDS[0]
+__SUPPORTED_BACKENDS = [crypten.mpc]
+__default_backend = __SUPPORTED_BACKENDS[0]
 
 
 def set_default_backend(new_default_backend):
     """Sets the default cryptensor backend (mpc, he)"""
     global __default_backend
-    assert new_default_backend in __SUPPORTRED_BACKENDS, (
+    assert new_default_backend in __SUPPORTED_BACKENDS, (
         "Backend %s is not supported" % new_default_backend
     )
     __default_backend = new_default_backend

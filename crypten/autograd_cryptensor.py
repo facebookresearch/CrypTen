@@ -54,9 +54,12 @@ class AutogradCrypTensor(object):
         "detach",
         "detach_",
         "_reset_gradients",
+        "tensor",
     ]
 
     def __init__(self, tensor, requires_grad=True):
+        if torch.is_tensor(tensor):
+            raise ValueError("Cannot create AutogradCrypTensor from PyTorch tensor.")
         self._tensor = tensor               # value of tensor
         self.requires_grad = requires_grad  # whether tensors needs gradient
         self._reset_gradients()
@@ -70,7 +73,12 @@ class AutogradCrypTensor(object):
         self.children = []                  # children of node in graph
         self.ctx = AutogradContext()        # contexts for AutogradFunctions
 
-    def backward(self, grad_input=None):
+    @property
+    def tensor(self):
+        """Returns underlying (non-autograd) tensor."""
+        return self._tensor
+
+    def backward(self, grad_input=None, top_node=True):
         """
         Backpropagates gradient through the computation graph. The function
         only maintains the gradients in leaf nodes of the graph.
@@ -79,9 +87,9 @@ class AutogradCrypTensor(object):
 
             # if we are in a leaf or if not all parents have backpropagated:
             parents_done = all(parent.grad_computed for parent in self.parents)
-            if len(self.children) == 0 or not parents_done:
+            if len(self.children) == 0 or (not top_node and not parents_done):
                 if self.grad is None:
-                    self.grad = grad_input      # store gradient...
+                    self.grad = grad_input.view(self.size())  # store gradient...
                 else:
                     self.grad.add_(grad_input)  # ... or accumulate gradient...
                 return                          # ... and do not proceed.
@@ -109,7 +117,7 @@ class AutogradCrypTensor(object):
             assert len(self.children) <= len(grad), \
                 "number of gradients to backpropagate does not match number of children"
             for idx, child in enumerate(self.children):
-                child.backward(grad_input=grad[idx])
+                child.backward(grad_input=grad[idx], top_node=False)
 
             # clean up gradients except in leaf nodes:
             if len(self.children) > 0:
@@ -191,3 +199,40 @@ class AutogradCrypTensor(object):
                 return result
 
             return autograd_forward
+
+
+# register all Python built-in functions in AutogradCrypTensor:
+def register_python_builtin(name, value):
+    def fn(self, *args, **kwargs):
+        return getattr(self, value)(*args, **kwargs)
+
+    setattr(AutogradCrypTensor, name, fn)
+
+
+PYTORCH_BUILTIN = {
+    "__abs__": "abs",
+    "__pow__": "pow",
+    "__rpow__": "pow",
+    "__add__": "add",
+    "__radd__": "add",
+    "__iadd__": "add_",
+    "__sub__": "sub",
+    "__rsub__": "sub",
+    "__isub__": "sub_",
+    "__mul__": "mul",
+    "__rmul__": "mul",
+    "__imul__": "mul_",
+    "__div__": "div",
+    "__truediv__": "div",
+    "__itruediv__": "div_",
+    "__matmul__": "matmul",
+    "__imatmul__": "matmul",  # not in-place, matching PyTorch
+    "__eq__": "eq",
+    "__ne__": "ne",
+    "__ge__": "ge",
+    "__gt__": "gt",
+    "__le__": "le",
+    "__lt__": "lt",
+}  # TODO: Add unit tests for these built-in functions.
+for name, value in PYTORCH_BUILTIN.items():
+    register_python_builtin(name, value)
