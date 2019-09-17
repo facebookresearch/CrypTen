@@ -60,6 +60,14 @@ class Communicator:
         """Broadcasts the tensor to all parties."""
         raise NotImplementedError("broadcast is not implemented")
 
+    def barrier(self):
+        """Synchronizes all processes.
+
+        This collective blocks processes until the whole group enters this
+        function.
+        """
+        raise NotImplementedError("barrier is not implemented")
+
     def get_world_size(self):
         """Returns the size of the world."""
         raise NotImplementedError("get_world_size is not implemented")
@@ -97,10 +105,11 @@ def _logging(func):
             else:
                 return args[0]
 
-        # TODO: Update this to remove scatter logging
         # only log if needed:
         if self.is_verbose():
-            if isinstance(args[0], (list, tuple)):  # N - 1 tensors communicated
+            if func.__name__ == "barrier":
+                self._log_communication(0, 1)
+            elif isinstance(args[0], (list, tuple)):  # N - 1 tensors communicated
                 self._log_communication(args[0][0].nelement() * (len(args[0]) - 1))
             elif torch.is_tensor(args[0]):  # one tensor communicated
                 self._log_communication(args[0].nelement())

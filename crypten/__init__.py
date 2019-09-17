@@ -5,15 +5,16 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import crypten.communicator
+import crypten.communicator as comm
+import torch
 
 
 def init():
-    return crypten.communicator.init()
+    return comm.init()
 
 
 def uninit():
-    return crypten.communicator.uninit()
+    return comm.uninit()
 
 
 import crypten.mpc  # noqa: F401
@@ -30,11 +31,12 @@ binary = ptype.binary
 
 
 def print_communication_stats():
-    crypten.communicator.get().print_communication_stats()
+    comm.get().print_communication_stats()
 
 
 def reset_communication_stats():
-    crypten.communicator.get().reset_communication_stats()
+    comm.get().reset_communication_stats()
+
 
 
 # Set backend
@@ -73,6 +75,74 @@ def is_encrypted_tensor(obj):
     Returns True if obj is an encrypted tensor.
     """
     return isinstance(obj, CrypTensor)
+
+
+def load(f, encrypted=False, src=None, **kwargs):
+    """
+    Loads an object saved with `torch.save()` or `crypten.save()`.
+
+    Parameters:
+        `f` - a file-like object (has to implement read(), :meth`readline`,
+              :meth`tell`, and :meth`seek`), or a string containing a file name
+        `encrypted` - Determines whether crypten should load an encrypted tesnor
+                      or a plaintext torch tensor.
+        `src` - Determines the source of the tensor. If `src` is None, each
+                party will attempt to read in the specified file. If `src` is
+                specified, the source party will read the tensor from
+    """
+    if encrypted:
+        raise NotImplementedError("Loading encrypted tensors is not yet supported")
+    else:
+        if src is None:
+            return torch.load(f, **kwargs)
+        else:
+            assert isinstance(src, int), "Load failed: src argument must be an integer"
+            assert src >= 0 and src < comm.get().get_world_size(), \
+                "Load failed: src must be in [0, world_size)"
+
+            if comm.get().get_rank() == src:
+                result = torch.load(f, **kwargs)
+
+                # Broadcast size to other parties.
+                dim = torch.tensor(result.dim(), dtype=torch.long)
+                size = torch.tensor(result.size(), dtype=torch.long)
+
+                comm.get().broadcast(dim, src=src)
+                comm.get().broadcast(size, src=src)
+
+            else:
+                # Receive size from source party
+                dim = torch.empty(size=(), dtype=torch.long)
+                comm.get().broadcast(dim, src=src)
+                size = torch.empty(size=(dim.item(),), dtype=torch.long)
+                comm.get().broadcast(size, src=src)
+                result = torch.empty(size=tuple(size.tolist()))
+
+            return result
+
+
+def save(obj, f, src=0, **kwargs):
+    """
+    Saves a CrypTensor or PyTorch tensor to a file.
+
+    Parameters:
+        `obj` - The CrypTensor or PyTorch tensor to be saved
+        `f` - a file-like object (has to implement write and flush) or a string
+              containing a file name
+        `src` - The source party that writes data to the specified file.
+    """
+    if is_encrypted_tensor(obj):
+        raise NotImplementedError("Saving encrypted tensors is not yet supported")
+    else:
+        assert isinstance(src, int), "Save failed: src must be an integer"
+        assert src >= 0 and src < comm.get().get_world_size(), \
+            "Save failed: src must be an integer in [0, world_size)"
+
+        if comm.get().get_rank() == src:
+            torch.save(obj, f, **kwargs)
+
+    # Implement barrier to avoid race conditions that require file to exist
+    comm.get().barrier()
 
 
 # Top level tensor functions

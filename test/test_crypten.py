@@ -114,14 +114,42 @@ class TestCrypten(MultiProcessTestCase):
 
     def test_ptype(self):
         """Test that ptype attribute creates the correct type of encrypted tensor"""
-        import crypten
-
         ptype_values = [crypten.arithmetic, crypten.binary]
         tensor_types = [ArithmeticSharedTensor, BinarySharedTensor]
         for i, curr_ptype in enumerate(ptype_values):
             tensor = get_random_test_tensor(is_float=False)
             encr_tensor = crypten.cryptensor(tensor, ptype=curr_ptype)
             assert isinstance(encr_tensor._tensor, tensor_types[i]), "ptype test failed"
+
+    def test_save_load(self):
+        """Test that crypten.save and crypten.load properly save and load tensors"""
+        import tempfile
+        filename = tempfile.NamedTemporaryFile(delete=True).name
+
+        import os
+        for dimensions in range(1, 5):
+            # Create tensors with different sizes on each rank
+            size = [crypten.communicator.get().get_rank() + 1] * dimensions
+            size = tuple(size)
+            tensor = torch.randn(size=size)
+
+            for src in range(crypten.communicator.get().get_world_size()):
+                crypten.save(tensor, filename, src=src)
+                result = crypten.load(filename, src=src)
+
+                reference_size = tuple([src + 1] * dimensions)
+                self.assertEqual(result.size(), reference_size)
+
+            # Test load with src=None
+            syncd_filename = "/tmp/tmpsyncdfile"
+            tensor = get_random_test_tensor()
+            crypten.save(tensor, syncd_filename)
+            result = crypten.load(syncd_filename)
+            self.assertTrue(result.eq(tensor).all().item())
+
+        # Only remove tempfile once
+        if self.rank == 0 and os.path.exists(syncd_filename):
+            os.remove(syncd_filename)
 
 
 # This code only runs when executing the file outside the test harness (e.g.

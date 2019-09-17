@@ -183,6 +183,16 @@ class DistributedCommunicator(Communicator):
         dist.broadcast(tensor, src, async_op=async_op)
         return tensor
 
+    @_logging
+    def barrier(self):
+        """Synchronizes all processes.
+
+        This collective blocks processes until the whole group enters this
+        function.
+        """
+        assert dist.is_initialized(), "initialize the communicator first"
+        dist.barrier()
+
     def get_world_size(self):
         """Returns the size of the world."""
         assert dist.is_initialized(), "initialize the communicator first"
