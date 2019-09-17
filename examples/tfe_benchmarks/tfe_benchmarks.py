@@ -40,6 +40,7 @@ def run_tfe_benchmarks(
     evaluate=True,
     seed=None,
     skip_plaintext=False,
+    save_checkpoint_dir="/tmp/tfe_benchmarks",
     context_manager=None,
 ):
     if seed is not None:
@@ -132,6 +133,8 @@ def run_tfe_benchmarks(
         #validate_side_by_side(val_loader, model, private_model, flatten=flatten)
         return
 
+    os.makedirs(save_checkpoint_dir, exist_ok=True)
+
     for epoch in range(start_epoch, epochs):
         adjust_learning_rate(optimizer, epoch, lr)
 
@@ -152,8 +155,8 @@ def run_tfe_benchmarks(
         # remember best prec@1 and save checkpoint
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
-        checkpoint_file = "../examples/benchmarks/checkpoint_bn" + network + ".pth.tar"
-        model_best_file = "../examples/benchmarks/model_best_bn" + network + ".pth.tar"
+        checkpoint_file = "checkpoint_bn" + network + ".pth.tar"
+        model_best_file = "model_best_bn" + network + ".pth.tar"
         save_checkpoint(
             {
                 "epoch": epoch + 1,
@@ -163,9 +166,10 @@ def run_tfe_benchmarks(
                 "optimizer": optimizer.state_dict(),
             },
             is_best,
-            filename=checkpoint_file,
-            model_best=model_best_file,
+            filename=os.path.join(save_checkpoint_dir, checkpoint_file),
+            model_best=os.path.join(save_checkpoint_dir, model_best_file),
         )
+    shutil.rmtree(save_checkpoint_dir)
 
 
 def train(

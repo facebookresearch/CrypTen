@@ -90,6 +90,13 @@ parser.add_argument(
     help="path to latest checkpoint (default: none)",
 )
 parser.add_argument(
+    "--save-checkpoint-dir",
+    default="/tmp/tfe_benchmarks",
+    type=str,
+    metavar="SAVE",
+    help="path to the dir to save checkpoint (default: /tmp/tfe_benchmarks)",
+)
+parser.add_argument(
     "-e",
     "--evaluate",
     dest="evaluate",
@@ -136,6 +143,7 @@ def _run_experiment(args):
         args.evaluate,
         args.seed,
         args.skip_plaintext,
+        args.save_checkpoint_dir,
     )
 
 
