@@ -111,6 +111,7 @@ class TestAutograd(MultiProcessTestCase):
             "sin": (5, 4),
             "cos": (9, 3),
             "abs": (8, 5),
+            "sign": (8, 5),
             "norm": (3, 2),  # NOTE: Flaky because sqrt only works for values up to 200.
             "sum": (4, 3),
             "mean": (2, 9),
