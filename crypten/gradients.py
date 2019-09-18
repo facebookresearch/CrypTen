@@ -134,6 +134,21 @@ class AutogradView(AutogradFunction):
         return grad_output.view(input.size())
 
 
+@register_function("reshape")
+class AutogradReshape(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        input, shape = input
+        ctx.save_for_backward(input.size())
+        return input.reshape(shape)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        size, = ctx.saved_tensors
+        return grad_output.reshape(size)
+
+
 @register_function("squeeze")
 class AutogradSqueeze(AutogradFunction):
 
