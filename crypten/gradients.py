@@ -210,6 +210,23 @@ class AutogradUnsqueeze(AutogradFunction):
         return grad_output.squeeze(dim)
 
 
+@register_function("__getitem__")
+class AutogradGetItem(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        input, index = input
+        ctx.save_multiple_for_backward([input, index])
+        return input[index]
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, index = ctx.saved_tensors
+        grad = input - input
+        grad[index] = grad_output
+        return grad
+
+
 @register_function("neg")
 class AutogradNeg(AutogradFunction):
 
