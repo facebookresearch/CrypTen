@@ -453,7 +453,10 @@ class Reshape(Module):
     def forward(self, input):
         assert isinstance(input, (list, tuple)), "input must be list or tuple"
         tensor, shape = input
-        shape = shape.get_plain_text()  # shape is not data so we can get plain text
+
+        # shape is not data so we can get plain text
+        if crypten.is_encrypted_tensor(shape):
+            shape = shape.get_plain_text()
         return tensor.reshape(shape.long().tolist())
 
     @staticmethod
