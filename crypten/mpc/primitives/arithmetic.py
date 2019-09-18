@@ -270,10 +270,10 @@ class ArithmeticSharedTensor(CrypTensor):
 
     def div_(self, y):
         """Divide two tensors element-wise"""
-        # TODO: Add test converage for this code path (next 4 lines)
+        # TODO: Add test coverage for this code path (next 4 lines)
         if isinstance(y, float) and int(y) == y:
             y = int(y)
-        if is_float_tensor(y) and y.long().sub(y).eq(0).all():
+        if is_float_tensor(y) and y.frac().eq(0).all():
             y = y.long()
 
         if isinstance(y, int) or is_int_tensor(y):
