@@ -29,7 +29,7 @@ from torchvision import datasets, transforms
 
 def run_tfe_benchmarks(
     network="B",
-    epochs=25,
+    epochs=5,
     start_epoch=0,
     batch_size=256,
     lr=0.01,

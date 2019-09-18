@@ -40,7 +40,7 @@ parser.add_argument(
     help="choose from networks A, B and C (default: B)",
 )
 parser.add_argument(
-    "--epochs", default=25, type=int, metavar="N", help="number of total epochs to run"
+    "--epochs", default=5, type=int, metavar="N", help="number of total epochs to run"
 )
 parser.add_argument(
     "--start-epoch",
