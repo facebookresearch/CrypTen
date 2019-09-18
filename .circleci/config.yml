@@ -22,8 +22,20 @@ jobs:
           name: Unit tests
           command: |
             . ~/crypten-test/bin/activate
-            echo 'for i in $(ls test/test_*.py); do python3 -m unittest $i; (($? != 0)) && exit 1; done; exit 0' > run_tests.sh
+            echo 'for i in $(ls test/test_*.py | grep -v test_context.py); do python3 -m unittest $i; (($? != 0)) && exit 1; done; exit 0' > run_tests.sh
             bash ./run_tests.sh
+      - run:
+          name: Linear svm example
+          command: |
+            . ~/crypten-test/bin/activate
+            PYTHONPATH=. python3 examples/mpc_linear_svm/launcher.py --multiprocess
+      - run:
+          name: TFE benchmarks example
+          command: |
+            . ~/crypten-test/bin/activate
+            pip3 install torchvision
+            PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --multiprocess
+
 
 
 # -------------------------------------------------------------------------------------
