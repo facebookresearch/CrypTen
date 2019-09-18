@@ -319,6 +319,7 @@ def validate(val_loader, model, criterion, print_freq=10, flatten=False):
 def save_checkpoint(
     state, is_best, filename="checkpoint.pth.tar", model_best="model_best.pth.tar"
 ):
+    # TODO: use crypten.save() in future.
     rank = comm.get().get_rank()
     #only save for process rank = 0
     if rank == 0:

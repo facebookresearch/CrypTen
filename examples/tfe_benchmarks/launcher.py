@@ -143,12 +143,13 @@ def _run_experiment(args):
         args.evaluate,
         args.seed,
         args.skip_plaintext,
-        args.save_checkpoint_dir,
+        os.path.join(args.save_checkpoint_dir, os.environ["RANK"])
     )
 
 
 def main(run_experiment):
     args = parser.parse_args()
+    os.makedirs(args.save_checkpoint_dir, exist_ok=True)
     if args.multiprocess:
         launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
         launcher.start()
