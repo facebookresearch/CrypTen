@@ -9,6 +9,7 @@ import crypten
 import torch
 from crypten.common.util import pool_reshape
 
+from ..autograd_cryptensor import AutogradCrypTensor
 from ..cryptensor import CrypTensor
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
@@ -750,6 +751,8 @@ def _add_oop_unary_passthrough_function(name, preferred=None):
 def _add_oop_binary_passthrough_function(name, preferred=None):
     def ob_wrapper_function(self, value, *args, **kwargs):
         result = self.shallow_copy()
+        if isinstance(value, AutogradCrypTensor):
+            value = value._tensor
         if isinstance(value, CrypTensor):
             value = value._tensor
         result._tensor = getattr(result._tensor, name)(value, *args, **kwargs)
@@ -774,6 +777,8 @@ def _add_inplace_unary_passthrough_function(name, preferred=None):
 
 def _add_inplace_binary_passthrough_function(name, preferred=None):
     def ib_wrapper_function(self, value, *args, **kwargs):
+        if isinstance(value, AutogradCrypTensor):
+            value = value._tensor
         if isinstance(value, CrypTensor):
             value = value._tensor
         self._tensor = getattr(self._tensor, name)(value, *args, **kwargs)
