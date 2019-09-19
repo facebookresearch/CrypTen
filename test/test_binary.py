@@ -9,6 +9,7 @@ from crypten.common.tensor_types import is_int_tensor
 from crypten.mpc.primitives import BinarySharedTensor
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
+import torch
 import crypten
 import itertools
 import logging
@@ -350,6 +351,41 @@ class TestBinary(MultiProcessTestCase):
         for src in [None, 'abc', -2, self.world_size]:
             with self.assertRaises(AssertionError):
                 BinarySharedTensor(tensor, src=src)
+
+    def test_where(self):
+        """Tests where() conditional element selection"""
+        sizes = [(10,), (5, 10), (1, 5, 10)]
+        y_types = [lambda x: x, BinarySharedTensor]
+
+        for size, y_type in itertools.product(sizes, y_types):
+            tensor1 = get_random_test_tensor(size=size, is_float=False)
+            encrypted_tensor1 = BinarySharedTensor(tensor1)
+            tensor2 = get_random_test_tensor(size=size, is_float=False)
+            encrypted_tensor2 = y_type(tensor2)
+
+            condition_tensor = get_random_test_tensor(
+                max_value=1, size=[1], is_float=False) + 1
+            condition_encrypted = BinarySharedTensor(condition_tensor)
+            condition_bool = condition_tensor.bool()
+
+            reference_out = tensor1 * condition_tensor + \
+                            tensor2 * (1 - condition_tensor)
+
+            encrypted_out = encrypted_tensor1.where(condition_bool,
+                                                    encrypted_tensor2)
+
+            y_is_private = y_type == BinarySharedTensor
+            self._check(encrypted_out,
+                        reference_out,
+                        f"{'private' if y_is_private else 'public'} y "
+                        "where failed with public condition")
+
+            encrypted_out = encrypted_tensor1.where(condition_encrypted,
+                                                    encrypted_tensor2)
+            self._check(encrypted_out,
+                        reference_out,
+                        f"{'private' if y_is_private else 'public'} y "
+                        "where failed with private condition")
 
 
 # This code only runs when executing the file outside the test harness (e.g.

@@ -422,6 +422,26 @@ class MPCTensor(CrypTensor):
         result = result[:, :, p0:result.size(2) - p0, p1:result.size(3) - p1]
         return result
 
+    def where(self, condition, y):
+        """Selects elements from self or y based on condition
+
+        Args:
+            condition (torch.bool or MPCTensor): when True yield self,
+                otherwise yield y
+            y (torch.tensor or MPCTensor): values selected at indices
+                where condition is False.
+
+        Returns: MPCTensor or torch.tensor
+        """
+        if torch.is_tensor(condition):
+            condition = condition.long()
+            y_masked = y * (1 - condition)
+        else:
+            # encrypted tensor must be first operand
+            y_masked = (1 - condition) * y
+
+        return self * condition + y_masked
+
     # Logistic Functions
     @mode(Ptype.arithmetic)
     def sigmoid(self, reciprocal_method="log"):
@@ -683,6 +703,7 @@ class MPCTensor(CrypTensor):
     def cossin(self, iterations=10):
         """Computes cosine and sine of input via exp(i * x)."""
         return self._eix(iterations=iterations)
+
 
 
 OOP_UNARY_FUNCTIONS = {

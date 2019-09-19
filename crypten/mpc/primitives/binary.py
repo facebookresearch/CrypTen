@@ -259,6 +259,36 @@ class BinarySharedTensor(CrypTensor):
         """Decrypt the tensor"""
         return self.encoder.decode(self.reveal())
 
+    def where(self, condition, y):
+        """Selects elements from self or y based on condition
+
+        Args:
+            condition (torch.bool or BinarySharedTensor): when True yield self,
+                otherwise yield y. Note condition is not bitwise.
+            y (torch.tensor or BinarySharedTensor): selected when condition is
+                False.
+
+        Returns: BinarySharedTensor or torch.tensor.
+        """
+        if torch.is_tensor(condition):
+            condition = condition.long()
+            is_binary = ((condition == 1) | (condition == 0)).all()
+            assert is_binary, "condition values must be 0 or 1"
+            # -1 mult expands 0 into binary 00...00 and 1 into 11...11
+            condition_expanded = - condition
+            y_masked = y & (~ condition_expanded)
+        elif isinstance(condition, BinarySharedTensor):
+            condition_expanded = condition.clone()
+            # -1 mult expands binary while & 1 isolates first bit
+            condition_expanded.share = -(condition_expanded.share & 1)
+            # encrypted tensor must be first operand
+            y_masked = (~ condition_expanded) & y
+        else:
+            msg = f"condition {condition} must be torch.bool, or BinarySharedTensor"
+            raise ValueError(msg)
+
+        return (self & condition_expanded) ^ y_masked
+
     # Bitwise operators
     __lshift__ = lshift
     __rshift__ = rshift

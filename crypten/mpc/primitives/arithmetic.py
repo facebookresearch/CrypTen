@@ -404,6 +404,26 @@ class ArithmeticSharedTensor(CrypTensor):
         assert self.dim() == 1 and y.dim() == 1, "Outer product must be on 1D tensors"
         return self.view((-1, 1)).matmul(y.view((1, -1)))
 
+    def where(self, condition, y):
+        """Selects elements from self or y based on condition
+
+        Args:
+            condition (torch.bool or ArithmeticSharedTensor): when True
+                yield self, otherwise yield y.
+            y (torch.tensor or ArithmeticSharedTensor): values selected at
+                indices where condition is False.
+
+        Returns: ArithmeticSharedTensor or torch.tensor
+        """
+        if torch.is_tensor(condition):
+            condition = condition.long()
+            y_masked = y * (1 - condition)
+        else:
+            # encrypted tensor must be first operand
+            y_masked = (1 - condition) * y
+
+        return self * condition + y_masked
+
 
 REGULAR_FUNCTIONS = [
     "clone",

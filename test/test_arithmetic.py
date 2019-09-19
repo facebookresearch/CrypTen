@@ -643,6 +643,39 @@ class TestArithmetic(MultiProcessTestCase):
             with self.assertRaises(AssertionError):
                 ArithmeticSharedTensor(tensor, src=src)
 
+    def test_where(self):
+        """Tests where() conditional element selection"""
+        sizes = [(10,), (5, 10), (1, 5, 10)]
+        y_types = [lambda x: x, ArithmeticSharedTensor]
+
+        for size, y_type in itertools.product(sizes, y_types):
+            tensor1 = get_random_test_tensor(size=size, is_float=True)
+            encrypted_tensor1 = ArithmeticSharedTensor(tensor1)
+            tensor2 = get_random_test_tensor(size=size, is_float=True)
+            encrypted_tensor2 = y_type(tensor2)
+
+            condition_tensor = get_random_test_tensor(
+                max_value=1, size=size, is_float=False) + 1
+            condition_encrypted = ArithmeticSharedTensor(condition_tensor)
+            condition_bool = condition_tensor.bool()
+
+            reference_out = tensor1.where(condition_bool, tensor2)
+
+            encrypted_out = encrypted_tensor1.where(condition_bool,
+                                                    encrypted_tensor2)
+            y_is_private = y_type == ArithmeticSharedTensor
+            self._check(encrypted_out,
+                        reference_out,
+                        f"{'private' if y_is_private else 'public'} y "
+                        "where failed with public condition")
+
+            encrypted_out = encrypted_tensor1.where(condition_encrypted,
+                                                    encrypted_tensor2)
+            self._check(encrypted_out,
+                        reference_out,
+                        f"{'private' if y_is_private else 'public'} y "
+                        "where failed with private condition")
+
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)
