@@ -501,6 +501,18 @@ class AutogradAbs(AutogradFunction):
         return grad_output.mul(sign.mul_(2.0).sub_(1.0))
 
 
+@register_function("sign")
+class AutogradSign(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        return input.sign()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output.sub(grad_output)
+
+
 @register_function("norm")
 class AutogradNorm(AutogradFunction):
 
