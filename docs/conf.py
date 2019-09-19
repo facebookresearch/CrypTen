@@ -18,8 +18,8 @@
 # -- Project information -----------------------------------------------------
 
 project = 'CrypTen'
-copyright = '2019, Facebpook AI Research'
-author = 'Facebpook AI Research'
+copyright = '2019, Facebook AI Research'
+author = 'Facebook AI Research'
 
 # The full version, including alpha/beta/rc tags
 release = '0.01'
