@@ -210,6 +210,12 @@ class CrypTensor(object):
         """
         raise NotImplementedError("__getitem__ is not implemented")
 
+    def __setitem__(self, index, value):
+        """
+        Sets elements of an encrypted tensor `self` at index `index` to `value`.
+        """
+        raise NotImplementedError("__setitem__ is not implemented")
+
     def index_select(self, dim, index):
         """
         Returns a new tensor which indexes the `self` tensor along dimension
