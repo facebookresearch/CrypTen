@@ -90,6 +90,7 @@ class TestAutograd(MultiProcessTestCase):
             "transpose": (4, 8, 3),
             "view": (8, 6),
             "reshape": (8, 6),
+            "flatten": (8, 6),
             "squeeze": (12, 1, 6),
             "unsqueeze": (7, 3),
             "neg": (8, 4),
