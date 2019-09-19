@@ -31,6 +31,7 @@ def run_experiment(
 ):
     """Runs inference using specified vision model on specified dataset."""
 
+    crypten.init()
     # check inputs:
     assert hasattr(models, model_name), (
         "torchvision does not provide %s model" % model_name
