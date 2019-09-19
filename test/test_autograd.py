@@ -88,6 +88,7 @@ class TestAutograd(MultiProcessTestCase):
         input_size = {
             "t": (2, 4),
             "transpose": (4, 8, 3),
+            "flip": (2, 3, 7, 2),
             "view": (8, 6),
             "reshape": (8, 6),
             "flatten": (8, 6),
@@ -128,6 +129,7 @@ class TestAutograd(MultiProcessTestCase):
         }
         additional_args = {
             "transpose": [2, 0],
+            "flip": [(1, 3, 2)],
             "view": [(4, 12)],
             "reshape": [(4, 12)],
             "squeeze": [1],

@@ -119,6 +119,21 @@ class AutogradTranspose(AutogradFunction):
         return grad_output.transpose(dim2, dim1)
 
 
+@register_function("flip")
+class AutogradFlip(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        input, dims = input
+        ctx.save_for_backward(dims)
+        return input.flip(dims)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        dims, = ctx.saved_tensors
+        return grad_output.flip(dims)
+
+
 @register_function("view")
 class AutogradView(AutogradFunction):
 
