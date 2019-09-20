@@ -9,6 +9,7 @@ import logging
 import os
 import random
 import shutil
+import tempfile
 import time
 import warnings
 
@@ -84,10 +85,10 @@ def run_tfe_benchmarks(
             logging.info("=> no checkpoint found at '{}'".format(resume))
 
     # Loading MNIST. Normalizing per pytorch/examples/blob/master/mnist/main.py
-    def preprocess_data(context_manager):
+    def preprocess_data(context_manager, data_dirname):
         with context_manager:
             mnist_train = datasets.MNIST(
-                "/tmp",
+                data_dirname,
                 download=True,
                 train=True,
                 transform=transforms.Compose(
@@ -98,7 +99,7 @@ def run_tfe_benchmarks(
                 ),
             )
             mnist_test = datasets.MNIST(
-                "/tmp",
+                data_dirname,
                 download=True,
                 train=False,
                 transform=transforms.Compose(
@@ -118,7 +119,10 @@ def run_tfe_benchmarks(
 
     if context_manager is None:
         context_manager = NoopContextManager()
-    train_loader, val_loader = preprocess_data(context_manager)
+
+    data_dir = tempfile.TemporaryDirectory()
+    train_loader, val_loader = preprocess_data(context_manager, data_dir.name)
+
     flatten = False
     if network == "A":
         flatten = True
@@ -169,6 +173,7 @@ def run_tfe_benchmarks(
             filename=os.path.join(save_checkpoint_dir, checkpoint_file),
             model_best=os.path.join(save_checkpoint_dir, model_best_file),
         )
+    data_dir.cleanup()
     shutil.rmtree(save_checkpoint_dir)
 
 
