@@ -512,8 +512,8 @@ class AutogradGer(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         input, = ctx.saved_tensors
-        self_, other = input
-        return (grad_output.matmul(other), grad_output.matmul(self_))
+        input, other = input
+        return (grad_output.matmul(other), input.matmul(grad_output))
 
 
 @register_function("sin")
@@ -606,6 +606,20 @@ class AutogradSum(AutogradFunction):
         if not keepdim and dim is not None:
             grad_output.unsqueeze(dim)
         return grad_output.new(torch.ones(input_size)).mul_(grad_output)
+
+
+@register_function("trace")
+class AutogradTrace(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input.size()[0])
+        return input.trace()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        size, = ctx.saved_tensors
+        return grad_output.new(torch.eye(size)).mul_(grad_output)
 
 
 @register_function("mean")
@@ -772,20 +786,24 @@ class AutogradAvgPool2D(AutogradFunction):
         output = input.avg_pool2d(kernel_size, padding=padding, stride=stride)
 
         # store information for backward pass:
-        ctx.save_multiple_for_backward((input, output, kernel_size, padding, stride))
+        ctx.save_multiple_for_backward(
+            (input.size(), output, kernel_size, padding, stride)
+        )
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
+        # TODO: Fix this backward. This seems to be correct when `grad_output`
+        # is all ones or when inchannels == 1, but is incorrect otherwise.
 
         # create average pooling kernel:
-        input, output, kernel_size, padding, stride = ctx.saved_tensors
-        inchannels = input.size(1)
+        input_size, output, kernel_size, padding, stride = ctx.saved_tensors
+        inchannels = input_size[1]
         ones = torch.ones(inchannels, inchannels, kernel_size, kernel_size)
 
         # compute gradient with respect to input:
         output_padding = torch.nn.grad._grad_input_padding(
-            grad_output, input.size(), stride, padding, (kernel_size, kernel_size)
+            grad_output, input_size, stride, padding, (kernel_size, kernel_size)
         )
         return grad_output.conv_transpose2d(
             grad_output.new(ones.div_(float(kernel_size ** 2))),

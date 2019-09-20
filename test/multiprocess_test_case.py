@@ -13,7 +13,6 @@ import tempfile
 import unittest
 from functools import wraps
 
-import numpy as np
 import torch
 import torch.distributed as dist
 import crypten.communicator as comm
