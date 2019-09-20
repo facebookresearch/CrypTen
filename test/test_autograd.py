@@ -126,6 +126,9 @@ class TestAutograd(MultiProcessTestCase):
             "avg_pool2d": (1, 3, 21, 21),
             "max_pool2d": (1, 3, 21, 21),
             "conv2d": (1, 4, 21, 21),
+            "take": (5, 10, 15),    # NOTE: this only tests the pytorch take
+                                    # functionality. The remaining take functionality
+                                    # is tested separately
         }
         additional_args = {
             "transpose": [2, 0],
@@ -142,6 +145,7 @@ class TestAutograd(MultiProcessTestCase):
             "avg_pool2d": [5],
             "max_pool2d": [3],
             "conv2d": [get_random_test_tensor(size=(2, 4, 3, 3), is_float=True)],
+            "take": [torch.tensor([0, 5, 10])],
         }
         binary_functions = ["add", "sub", "mul", "dot", "ger", "matmul"]
         positive_only = ["pow", "sqrt", "log"]
@@ -165,8 +169,11 @@ class TestAutograd(MultiProcessTestCase):
             if func_name in additional_args:
                 inputs += additional_args[func_name]
                 encr_inputs += additional_args[func_name]
-                encr_inputs = [crypten.cryptensor(t) if torch.is_tensor(t) else t
-                               for t in encr_inputs]
+                if func_name == "take":
+                    encr_inputs += [None]
+                else:
+                    encr_inputs = [crypten.cryptensor(t) if torch.is_tensor(t)
+                        else t for t in encr_inputs]
 
             # AutogradFunction.forward() does not accept unpacked inputs:
             if len(encr_inputs) == 1:
@@ -198,6 +205,42 @@ class TestAutograd(MultiProcessTestCase):
             for idx in range(number_of_inputs):
                 self._check(encr_grad[idx], inputs[idx].grad,
                             "%s backward failed" % func_name)
+
+    def test_autograd_func_take(self):
+        """Tests the part of autograd take that does not have a torch equivalent"""
+        tensor_size = [5, 5, 5, 5]
+        index = torch.tensor([[[1, 2], [3, 4]], [[4, 2], [1, 3]]], dtype=torch.long)
+
+        # Test when dimension!=None
+        for dimension in range(0, 4):
+            tensor = get_random_test_tensor(size=tensor_size, is_float=True)
+            ref_forward = torch.from_numpy(tensor.numpy().take(index, dimension))
+            encrypted_tensor = crypten.cryptensor(tensor)
+            encr_inputs = [encrypted_tensor, index, dimension]
+
+            #test forward
+            ctx = AutogradContext()
+            grad_fn_take = gradients.get_grad_fn("take")
+            encr_output = grad_fn_take.forward(ctx, encr_inputs)
+            self._check(encr_output, ref_forward, "take forward failed: dimension set")
+
+            # test backward:
+            # first, recreate take forward function with only torch operations
+            tensor2 = get_random_test_tensor(size=tensor_size, is_float=True)
+            tensor2.requires_grad = True
+            all_indices = [slice(0, x) for x in tensor2.size()]
+            all_indices[dimension] = index
+            ref_forward_torch = tensor2[all_indices]
+            grad_output = torch.ones(ref_forward_torch.size())
+            ref_forward_torch.backward(grad_output)
+
+            # next, do backward pass on encrypted tensor
+            encr_grad_output = encr_output.new(grad_output)
+            encr_grad = grad_fn_take.backward(ctx, encr_grad_output)
+
+            # finally, compare values
+            self._check(encr_grad, tensor2.grad,
+                "take backward failed: dimension set")
 
     def test_detach(self):
         """Tests that detach() works as expected."""

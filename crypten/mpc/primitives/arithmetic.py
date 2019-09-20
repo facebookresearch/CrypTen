@@ -338,6 +338,27 @@ class ArithmeticSharedTensor(CrypTensor):
         """Perform a 2D transpose convolution (deconvolution) using the given kernel"""
         return self._arithmetic_function(kernel, "conv_transpose2d", **kwargs)
 
+    def index_add(self, dim, index, tensor):
+        """Perform out-of-place index_add: Accumulate the elements of tensor into the
+        self tensor by adding to the indices in the order given in index. """
+        result = self.clone()
+        return result.index_add_(dim, index, tensor)
+
+    def index_add_(self, dim, index, tensor):
+        """Perform in-place index_add: Accumulate the elements of tensor into the
+        self tensor by adding to the indices in the order given in index. """
+        public = isinstance(tensor, (int, float)) or torch.is_tensor(tensor)
+        private = isinstance(tensor, ArithmeticSharedTensor)
+        if public:
+            enc_tensor = self.encoder.encode(tensor)
+            if self.rank == 0:
+                self._tensor.index_add_(dim, index, enc_tensor)
+        elif private:
+            self._tensor.index_add_(dim, index, tensor._tensor)
+        else:
+            raise TypeError("index_add second tensor of unsupported type")
+        return self
+
     def avg_pool2d(self, kernel_size, *args, **kwargs):
         """Perform an average pooling on each 2D matrix of the given tensor"""
         z = self.sum_pool2d(kernel_size, *args, **kwargs)

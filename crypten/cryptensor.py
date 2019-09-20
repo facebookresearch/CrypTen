@@ -196,6 +196,16 @@ class CrypTensor(object):
         """Perform (weighted) inner product with plain or cipher text."""
         raise NotImplementedError("dot is not implemented")
 
+    def index_add(self, dim, index, tensor):
+        """Perform out-of-place index_add: Accumulate the elements of tensor into
+        self tensor by adding to the indices in the order given in index. """
+        raise NotImplementedError("index_add is not implemented")
+
+    def index_add_(self, dim, index, tensor):
+        """Perform in-place index_add: Accumulate the elements of tensor into the
+        self tensor by adding to the indices in the order given in index. """
+        raise NotImplementedError("index_add_ is not implemented")
+
     # Regular functions:
     def clone(self):
         """

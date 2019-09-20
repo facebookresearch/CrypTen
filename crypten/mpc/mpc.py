@@ -704,6 +704,26 @@ class MPCTensor(CrypTensor):
         """Computes cosine and sine of input via exp(i * x)."""
         return self._eix(iterations=iterations)
 
+    def index_add(self, dim, index, tensor):
+        """Perform out-of-place index_add: Accumulate the elements of tensor into the
+        self tensor by adding to the indices in the order given in index. """
+        result = self.clone()
+        return result.index_add_(dim, index, tensor)
+
+    def index_add_(self, dim, index, tensor):
+        """Perform in-place index_add: Accumulate the elements of tensor into the
+        self tensor by adding to the indices in the order given in index. """
+        assert index.dim() == 1, "index needs to be a vector"
+        public = isinstance(tensor, (int, float)) or torch.is_tensor(tensor)
+        private = isinstance(tensor, MPCTensor)
+        if public:
+            self._tensor.index_add_(dim, index, tensor)
+        elif private:
+            self._tensor.index_add_(dim, index, tensor._tensor)
+        else:
+            raise TypeError("index_add second tensor of unsupported type")
+        return self
+
 
 
 OOP_UNARY_FUNCTIONS = {

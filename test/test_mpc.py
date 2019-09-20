@@ -958,6 +958,52 @@ class TestMPC(MultiProcessTestCase):
                                 )
                         self._check(encrypted_out, reference, "pad failed")
 
+    def test_index_add(self):
+        """Test index_add function of encrypted tensor"""
+        index_add_functions = ["index_add", "index_add_"]
+        tensor_size1 = [5, 5, 5, 5]
+        index = torch.tensor([1, 2, 3, 4, 4, 2, 1, 3], dtype=torch.long)
+        for dimension in range(0, 4):
+            tensor_size2 = [5, 5, 5, 5]
+            tensor_size2[dimension] = index.size(0)
+            for func in index_add_functions:
+                for tensor_type in [lambda x: x, MPCTensor]:
+                    tensor1 = get_random_test_tensor(size=tensor_size1, is_float=True)
+                    tensor2 = get_random_test_tensor(size=tensor_size2, is_float=True)
+                    encrypted = MPCTensor(tensor1)
+                    encrypted2 = tensor_type(tensor2)
+                    reference = getattr(tensor1, func)(dimension, index, tensor2)
+                    encrypted_out = getattr(encrypted, func)(dimension, index,
+                        encrypted2)
+                    private_type = tensor_type == MPCTensor
+                    self._check(
+                        encrypted_out,
+                        reference,
+                        "%s %s failed" % ("private" if private_type else "public",
+                            func),
+                    )
+                    if func.endswith("_"):
+                        # Check in-place index_add worked
+                        self._check(
+                            encrypted,
+                            reference,
+                            "%s %s failed"
+                            % ("private" if private_type else "public", func),
+                        )
+                    else:
+                        # Check original is not modified
+                        self._check(
+                            encrypted,
+                            tensor1,
+                            "%s %s failed"
+                            % (
+                                "private"
+                                if tensor_type == MPCTensor
+                                else "public",
+                                func,
+                            ),
+                        )
+
     def test_broadcast_arithmetic_ops(self):
         """Test broadcast of arithmetic functions."""
         arithmetic_functions = ["add", "sub", "mul", "div"]

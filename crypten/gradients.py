@@ -178,6 +178,34 @@ class AutogradFlatten(AutogradFunction):
         return grad_output.reshape(size)
 
 
+@register_function("take")
+class AutogradTake(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        input, index, dimension = input
+        ctx.save_multiple_for_backward((input, index, dimension))
+        return input.take(index, dimension)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, index, dimension = ctx.saved_tensors
+        if dimension is None:
+            grad = input - input
+            grad_flat = grad.flatten()
+            flat_index = index.flatten()
+            grad_output_flat = grad_output.flatten()
+            grad_flat[flat_index] = grad_output_flat
+            grad = grad_flat.reshape(input.size())
+        else:
+            grad = input - input
+            flat_index = index.flatten()
+            grad_output_flat = grad_output.flatten(start_dim=dimension,
+                                    end_dim=(dimension + index.dim() - 1))
+            grad.index_add_(dimension, flat_index, grad_output_flat)
+        return grad
+
+
 @register_function("squeeze")
 class AutogradSqueeze(AutogradFunction):
 
