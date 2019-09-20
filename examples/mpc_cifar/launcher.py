@@ -9,7 +9,6 @@
 To run mpc_cifar example in multiprocess mode:
 
 $ python3 examples/mpc_cifar/launcher.py \
-    path-to-data-dir \
     --evaluate \
     --resume path-to-model/model.pth.tar \
     --batch-size 1 \
@@ -131,7 +130,6 @@ def _run_experiment(args):
         level = logging.CRITICAL
     logging.getLogger().setLevel(level)
     run_mpc_cifar(
-        args.data,
         args.epochs,
         args.start_epoch,
         args.batch_size,

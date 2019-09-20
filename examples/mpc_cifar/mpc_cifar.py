@@ -308,7 +308,7 @@ def validate(val_loader, model, criterion, print_freq=10):
 def save_checkpoint(state, is_best, filename="checkpoint.pth.tar"):
     """Saves checkpoint of plaintext model"""
     #only save from rank 0 process to avoid race condition
-    rank = crypten.comm.get_rank()
+    rank = comm.get().get_rank()
     if rank == 0:
         torch.save(state, filename)
         if is_best:
@@ -362,3 +362,4 @@ class LeNet(nn.Sequential):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
+

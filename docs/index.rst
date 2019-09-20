@@ -1,6 +1,4 @@
-.. CrypTen documentation master file, created by
-   sphinx-quickstart on Thu Sep 12 20:49:44 2019.
-   You can adapt this file completely to your liking, but it should at least
+.. CrypTen documentation master file, created by sphinx-quickstart on Thu Sep 12 20:49:44 2019.  You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
 CrypTen Documentation
@@ -62,6 +60,14 @@ On a single node, you can run it as follows
    :maxdepth: 2
    :caption: Contents:
 
+
+The CIFAR example uses an adaptation of LeNet with ReLU activations. 
+A pre-trained model checkpoint is available in the ``mpc_cifar/model`` directory.
+On a single node, you can train using
+
+.. code-block:: bash
+
+    $ python3 examples/mpc_cifar/launcher.py --batch-size 4 --world_size 1
 
 
 Indices and tables
