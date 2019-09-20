@@ -676,6 +676,17 @@ class TestArithmetic(MultiProcessTestCase):
                         f"{'private' if y_is_private else 'public'} y "
                         "where failed with private condition")
 
+            # test scalar y
+            scalar = get_random_test_tensor(
+                max_value=0, size=[1], is_float=True)
+            self._check(encrypted_tensor1.where(condition_bool, scalar),
+                        tensor1.where(condition_bool, scalar),
+                        "where failed against scalar y with public condition")
+
+            self._check(encrypted_tensor1.where(condition_encrypted, scalar),
+                        tensor1.where(condition_bool, scalar),
+                        "where failed against scalar y with private condition")
+
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)

@@ -434,7 +434,7 @@ class MPCTensor(CrypTensor):
         Returns: MPCTensor or torch.tensor
         """
         if torch.is_tensor(condition):
-            condition = condition.long()
+            condition = condition.float()
             y_masked = y * (1 - condition)
         else:
             # encrypted tensor must be first operand
