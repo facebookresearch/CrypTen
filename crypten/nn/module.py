@@ -101,8 +101,10 @@ class Module:
 
     def update_parameters(self, learning_rate):
         """Performs gradient step on parameters."""
+        assert self.training, "module not in training mode"
         for param in self.parameters():
-            param.tensor.sub_(param.grad.mul(learning_rate))
+            if param.grad is not None:
+                param.tensor.sub_(param.grad.mul(learning_rate))
 
     def register_buffer(self, name, buffer):
         """
@@ -162,7 +164,7 @@ class Module:
             for name, buffer in self.named_buffers(recurse=False):
                 if mode:  # encrypt buffer
                     self.set_buffer(name, AutogradCrypTensor(
-                        crypten.cryptensor(param, **{'src': src}),
+                        crypten.cryptensor(buffer, **{'src': src}),
                         requires_grad=False,
                     ))
                 else:     # decrypt buffer
@@ -276,12 +278,15 @@ class Constant(Module):
     Modules that returns a constant.
     """
 
-    def __init__(self, value):
+    def __init__(self, value, trainable=False):
         super().__init__()
         if not torch.is_tensor(value):
             value = torch.tensor(value)
         value = value.to(dtype=torch.float)
-        self.register_parameter("value", value)
+        if trainable:
+            self.register_parameter("value", value)
+        else:
+            self.register_buffer("value", value)
 
     def forward(self, input):
         return self.value

@@ -443,6 +443,79 @@ class TestNN(MultiProcessTestCase):
             model.update_parameters(learning_rate)
             self._check_reference_parameters("", reference, model)
 
+    def test_from_pytorch_training(self):
+        """Tests the from_pytorch code path for training CrypTen models"""
+        # FIXME(shobha): This is an _early_ version of the test, added to ensure that
+        # the basic from_pytorch code path always passes
+
+        import torch.nn as nn
+        import torch.nn.functional as F
+
+        class ExampleNet(nn.Module):
+            def __init__(self):
+                super(ExampleNet, self).__init__()
+                self.conv1 = nn.Conv2d(1, 16, kernel_size=5, padding=1)
+                self.fc1 = nn.Linear(16 * 13 * 13, 100)
+                self.fc2 = nn.Linear(100, 2)
+
+            def forward(self, x):
+                out = self.conv1(x)
+                out = F.relu(out)
+                out = F.max_pool2d(out, 2)
+                out = out.view(out.size(0), -1)
+                out = self.fc1(out)
+                out = F.relu(out)
+                out = self.fc2(out)
+                return out
+
+        model_plaintext = ExampleNet()
+        batch_size = 5
+        x_orig = get_random_test_tensor(size=(batch_size, 1, 28, 28), is_float=True)
+        y_orig = get_random_test_tensor(size=(batch_size, 2),
+            is_float=True).gt(0).float()
+
+        loss = crypten.nn.MSELoss()
+
+        dummy_input = torch.empty((1, 1, 28, 28))
+        model = crypten.nn.from_pytorch(model_plaintext, dummy_input)
+        model.train()
+        model.encrypt()
+
+        # encrypt training sample:
+        x_train = AutogradCrypTensor(crypten.cryptensor(x_orig))
+        y_train = AutogradCrypTensor(crypten.cryptensor(y_orig))
+
+        num_epochs = 10
+        learning_rate = 0.001
+
+        for i in range(num_epochs):
+            output = model(x_train)
+            loss_value = loss(output, y_train)
+
+            # set gradients to "zero"
+            model.zero_grad()
+            for param in model.parameters():
+                self.assertIsNone(param.grad, "zero_grad did not reset gradients")
+
+            # perform backward pass:
+            loss_value.backward()
+            for param in model.parameters():
+                if param.requires_grad:
+                    self.assertIsNotNone(param.grad,
+                        "required parameter gradient not created")
+
+            #update parameters
+            model.update_parameters(learning_rate)
+
+            #record initial and current loss
+            if i == 0:
+                orig_loss = loss_value.get_plain_text()
+            curr_loss = loss_value.get_plain_text()
+
+        #check that the loss has decreased after training
+        self.assertTrue(curr_loss.item() < orig_loss.item(),
+            "loss has not decreased after training")
+
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)

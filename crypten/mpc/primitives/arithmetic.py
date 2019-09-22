@@ -379,6 +379,7 @@ class ArithmeticSharedTensor(CrypTensor):
             otherwise, it is identical to ONNX gather() function.
         """
         result = self.shallow_copy()
+        index = index.long()
         if dimension is None:
             result.share = torch.take(self.share, index)
         else:
