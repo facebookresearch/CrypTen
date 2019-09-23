@@ -990,7 +990,7 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
         ctx.save_multiple_for_backward([pred, target])
         log_pos, log_neg = crypten.stack([pred, 1.0 - pred]).log().unbind(dim=0)
         loss_values = target * log_pos + ((1.0 - target) * log_neg)
-        return -loss_values.sum().div(target.nelement())
+        return loss_values.sum().div(-target.nelement())
 
     @staticmethod
     def backward(ctx, grad_output):

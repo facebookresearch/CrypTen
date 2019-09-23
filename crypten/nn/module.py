@@ -29,9 +29,25 @@ class Module:
         """
         raise NotImplementedError("Call this function on a Module type.")
 
-    def forward(self, input):
+    def forward(self, *args):
         """Perform forward pass on model."""
         raise NotImplementedError("forward not implemented")
+
+    def __getattribute__(self, name):
+        """
+        Makes sure that forward calls on a Module always receive an
+        AutogradCrypTensor as input.
+        """
+        if name != "forward":  # no-op for any function that is not forward()
+            return object.__getattribute__(self, name)
+        else:                  # make sure input to forward() is AutogradCrypTensor
+
+            def wrapped_forward(*args):
+                """Forward function that wraps CrypTensors in AutogradCrypTensor."""
+                args = _to_autograd(args)
+                return object.__getattribute__(self, "forward")(*args)
+
+            return wrapped_forward
 
     def __call__(self, input):
         return self.forward(input)
@@ -864,3 +880,34 @@ def _all_the_same(items):
     Checks whether all values in a list are the same.
     """
     return all(items[0] == item for item in items)
+
+
+def _to_autograd(args):
+    """
+    Recursively converts inputs to AutogradCrypTensors.
+    """
+
+    # convert tuples to lists to allow changes:
+    convert_to_tuple = False
+    if isinstance(args, tuple):
+        args = list(args)
+        convert_to_tuple = True
+
+    # wrap all input tensors in AutogradCrypTensor:
+    for idx in range(len(args)):
+        if isinstance(args[idx], (list, tuple)):  # input may be list of tensors
+            args[idx] = _to_autograd(args[idx])
+        elif isinstance(args[idx], AutogradCrypTensor) or args[idx] is None:
+            pass
+        elif isinstance(args[idx], crypten.CrypTensor):
+            args[idx] = AutogradCrypTensor(args[idx])
+        else:
+            raise ValueError(
+                "Cannot convert type {} to AutogradCrypTensor.".format(type(args[idx]))
+            )
+
+
+    # return:
+    if convert_to_tuple:
+        args = tuple(args)
+    return args

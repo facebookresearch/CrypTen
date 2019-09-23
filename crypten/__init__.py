@@ -38,7 +38,6 @@ def reset_communication_stats():
     comm.get().reset_communication_stats()
 
 
-
 # Set backend
 __SUPPORTED_BACKENDS = [crypten.mpc]
 __default_backend = __SUPPORTED_BACKENDS[0]

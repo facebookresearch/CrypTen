@@ -240,68 +240,76 @@ class TestNN(MultiProcessTestCase):
 
         # loop over all modules:
         for module_name in module_args.keys():
+            for wrap in [True, False]:
 
-            # generate inputs:
-            input = get_random_test_tensor(size=input_sizes[module_name], is_float=True)
-            input.requires_grad = True
-            encr_input = AutogradCrypTensor(crypten.cryptensor(input))
+                # generate inputs:
+                input = get_random_test_tensor(
+                    size=input_sizes[module_name], is_float=True,
+                )
+                input.requires_grad = True
+                encr_input = crypten.cryptensor(input)
+                if wrap:
+                    encr_input = AutogradCrypTensor(encr_input)
 
-            # create PyTorch module:
-            module = getattr(torch.nn, module_name)(*module_args[module_name])
-            module.train()
+                # create PyTorch module:
+                module = getattr(torch.nn, module_name)(*module_args[module_name])
+                module.train()
 
-            # create encrypted CrypTen module:
-            encr_module = crypten.nn.from_pytorch(module, input)
+                # create encrypted CrypTen module:
+                encr_module = crypten.nn.from_pytorch(module, input)
 
-            # check that module properly encrypts / decrypts and
-            # check that encrypting with current mode properly performs no-op
-            for encrypted in [False, True, True, False, True]:
-                encr_module.encrypt(mode=encrypted)
-                if encrypted:
-                    self.assertTrue(encr_module.encrypted, "module not encrypted")
+                # check that module properly encrypts / decrypts and
+                # check that encrypting with current mode properly performs no-op
+                for encrypted in [False, True, True, False, True]:
+                    encr_module.encrypt(mode=encrypted)
+                    if encrypted:
+                        self.assertTrue(encr_module.encrypted, "module not encrypted")
+                    else:
+                        self.assertFalse(encr_module.encrypted, "module encrypted")
+                    for key in ["weight", "bias"]:
+                        if hasattr(module, key):  # if PyTorch model has key
+                            encr_param = None
+
+                            # find that key in the crypten.nn.Graph:
+                            if isinstance(encr_module, crypten.nn.Graph):
+                                for encr_node in encr_module.modules():
+                                    if hasattr(encr_node, key):
+                                        encr_param = getattr(encr_node, key)
+                                        break
+
+                            # or get it from the crypten Module directly:
+                            else:
+                                encr_param = getattr(encr_module, key)
+
+                            # compare with reference:
+                            # NOTE: Because some parameters are initialized randomly
+                            # with different values on each process, we only want to
+                            # check that they are consistent with source parameter value
+                            reference = getattr(module, key)
+                            src_reference = comm.get().broadcast(reference, src=0)
+                            msg = "parameter %s in %s incorrect" % (key, module_name)
+                            if not encrypted:
+                                encr_param = crypten.cryptensor(encr_param)
+                            self._check(encr_param, src_reference, msg)
+
+                # compare model outputs:
+                self.assertTrue(encr_module.training, "training value incorrect")
+                reference = module(input)
+                encr_output = encr_module(encr_input)
+                self._check(encr_output, reference, "%s forward failed" % module_name)
+
+                # test backward pass:
+                reference.backward(torch.ones(reference.size()))
+                encr_output.backward()
+                if wrap:  # you cannot get input gradients on MPCTensor inputs
+                    self._check(encr_input.grad, input.grad,
+                                "%s backward on input failed" % module_name)
                 else:
-                    self.assertFalse(encr_module.encrypted, "module encrypted")
-                for key in ["weight", "bias"]:
-                    if hasattr(module, key):  # if PyTorch model has key
-                        encr_param = None
-
-                        # find that key in the crypten.nn.Graph:
-                        if isinstance(encr_module, crypten.nn.Graph):
-                            for encr_node in encr_module.modules():
-                                if hasattr(encr_node, key):
-                                    encr_param = getattr(encr_node, key)
-                                    break
-
-                        # or get it from the crypten Module directly:
-                        else:
-                            encr_param = getattr(encr_module, key)
-
-                        # compare with reference:
-                        # NOTE: Because some parameters are initialized randomly
-                        # with different values on each process, we only want to
-                        # check that they are consistent with source parameter value
-                        reference = getattr(module, key)
-                        src_reference = comm.get().broadcast(reference, src=0)
-                        msg = "parameter %s in %s incorrect" % (key, module_name)
-                        if not encrypted:
-                            encr_param = crypten.cryptensor(encr_param)
-                        self._check(encr_param, src_reference, msg)
-
-            # compare model outputs:
-            self.assertTrue(encr_module.training, "training value incorrect")
-            reference = module(input)
-            encr_output = encr_module(encr_input)
-            self._check(encr_output, reference, "%s forward failed" % module_name)
-
-            # test backward pass:
-            reference.backward(torch.ones(reference.size()))
-            encr_output.backward()
-            self._check(encr_input.grad, input.grad,
-                        "%s backward on input failed" % module_name)
-            for name, param in module.named_parameters():
-                encr_param = getattr(encr_module, name)
-                self._check(encr_param.grad, param.grad,
-                            "%s backward on %s failed" % (module_name, name))
+                    self.assertFalse(hasattr(encr_input, "grad"))
+                for name, param in module.named_parameters():
+                    encr_param = getattr(encr_module, name)
+                    self._check(encr_param.grad, param.grad,
+                                "%s backward on %s failed" % (module_name, name))
 
     def test_sequential(self):
         """
@@ -310,72 +318,80 @@ class TestNN(MultiProcessTestCase):
 
         # try networks of different depth:
         for num_layers in range(1, 6):
+            for wrap in [True, False]:
 
-            # construct sequential container:
-            input_size = (3, 10)
-            output_size = (input_size[0], input_size[1] - num_layers)
-            layer_idx = range(input_size[1], output_size[1], -1)
-            module_list = [
-                crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
-            ]
-            sequential = crypten.nn.Sequential(module_list)
-            sequential.encrypt()
+                # construct sequential container:
+                input_size = (3, 10)
+                output_size = (input_size[0], input_size[1] - num_layers)
+                layer_idx = range(input_size[1], output_size[1], -1)
+                module_list = [
+                    crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
+                ]
+                sequential = crypten.nn.Sequential(module_list)
+                sequential.encrypt()
 
-            # check container:
-            self.assertTrue(sequential.encrypted, "nn.Sequential not encrypted")
-            for module in sequential.modules():
-                self.assertTrue(module.encrypted, "module not encrypted")
-            assert sum(1 for _ in sequential.modules()) == len(
-                module_list
-            ), "nn.Sequential contains incorrect number of modules"
+                # check container:
+                self.assertTrue(sequential.encrypted, "nn.Sequential not encrypted")
+                for module in sequential.modules():
+                    self.assertTrue(module.encrypted, "module not encrypted")
+                assert sum(1 for _ in sequential.modules()) == len(
+                    module_list
+                ), "nn.Sequential contains incorrect number of modules"
 
-            # construct test input and run through sequential container:
-            input = get_random_test_tensor(size=input_size, is_float=True)
-            encr_input = AutogradCrypTensor(crypten.cryptensor(input))
-            encr_output = sequential(encr_input)
+                # construct test input and run through sequential container:
+                input = get_random_test_tensor(size=input_size, is_float=True)
+                encr_input = crypten.cryptensor(input)
+                if wrap:
+                    encr_input = AutogradCrypTensor(encr_input)
+                encr_output = sequential(encr_input)
 
-            # compute reference output:
-            encr_reference = encr_input
-            for module in sequential.modules():
-                encr_reference = module(encr_reference)
-            reference = encr_reference.get_plain_text()
+                # compute reference output:
+                encr_reference = encr_input
+                for module in sequential.modules():
+                    encr_reference = module(encr_reference)
+                reference = encr_reference.get_plain_text()
 
-            # compare output to reference:
-            self._check(encr_output, reference, "nn.Sequential forward failed")
+                # compare output to reference:
+                self._check(encr_output, reference, "nn.Sequential forward failed")
 
     def test_graph(self):
         """
         Tests crypten.nn.Graph module.
         """
+        for wrap in [True, False]:
 
-        # define test case:
-        input_size = (3, 10)
-        input = get_random_test_tensor(size=input_size, is_float=True)
-        encr_input = AutogradCrypTensor(crypten.cryptensor(input))
+            # define test case:
+            input_size = (3, 10)
+            input = get_random_test_tensor(size=input_size, is_float=True)
+            encr_input = crypten.cryptensor(input)
+            if wrap:
+                encr_input = AutogradCrypTensor(encr_input)
 
-        # test residual block with subsequent linear layer:
-        graph = crypten.nn.Graph("input", "output")
-        linear1 = get_random_linear(input_size[1], input_size[1])
-        linear2 = get_random_linear(input_size[1], input_size[1])
-        graph.add_module("linear", crypten.nn.from_pytorch(linear1, input), ["input"])
-        graph.add_module("residual", crypten.nn.Add(), ["input", "linear"])
-        graph.add_module(
-            "output", crypten.nn.from_pytorch(linear2, input), ["residual"]
-        )
-        graph.encrypt()
+            # test residual block with subsequent linear layer:
+            graph = crypten.nn.Graph("input", "output")
+            linear1 = get_random_linear(input_size[1], input_size[1])
+            linear2 = get_random_linear(input_size[1], input_size[1])
+            graph.add_module(
+                "linear", crypten.nn.from_pytorch(linear1, input), ["input"]
+            )
+            graph.add_module("residual", crypten.nn.Add(), ["input", "linear"])
+            graph.add_module(
+                "output", crypten.nn.from_pytorch(linear2, input), ["residual"]
+            )
+            graph.encrypt()
 
-        # check container:
-        self.assertTrue(graph.encrypted, "nn.Graph not encrypted")
-        for module in graph.modules():
-            self.assertTrue(module.encrypted, "module not encrypted")
-        assert (
-            sum(1 for _ in graph.modules()) == 3
-        ), "nn.Graph contains incorrect number of modules"
+            # check container:
+            self.assertTrue(graph.encrypted, "nn.Graph not encrypted")
+            for module in graph.modules():
+                self.assertTrue(module.encrypted, "module not encrypted")
+            assert (
+                sum(1 for _ in graph.modules()) == 3
+            ), "nn.Graph contains incorrect number of modules"
 
-        # compare output to reference:
-        encr_output = graph(encr_input)
-        reference = linear2(linear1(input) + input)
-        self._check(encr_output, reference, "nn.Graph forward failed")
+            # compare output to reference:
+            encr_output = graph(encr_input)
+            reference = linear2(linear1(input) + input)
+            self._check(encr_output, reference, "nn.Graph forward failed")
 
     def test_losses(self):
         """
@@ -392,6 +408,10 @@ class TestNN(MultiProcessTestCase):
         for loss_name in ["BCELoss", "L1Loss", "MSELoss"]:
             loss = getattr(torch.nn, loss_name)()(input, target)
             encrypted_loss = getattr(crypten.nn, loss_name)()(
+                encrypted_input, encrypted_target,
+            )
+            self._check(encrypted_loss, loss, "%s failed" % loss_name)
+            encrypted_loss = getattr(crypten.nn, loss_name)()(
                 AutogradCrypTensor(encrypted_input),
                 AutogradCrypTensor(encrypted_target),
             )
@@ -406,6 +426,10 @@ class TestNN(MultiProcessTestCase):
         encrypted_input = crypten.cryptensor(input)
         encrypted_target = crypten.cryptensor(onehot(target, num_targets=num_targets))
         loss = torch.nn.CrossEntropyLoss()(input, target)
+        encrypted_loss = crypten.nn.CrossEntropyLoss()(
+            encrypted_input, encrypted_target,
+        )
+        self._check(encrypted_loss, loss, "cross-entropy loss failed")
         encrypted_loss = crypten.nn.CrossEntropyLoss()(
             AutogradCrypTensor(encrypted_input),
             AutogradCrypTensor(encrypted_target),
@@ -431,33 +455,39 @@ class TestNN(MultiProcessTestCase):
 
         # perform training iterations:
         for _ in range(10):
+            for wrap in [True, False]:
 
-            # get training sample:
-            input = get_random_test_tensor(size=(batch_size, num_inputs), is_float=True)
-            target = input.mean(dim=1, keepdim=True)
+                # get training sample:
+                input = get_random_test_tensor(
+                    size=(batch_size, num_inputs), is_float=True,
+                )
+                target = input.mean(dim=1, keepdim=True)
 
-            # encrypt training sample:
-            input = AutogradCrypTensor(crypten.cryptensor(input))
-            target = AutogradCrypTensor(crypten.cryptensor(target))
+                # encrypt training sample:
+                input = crypten.cryptensor(input)
+                target = crypten.cryptensor(target)
+                if wrap:
+                    input = AutogradCrypTensor(input)
+                    target = AutogradCrypTensor(target)
 
-            # perform forward pass:
-            output = model(input)
-            loss_value = loss(output, target)
+                # perform forward pass:
+                output = model(input)
+                loss_value = loss(output, target)
 
-            # set gradients to "zero" (setting to None is more efficient):
-            model.zero_grad()
-            for param in model.parameters():
-                self.assertIsNone(param.grad, "zero_grad did not reset gradients")
+                # set gradients to "zero" (setting to None is more efficient):
+                model.zero_grad()
+                for param in model.parameters():
+                    self.assertIsNone(param.grad, "zero_grad did not reset gradients")
 
-            # perform backward pass:
-            loss_value.backward()
+                # perform backward pass:
+                loss_value.backward()
 
-            # perform parameter update:
-            reference = {}
-            reference = self._compute_reference_parameters("", reference, model,
-                learning_rate)
-            model.update_parameters(learning_rate)
-            self._check_reference_parameters("", reference, model)
+                # perform parameter update:
+                reference = {}
+                reference = self._compute_reference_parameters("", reference, model,
+                    learning_rate)
+                model.update_parameters(learning_rate)
+                self._check_reference_parameters("", reference, model)
 
     def test_from_pytorch_training(self):
         """Tests the from_pytorch code path for training CrypTen models"""
