@@ -15,7 +15,7 @@ import os
 import tempfile
 
 
-def _launch(func, rank, world_size, rendezvous_file, queue):
+def _launch(func, rank, world_size, rendezvous_file, queue, func_args, func_kwargs):
 
     communicator_args = {
         "WORLD_SIZE": world_size,
@@ -28,7 +28,7 @@ def _launch(func, rank, world_size, rendezvous_file, queue):
 
     crypten.init()
 
-    return_value = func()
+    return_value = func(*func_args, **func_kwargs)
     queue.put((rank, return_value))
 
 
@@ -42,7 +42,15 @@ def run_multiprocess(world_size):
             processes = [
                 multiprocessing.Process(
                     target=_launch,
-                    args=(func, rank, world_size, rendezvous_file, queue),
+                    args=(
+                        func,
+                        rank,
+                        world_size,
+                        rendezvous_file,
+                        queue,
+                        args,
+                        kwargs,
+                    ),
                 )
                 for rank in range(world_size)
             ]
