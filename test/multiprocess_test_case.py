@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import logging
 import multiprocessing
 import os
 import sys
@@ -51,6 +50,19 @@ def get_random_test_tensor(max_value=6,
     tensor = comm.get().broadcast(tensor, 0)
 
     return tensor
+
+
+def onehot(indices, num_targets=None):
+    """
+    Converts index vector into one-hot matrix.
+    """
+    assert indices.dtype == torch.long, "indices must be long integers"
+    assert indices.min() >= 0, "indices must be non-negative"
+    if num_targets is None:
+        num_targets = indices.max() + 1
+    onehot_vector = torch.zeros(indices.nelement(), num_targets, dtype=torch.long)
+    onehot_vector.scatter_(1, indices.view(indices.nelement(), 1), 1)
+    return onehot_vector
 
 
 def get_random_linear(in_channels, out_channels):
@@ -123,8 +135,6 @@ class MultiProcessTestCase(unittest.TestCase):
         # chance to initialize themselves in the new process
         if self.rank == self.MAIN_PROCESS_RANK:
             self.file = tempfile.NamedTemporaryFile(delete=True).name
-
-
             self.processes = [
                 self._spawn_process(rank) for rank in range(int(self.world_size))
             ]

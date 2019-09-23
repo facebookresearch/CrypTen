@@ -11,7 +11,7 @@ import onnx
 import torch
 from onnx import numpy_helper
 
-from .loss import BCELoss, L1Loss, MSELoss
+from .loss import BCELoss, L1Loss, MSELoss, CrossEntropyLoss
 from .module import (
     Add,
     AvgPool2d,
@@ -62,6 +62,7 @@ __all__ = [
     "ConstantPad2d",
     "ConstantPad3d",
     "Conv2d",
+    "CrossEntropyLoss",
     "Flatten",
     "Gather",
     "GlobalAveragePool",

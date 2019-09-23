@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from ..autograd_cryptensor import AutogradCrypTensor
 from .module import Module
 
 
@@ -58,13 +59,22 @@ class BCELoss(_Loss):
     """
 
     def forward(self, yhat, y):
-        N = y.nelement()
-        assert (
-            yhat.nelement() == N
-        ), "input and target must have the same number of elements"
-        retval = y * yhat.log() + ((1 - y) * (1 - yhat).log())
-        return -retval.sum().div(N)
+        assert yhat.nelement() == y.nelement(), \
+            "input and target must have the same number of elements"
+        assert all(isinstance(val, AutogradCrypTensor) for val in [y, yhat]), \
+            "inputs must be AutogradCrypTensors"
+        return yhat.binary_cross_entropy(y)
 
-    # def backward(self, p, y):
-    #     retval = ((1 - p).reciprocal() * (1 - y)) - p.reciprocal() * y
-    #     return retval.div_(y.nelement())
+
+class CrossEntropyLoss(_Loss):
+    """
+    Cross-entropy loss between predictions and ground-truth values.
+
+    This loss function expects the
+    """
+
+    def forward(self, yhat, y):
+        assert yhat.size() == y.size(), "input and target must have the same size"
+        assert all(isinstance(val, AutogradCrypTensor) for val in [y, yhat]), \
+            "inputs must be AutogradCrypTensors"
+        return yhat.cross_entropy(y)

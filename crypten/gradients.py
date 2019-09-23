@@ -5,8 +5,9 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from functools import reduce
+import crypten
 import torch
+from functools import reduce
 
 # registry that maps function names to AutogradFunctions:
 FUNCTION_REGISTRY = {}
@@ -978,3 +979,40 @@ class AutogradBatchNorm(AutogradFunction):
             _inverse_broadcast(weight_grad, weight_size).squeeze(),
             _inverse_broadcast(bias_grad, weight_size).squeeze(),
         )  # FIXME: Unit tests claim gradients are incorrect.
+
+
+@register_function("binary_cross_entropy")
+class AutogradBinaryCrossEntropy(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        pred, target = input
+        ctx.save_multiple_for_backward([pred, target])
+        log_pos, log_neg = crypten.stack([pred, 1.0 - pred]).log().unbind(dim=0)
+        loss_values = target * log_pos + ((1.0 - target) * log_neg)
+        return -loss_values.sum().div(target.nelement())
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        pred, target = ctx.saved_tensors
+        rec_pos, rec_neg = crypten.stack([pred, 1.0 - pred]).reciprocal().unbind(dim=0)
+        grad = (rec_neg * (1.0 - target)) - rec_pos * target
+        return grad.div_(target.nelement()).mul_(grad_output)
+
+
+@register_function("cross_entropy")
+class AutogradCrossEntropy(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        pred, target = input  # NOTE: target is assumed to be one-hot vector.
+        softmax = pred.softmax(1)
+        ctx.save_multiple_for_backward([softmax, target])
+        loss_values = softmax.log().mul_(target).neg_()
+        return loss_values.sum().div_(target.size(0))
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        softmax, target = ctx.saved_tensors
+        loss_grad = softmax.sub(target)
+        return loss_grad.div_(target.size(0)).mul_(grad_output)

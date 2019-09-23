@@ -909,7 +909,7 @@ REGULAR_FUNCTIONS = [
     "cumsum",
     "reshape",
     "gather",
-    "index_select",
+    "unbind",
 ]
 
 

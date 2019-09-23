@@ -15,7 +15,8 @@ import unittest
 from crypten.autograd_cryptensor import AutogradContext, AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
 from crypten.gradients import AutogradFunction
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multiprocess_test_case \
+    import MultiProcessTestCase, get_random_test_tensor, onehot
 
 
 class TestAutograd(MultiProcessTestCase):
@@ -131,6 +132,8 @@ class TestAutograd(MultiProcessTestCase):
             "take": (5, 10, 15),    # NOTE: this only tests the pytorch take
                                     # functionality. The remaining take functionality
                                     # is tested separately
+            "binary_cross_entropy": (8,),
+            "cross_entropy": (8, 4),
         }
         additional_args = {
             "transpose": [2, 0],
@@ -148,17 +151,26 @@ class TestAutograd(MultiProcessTestCase):
             "max_pool2d": [3],
             "conv2d": [get_random_test_tensor(size=(2, 4, 3, 3), is_float=True)],
             "take": [torch.tensor([0, 5, 10])],
+            "binary_cross_entropy": [get_random_test_tensor(
+                                     size=(8,), is_float=True).gt(0.0).float()],
+            "cross_entropy": [onehot(
+                get_random_test_tensor(size=(8,), max_value=3).abs(),
+                num_targets=4,
+            )],
         }
         binary_functions = ["add", "sub", "mul", "dot", "ger", "matmul"]
-        positive_only = ["pow", "sqrt", "log"]
+        positive_only = ["pow", "sqrt", "log", "binary_cross_entropy"]
 
         # loop over all autograd functions:
         for func_name in input_size.keys():
 
             # generate inputs:
             inputs = [
-                get_random_test_tensor(size=input_size[func_name], is_float=True)
-                for _ in range(2 if func_name in binary_functions else 1)
+                get_random_test_tensor(
+                    size=input_size[func_name],
+                    max_value=1.0,
+                    is_float=True,
+                ) for _ in range(2 if func_name in binary_functions else 1)
             ]
             if func_name in positive_only:  # some functions do not take negative values
                 inputs = [input.abs().add_(0.001) for input in inputs]
@@ -176,6 +188,10 @@ class TestAutograd(MultiProcessTestCase):
                 else:
                     encr_inputs = [crypten.cryptensor(t) if torch.is_tensor(t)
                         else t for t in encr_inputs]
+
+            # cross_entropy uses one-hot targets in crypten but not in PyTorch:
+            if func_name == "cross_entropy":
+                inputs[1] = inputs[1].argmax(1)
 
             # AutogradFunction.forward() does not accept unpacked inputs:
             if len(encr_inputs) == 1:

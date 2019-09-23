@@ -14,7 +14,7 @@ import unittest
 from crypten.autograd_cryptensor import AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
 from test.multiprocess_test_case import \
-    MultiProcessTestCase, get_random_test_tensor, get_random_linear
+    MultiProcessTestCase, get_random_test_tensor, get_random_linear, onehot
 
 
 class TestNN(MultiProcessTestCase):
@@ -388,13 +388,29 @@ class TestNN(MultiProcessTestCase):
         encrypted_input = crypten.cryptensor(input)
         encrypted_target = crypten.cryptensor(target)
 
-        # test forward() function of all losses:
+        # test forward() function of all simple losses:
         for loss_name in ["BCELoss", "L1Loss", "MSELoss"]:
             loss = getattr(torch.nn, loss_name)()(input, target)
             encrypted_loss = getattr(crypten.nn, loss_name)()(
-                encrypted_input, encrypted_target
+                AutogradCrypTensor(encrypted_input),
+                AutogradCrypTensor(encrypted_target),
             )
             self._check(encrypted_loss, loss, "%s failed" % loss_name)
+
+        # test forward() function of cross-entropy loss:
+        batch_size, num_targets = 16, 5
+        input = get_random_test_tensor(size=(batch_size, num_targets), is_float=True)
+        target = get_random_test_tensor(
+            size=(batch_size,), max_value=num_targets - 1,
+        ).abs()
+        encrypted_input = crypten.cryptensor(input)
+        encrypted_target = crypten.cryptensor(onehot(target, num_targets=num_targets))
+        loss = torch.nn.CrossEntropyLoss()(input, target)
+        encrypted_loss = crypten.nn.CrossEntropyLoss()(
+            AutogradCrypTensor(encrypted_input),
+            AutogradCrypTensor(encrypted_target),
+        )
+        self._check(encrypted_loss, loss, "cross-entropy loss failed")
 
     def test_training(self):
         """
