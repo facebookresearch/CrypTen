@@ -114,6 +114,13 @@ parser.add_argument(
     help="Skip validation for plaintext network",
 )
 parser.add_argument(
+    "--mnist-dir",
+    default=None,
+    type=str,
+    metavar="MNIST",
+    help="path to the dir of MNIST raw data files",
+)
+parser.add_argument(
     "--multiprocess",
     default=False,
     action="store_true",
@@ -143,7 +150,8 @@ def _run_experiment(args):
         args.evaluate,
         args.seed,
         args.skip_plaintext,
-        os.path.join(args.save_checkpoint_dir, os.environ["RANK"])
+        os.path.join(args.save_checkpoint_dir, os.environ["RANK"]),
+        mnist_dir=args.mnist_dir,
     )
 
 

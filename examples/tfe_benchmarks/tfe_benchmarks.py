@@ -24,7 +24,7 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 from examples.meters import AverageMeter
-from examples.util import NoopContextManager
+from examples.util import (NoopContextManager, process_mnist_files)
 from torchvision import datasets, transforms
 
 
@@ -43,6 +43,7 @@ def run_tfe_benchmarks(
     skip_plaintext=False,
     save_checkpoint_dir="/tmp/tfe_benchmarks",
     context_manager=None,
+    mnist_dir=None,
 ):
     if seed is not None:
         random.seed(seed)
@@ -86,21 +87,30 @@ def run_tfe_benchmarks(
 
     # Loading MNIST. Normalizing per pytorch/examples/blob/master/mnist/main.py
     def preprocess_data(context_manager, data_dirname):
+        if mnist_dir is not None:
+            process_mnist_files(mnist_dir,
+                                os.path.join(data_dirname, "MNIST", "processed"))
+            download = False
+        else:
+            download = True
+
         with context_manager:
-            mnist_train = datasets.MNIST(
-                data_dirname,
-                download=True,
-                train=True,
-                transform=transforms.Compose(
-                    [
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.1307,), (0.3081,))
-                    ]
-                ),
-            )
+            if not evaluate:
+                mnist_train = datasets.MNIST(
+                    data_dirname,
+                    download=download,
+                    train=True,
+                    transform=transforms.Compose(
+                        [
+                            transforms.ToTensor(),
+                            transforms.Normalize((0.1307,), (0.3081,))
+                        ]
+                    ),
+                )
+
             mnist_test = datasets.MNIST(
                 data_dirname,
-                download=True,
+                download=download,
                 train=False,
                 transform=transforms.Compose(
                     [
@@ -111,7 +121,7 @@ def run_tfe_benchmarks(
             )
         train_loader = torch.utils.data.DataLoader(
             mnist_train, batch_size=batch_size, shuffle=True
-        )
+        ) if not evaluate else None
         test_loader = torch.utils.data.DataLoader(
             mnist_test, batch_size=batch_size, shuffle=False
         )

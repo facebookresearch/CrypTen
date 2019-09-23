@@ -8,7 +8,9 @@
 import logging
 import numpy as np
 import numpy.linalg as nla
+import os
 import torch
+from torchvision import datasets
 
 
 class NoopContextManager:
@@ -101,3 +103,49 @@ def pca(data, components):
     cov = np.cov(data.T)
     L, V = nla.eigh(cov)
     return torch.tensor(V[:, -components:], dtype=dtype)
+
+
+def process_mnist_files(raw_dir, processed_dir):
+    """
+    Uncompresse zipped train and/or test image and label files, load the
+    uncompressed data files, and save to .pt files so that datasets.MNIST
+    can read it directly.
+    """
+    datasets.utils.makedir_exist_ok(processed_dir)
+
+    def extract_mnist_archive(data_file_name):
+        """
+        Extract the zipped data file and return the path to the uncompresse data
+        file.
+        If the zipped data file does not exist in raw_dir, it returns None.
+        """
+        data_file_archive = os.path.join(raw_dir, data_file_name + ".gz")
+        if os.path.exists(data_file_archive):
+            datasets.utils.extract_archive(data_file_archive, processed_dir)
+            return os.path.join(processed_dir, data_file_name)
+        else:
+            return None
+
+    train_image_file = extract_mnist_archive("train-images-idx3-ubyte")
+    train_label_file = extract_mnist_archive("train-labels-idx1-ubyte")
+
+    with open(os.path.join(processed_dir, datasets.MNIST.training_file),
+              "wb") as f:
+        if train_image_file and train_label_file:
+            training_set = (
+                datasets.mnist.read_image_file(train_image_file),
+                datasets.mnist.read_label_file(train_label_file)
+            )
+            torch.save(training_set, f)
+
+    test_image_file = extract_mnist_archive("t10k-images-idx3-ubyte")
+    test_label_file = extract_mnist_archive("t10k-labels-idx1-ubyte")
+
+    with open(os.path.join(processed_dir, datasets.MNIST.test_file),
+              "wb") as f:
+        if test_image_file and test_label_file:
+            test_set = (
+                datasets.mnist.read_image_file(test_image_file),
+                datasets.mnist.read_label_file(test_label_file)
+            )
+            torch.save(test_set, f)
