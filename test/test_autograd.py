@@ -97,6 +97,8 @@ class TestAutograd(MultiProcessTestCase):
             "take": (5, 10, 15),    # NOTE: this only tests the pytorch take
                                     # functionality. The remaining take functionality
                                     # is tested separately
+            "gather": (2, 2),
+            "scatter": (3, 5),
             "roll": (4, 8),
             "squeeze": (12, 1, 6),
             "unsqueeze": (7, 3),
@@ -144,6 +146,11 @@ class TestAutograd(MultiProcessTestCase):
             "view": [(4, 12)],
             "reshape": [(4, 12)],
             "narrow": [1, 2, 3],
+            "gather": [1, torch.tensor([[0, 0], [1, 0]])],
+            "scatter": [
+                0, torch.tensor([[0, 1, 2, 0, 0], [2, 0, 0, 1, 2]]),
+                get_random_test_tensor(size=(2, 5), is_float=True),
+            ],
             "roll": [(2, -1), (0, 1)],
             "squeeze": [1],
             "unsqueeze": [1],
@@ -191,7 +198,7 @@ class TestAutograd(MultiProcessTestCase):
                 encr_inputs += additional_args[func_name]
                 if func_name == "take":
                     encr_inputs += [None]
-                else:
+                elif func_name not in ["gather", "scatter"]:
                     encr_inputs = [crypten.cryptensor(t) if torch.is_tensor(t)
                         else t for t in encr_inputs]
 

@@ -209,26 +209,61 @@ class AutogradTake(AutogradFunction):
     @staticmethod
     def forward(ctx, input):
         input, index, dimension = input
-        ctx.save_multiple_for_backward((input, index, dimension))
+        ctx.save_multiple_for_backward((input.size(), index, dimension))
         return input.take(index, dimension)
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, index, dimension = ctx.saved_tensors
+        size, index, dimension = ctx.saved_tensors
+        grad = grad_output.new(torch.zeros(size))
         if dimension is None:
-            grad = input - input
             grad_flat = grad.flatten()
             flat_index = index.flatten()
             grad_output_flat = grad_output.flatten()
             grad_flat[flat_index] = grad_output_flat
-            grad = grad_flat.reshape(input.size())
+            grad = grad_flat.reshape(size)
         else:
-            grad = input - input
             flat_index = index.flatten()
             grad_output_flat = grad_output.flatten(start_dim=dimension,
                                     end_dim=(dimension + index.dim() - 1))
             grad.index_add_(dimension, flat_index, grad_output_flat)
         return grad
+
+
+@register_function("gather")
+class AutogradGather(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        input, dim, index = input
+        ctx.save_multiple_for_backward([input.size(), dim, index])
+        return input.gather(dim, index)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        size, dim, index = ctx.saved_tensors
+        return grad_output.new(torch.zeros(size)).scatter_add_(dim, index, grad_output)
+
+
+@register_function("scatter")
+class AutogradScatter(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        input, dim, index, src = input
+        output = input.scatter(dim, index, src)
+        ctx.save_multiple_for_backward([dim, index])
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        dim, index = ctx.saved_tensors
+
+        size = grad_output.size()
+        mask = torch.ones(size).scatter(dim, index, torch.zeros(size)).long()
+        input_grad = grad_output.mul(mask)
+        src_grad = grad_output.gather(dim, index)
+        return (input_grad, src_grad)
 
 
 @register_function("roll")
@@ -468,6 +503,31 @@ class AutogradPow(AutogradFunction):
         input, = ctx.saved_tensors
         input, power = input
         return input.pow(power - 1.0).mul_(power).mul_(grad_output)
+
+
+@register_function("pos_pow")
+class AutogradPosPow(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        input, power = input
+        if isinstance(power, int) or \
+                (isinstance(power, float) and int(power) == power):
+            ctx.save_multiple_for_backward([input, power])
+            return input.pow(power)
+        else:
+            log_input = input.log()
+            ctx.save_multiple_for_backward([log_input, power])
+            return log_input.mul(power).exp()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, power = ctx.saved_tensors
+        if isinstance(power, int) or \
+                (isinstance(power, float) and int(power) == power):
+            return input.pow(power - 1.0).mul_(power).mul_(grad_output)
+        else:
+            return input.mul(power - 1.0).mul_(power).exp().mul(grad_output)
 
 
 @register_function("square")
@@ -1026,7 +1086,7 @@ class AutogradBatchNorm(AutogradFunction):
             variance = running_var
 
         # compute bias and gain:
-        inv_var = (variance + eps).pow(-0.5)
+        inv_var = (variance + eps).pos_pow(-0.5)
         alpha = inv_var * weight
         beta = bias - mean * alpha
 

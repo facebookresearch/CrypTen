@@ -289,6 +289,28 @@ class BinarySharedTensor(CrypTensor):
 
         return (self & condition_expanded) ^ y_masked
 
+    def scatter_(self, dim, index, src):
+        """Writes all values from the tensor `src` into `self` at the indices
+        specified in the `index` tensor. For each value in `src`, its output index
+        is specified by its index in `src` for `dimension != dim` and by the
+        corresponding value in `index` for `dimension = dim`.
+        """
+        if torch.is_tensor(src):
+            src = BinarySharedTensor(src)
+        assert isinstance(src, BinarySharedTensor), \
+            "Unrecognized scatter src type: %s" % type(src)
+        self.share.scatter_(dim, index, src.share)
+        return self
+
+    def scatter(self, dim, index, src):
+        """Writes all values from the tensor `src` into `self` at the indices
+        specified in the `index` tensor. For each value in `src`, its output index
+        is specified by its index in `src` for `dimension != dim` and by the
+        corresponding value in `index` for `dimension = dim`.
+        """
+        result = self.clone()
+        return result.scatter_(self, dim, index, src)
+
     # Bitwise operators
     __lshift__ = lshift
     __rshift__ = rshift
@@ -321,8 +343,8 @@ REGULAR_FUNCTIONS = [
     "flip",
     "reshape",
     "gather",
+    "scatter",
     "take",
-    "index_select",
 ]
 
 

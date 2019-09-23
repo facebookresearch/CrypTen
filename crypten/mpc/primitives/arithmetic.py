@@ -359,6 +359,33 @@ class ArithmeticSharedTensor(CrypTensor):
             raise TypeError("index_add second tensor of unsupported type")
         return self
 
+    def scatter_add(self, dim, index, other):
+        """Adds all values from the tensor other into self at the indices
+        specified in the index tensor in a similar fashion as scatter_(). For
+        each value in other, it is added to an index in self which is specified
+        by its index in other for dimension != dim and by the corresponding
+        value in index for dimension = dim.
+        """
+        return self.clone().scatter_add_(dim, index, other)
+
+    def scatter_add_(self, dim, index, other):
+        """Adds all values from the tensor other into self at the indices
+        specified in the index tensor in a similar fashion as scatter_(). For
+        each value in other, it is added to an index in self which is specified
+        by its index in other for dimension != dim and by the corresponding
+        value in index for dimension = dim.
+        """
+        public = isinstance(other, (int, float)) or torch.is_tensor(other)
+        private = isinstance(other, CrypTensor)
+        if public:
+            if self.rank == 0:
+                self.share.scatter_add_(dim, index, self.encoder.encode(other))
+        elif private:
+            self.share.scatter_add_(dim, index, other.share)
+        else:
+            raise TypeError("scatter_add second tensor of unsupported type")
+        return self
+
     def avg_pool2d(self, kernel_size, *args, **kwargs):
         """Perform an average pooling on each 2D matrix of the given tensor"""
         z = self.sum_pool2d(kernel_size, *args, **kwargs)
@@ -445,6 +472,28 @@ class ArithmeticSharedTensor(CrypTensor):
             y_masked = (1 - condition) * y
 
         return self * condition + y_masked
+
+    def scatter_(self, dim, index, src):
+        """Writes all values from the tensor `src` into `self` at the indices
+        specified in the `index` tensor. For each value in `src`, its output index
+        is specified by its index in `src` for `dimension != dim` and by the
+        corresponding value in `index` for `dimension = dim`.
+        """
+        if torch.is_tensor(src):
+            src = ArithmeticSharedTensor(src)
+        assert isinstance(src, ArithmeticSharedTensor), \
+            "Unrecognized scatter src type: %s" % type(src)
+        self.share.scatter_(dim, index, src.share)
+        return self
+
+    def scatter(self, dim, index, src):
+        """Writes all values from the tensor `src` into `self` at the indices
+        specified in the `index` tensor. For each value in `src`, its output index
+        is specified by its index in `src` for `dimension != dim` and by the
+        corresponding value in `index` for `dimension = dim`.
+        """
+        result = self.clone()
+        return result.scatter_(self, dim, index, src)
 
 
 REGULAR_FUNCTIONS = [

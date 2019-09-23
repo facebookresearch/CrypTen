@@ -387,6 +387,11 @@ class TestBinary(MultiProcessTestCase):
                         f"{'private' if y_is_private else 'public'} y "
                         "where failed with private condition")
 
+    # TODO: Write the following unit tests
+    @unittest.skip("Test not implemented")
+    def test_gather_scatter(self):
+        pass
+
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)

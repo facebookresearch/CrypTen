@@ -268,11 +268,11 @@ class TestArithmetic(MultiProcessTestCase):
                     reference = getattr(tensor1, func)(dimension, index, tensor2)
                     encrypted_out = getattr(encrypted, func)(dimension, index,
                         encrypted2)
-                    private_type = tensor_type == ArithmeticSharedTensor
+                    private = tensor_type == ArithmeticSharedTensor
                     self._check(
                         encrypted_out,
                         reference,
-                        "%s %s failed" % ("private" if private_type else "public",
+                        "%s %s failed" % ("private" if private else "public",
                             func),
                     )
                     if func.endswith("_"):
@@ -281,7 +281,7 @@ class TestArithmetic(MultiProcessTestCase):
                             encrypted,
                             reference,
                             "%s %s failed"
-                            % ("private" if private_type else "public", func),
+                            % ("private" if private else "public", func),
                         )
                     else:
                         # Check original is not modified
@@ -290,12 +290,55 @@ class TestArithmetic(MultiProcessTestCase):
                             tensor1,
                             "%s %s failed"
                             % (
-                                "private"
-                                if tensor_type == ArithmeticSharedTensor
-                                else "public",
-                                func,
+                                "private" if private else "public", func
                             ),
                         )
+
+    def test_scatter_add(self):
+        """Test index_add function of encrypted tensor"""
+        funcs = ["scatter_add", "scatter_add_"]
+        sizes = [
+            (5, 5),
+            (5, 5, 5),
+            (5, 5, 5, 5)
+        ]
+        for func in funcs:
+            for size in sizes:
+                for tensor_type in [lambda x: x, ArithmeticSharedTensor]:
+                    for dim in range(len(size)):
+                        tensor1 = get_random_test_tensor(size=size, is_float=True)
+                        tensor2 = get_random_test_tensor(size=size, is_float=True)
+                        index = get_random_test_tensor(size=size, is_float=False)
+                        index = index.abs().clamp(0, 4)
+                        encrypted = ArithmeticSharedTensor(tensor1)
+                        encrypted2 = tensor_type(tensor2)
+                        reference = getattr(tensor1, func)(dim, index, tensor2)
+                        encrypted_out = getattr(encrypted, func)(
+                            dim, index, encrypted2
+                        )
+                        private = tensor_type == ArithmeticSharedTensor
+                        self._check(
+                            encrypted_out,
+                            reference,
+                            "%s %s failed" % ("private" if private else "public",
+                                func),
+                        )
+                        if func.endswith("_"):
+                            # Check in-place index_add worked
+                            self._check(
+                                encrypted,
+                                reference,
+                                "%s %s failed"
+                                % ("private" if private else "public", func),
+                            )
+                        else:
+                            # Check original is not modified
+                            self._check(
+                                encrypted,
+                                tensor1,
+                                "%s %s failed"
+                                % ("private" if private else "public", func),
+                            )
 
     def test_dot_ger(self):
         """Test dot product of vector and encrypted tensor."""
@@ -733,6 +776,11 @@ class TestArithmetic(MultiProcessTestCase):
             self._check(encrypted_tensor1.where(condition_encrypted, scalar),
                         tensor1.where(condition_bool, scalar),
                         "where failed against scalar y with private condition")
+
+    # TODO: Write the following unit tests
+    @unittest.skip("Test not implemented")
+    def test_gather_scatter(self):
+        pass
 
 
 # This code only runs when executing the file outside the test harness (e.g.

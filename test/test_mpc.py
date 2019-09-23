@@ -1004,6 +1004,52 @@ class TestMPC(MultiProcessTestCase):
                             ),
                         )
 
+    def test_scatter_add(self):
+        """Test index_add function of encrypted tensor"""
+        funcs = ["scatter_add", "scatter_add_"]
+        sizes = [
+            (5, 5),
+            (5, 5, 5),
+            (5, 5, 5, 5)
+        ]
+        for func in funcs:
+            for size in sizes:
+                for tensor_type in [lambda x: x, MPCTensor]:
+                    for dim in range(len(size)):
+                        tensor1 = get_random_test_tensor(size=size, is_float=True)
+                        tensor2 = get_random_test_tensor(size=size, is_float=True)
+                        index = get_random_test_tensor(size=size, is_float=False)
+                        index = index.abs().clamp(0, 4)
+                        encrypted = MPCTensor(tensor1)
+                        encrypted2 = tensor_type(tensor2)
+                        reference = getattr(tensor1, func)(dim, index, tensor2)
+                        encrypted_out = getattr(encrypted, func)(
+                            dim, index, encrypted2
+                        )
+                        private = tensor_type == MPCTensor
+                        self._check(
+                            encrypted_out,
+                            reference,
+                            "%s %s failed" % ("private" if private else "public",
+                                func),
+                        )
+                        if func.endswith("_"):
+                            # Check in-place index_add worked
+                            self._check(
+                                encrypted,
+                                reference,
+                                "%s %s failed"
+                                % ("private" if private else "public", func),
+                            )
+                        else:
+                            # Check original is not modified
+                            self._check(
+                                encrypted,
+                                tensor1,
+                                "%s %s failed"
+                                % ("private" if private else "public", func),
+                            )
+
     def test_broadcast_arithmetic_ops(self):
         """Test broadcast of arithmetic functions."""
         arithmetic_functions = ["add", "sub", "mul", "div"]
@@ -1481,6 +1527,11 @@ class TestMPC(MultiProcessTestCase):
             self._check(encrypted_out,
                         reference,
                         f"batchnorm failed with train True and dim {dim}")
+
+    # TODO: Write the following unit tests
+    @unittest.skip("Test not implemented")
+    def test_gather_scatter(self):
+        pass
 
 
 # This code only runs when executing the file outside the test harness (e.g.
