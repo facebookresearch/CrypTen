@@ -609,6 +609,21 @@ class AutogradSum(AutogradFunction):
         return grad_output.new(torch.ones(input_size)).mul_(grad_output)
 
 
+@register_function("cumsum")
+class AutogradCumsum(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        input, dim = input
+        ctx.save_for_backward(dim)
+        return input.cumsum(dim)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        dim, = ctx.saved_tensors
+        return grad_output.flip(dim).cumsum(dim).flip(dim)
+
+
 @register_function("trace")
 class AutogradTrace(AutogradFunction):
 

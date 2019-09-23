@@ -117,6 +117,7 @@ class TestAutograd(MultiProcessTestCase):
             "sign": (8, 5),
             "norm": (3, 2),  # NOTE: Flaky because sqrt only works for values up to 200.
             "sum": (4, 3),
+            "cumsum": (13, 7),
             "trace": (4, 4),
             "mean": (2, 9),
             "var": (3, 4),
@@ -145,6 +146,7 @@ class TestAutograd(MultiProcessTestCase):
             "__getitem__": [1],
             "div": [4.0],
             "pow": [2.0],
+            "cumsum": [1],
             "softmax": [1],
             "pad": [(1, 2, 3, 4)],
             "avg_pool2d": [5],
