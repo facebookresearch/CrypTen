@@ -97,6 +97,7 @@ class TestAutograd(MultiProcessTestCase):
             "take": (5, 10, 15),    # NOTE: this only tests the pytorch take
                                     # functionality. The remaining take functionality
                                     # is tested separately
+            "roll": (4, 8),
             "squeeze": (12, 1, 6),
             "unsqueeze": (7, 3),
             "__getitem__": (6, 6),
@@ -143,6 +144,7 @@ class TestAutograd(MultiProcessTestCase):
             "view": [(4, 12)],
             "reshape": [(4, 12)],
             "narrow": [1, 2, 3],
+            "roll": [(2, -1), (0, 1)],
             "squeeze": [1],
             "unsqueeze": [1],
             "__getitem__": [1],
