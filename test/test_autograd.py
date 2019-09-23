@@ -93,6 +93,10 @@ class TestAutograd(MultiProcessTestCase):
             "view": (8, 6),
             "reshape": (8, 6),
             "flatten": (8, 6),
+            "narrow": (10, 7),
+            "take": (5, 10, 15),    # NOTE: this only tests the pytorch take
+                                    # functionality. The remaining take functionality
+                                    # is tested separately
             "squeeze": (12, 1, 6),
             "unsqueeze": (7, 3),
             "__getitem__": (6, 6),
@@ -130,9 +134,6 @@ class TestAutograd(MultiProcessTestCase):
             #                                     fixed in gradients.py.
             "max_pool2d": (1, 3, 21, 21),
             "conv2d": (1, 4, 21, 21),
-            "take": (5, 10, 15),    # NOTE: this only tests the pytorch take
-                                    # functionality. The remaining take functionality
-                                    # is tested separately
             "binary_cross_entropy": (8,),
             "cross_entropy": (8, 4),
         }
@@ -141,6 +142,7 @@ class TestAutograd(MultiProcessTestCase):
             "flip": [(1, 3, 2)],
             "view": [(4, 12)],
             "reshape": [(4, 12)],
+            "narrow": [1, 2, 3],
             "squeeze": [1],
             "unsqueeze": [1],
             "__getitem__": [1],

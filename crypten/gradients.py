@@ -179,6 +179,30 @@ class AutogradFlatten(AutogradFunction):
         return grad_output.reshape(size)
 
 
+@register_function("narrow")
+class AutogradNarrow(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        input, dim, start, length = input
+        ctx.save_multiple_for_backward((input.size(dim), dim, start, length))
+        return input.narrow(dim, start, length)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        size, dim, start, length = ctx.saved_tensors
+
+        # pad is applied to dimensions in reverse order
+        dim = grad_output.dim() - 1 - dim
+
+        # pad is applied in pairs that denote the pads at the beginning and end
+        # of the tensor along the given dimension
+        pad = [0] * 2 * grad_output.dim()
+        pad[2 * dim] = start
+        pad[2 * dim + 1] = size - length - start
+        return grad_output.pad(pad)
+
+
 @register_function("take")
 class AutogradTake(AutogradFunction):
 
@@ -205,6 +229,38 @@ class AutogradTake(AutogradFunction):
                                     end_dim=(dimension + index.dim() - 1))
             grad.index_add_(dimension, flat_index, grad_output_flat)
         return grad
+
+
+@register_function("roll")
+class AutogradRoll(AutogradFunction):
+
+    @staticmethod
+    def forward(ctx, input):
+        if len(input) < 3:
+            input.append(None)
+        input, shifts, dims = input
+        ctx.save_multiple_for_backward((shifts, dims))
+        return input.roll(shifts, dims=dims)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        shifts, dims = ctx.saved_tensors
+
+        # Reverse and negate shifts
+        if isinstance(shifts, (tuple, list)):
+            shifts = list(shifts)
+            for i, shift in enumerate(shifts):
+                shifts[i] = -shift
+            shifts.reverse()
+        else:
+            shifts = -shifts
+
+        # Reverse dims
+        if isinstance(dims, (tuple, list)):
+            dims = list(dims)
+            dims.reverse()
+
+        return grad_output.roll(shifts, dims)
 
 
 @register_function("squeeze")
