@@ -10,7 +10,6 @@ import numpy as np
 import numpy.linalg as nla
 import os
 import torch
-from torchvision import datasets
 
 
 class NoopContextManager:
@@ -111,6 +110,8 @@ def process_mnist_files(raw_dir, processed_dir):
     uncompressed data files, and save to .pt files so that datasets.MNIST
     can read it directly.
     """
+    from torchvision import datasets
+
     datasets.utils.makedir_exist_ok(processed_dir)
 
     def extract_mnist_archive(data_file_name):
