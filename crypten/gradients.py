@@ -1055,7 +1055,7 @@ class AutogradBatchNorm(AutogradFunction):
 
         # apply bias and gain:
         ctx.save_multiple_for_backward((input, alpha, inv_var, alpha.size()))
-        return alpha * input + beta
+        return input * alpha + beta
 
     @staticmethod
     def backward(ctx, grad_output):
