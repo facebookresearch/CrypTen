@@ -6,13 +6,12 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import sys
+import time
 from collections import defaultdict
 from typing import NamedTuple
 
-import multiprocessing
 import numpy as np
-import sys
-import time
 
 
 class BenchmarkRun(NamedTuple):
@@ -32,9 +31,7 @@ class BenchmarkHelper:
     def _add_benchmark_results(self, test_name, rank, args, time, niters):
         args_str = ", ".join([f"{k}={v}" for k, v in args.items()])
         benchmark_name = f"{test_name} ({args_str})"
-        self.queue.put(
-            BenchmarkRun(name=benchmark_name, niters=niters, time=time)
-        )
+        self.queue.put(BenchmarkRun(name=benchmark_name, niters=niters, time=time))
 
     def benchmark(self, test_case, niters=None, data=None, **kwargs):
         class Benchmark:
@@ -68,8 +65,9 @@ class BenchmarkHelper:
         if not test_case.benchmarks_enabled:
             niters = 1
 
-        return Benchmark(data=data, niters=niters, test_case=test_case,
-                         helper=self, **kwargs)
+        return Benchmark(
+            data=data, niters=niters, test_case=test_case, helper=self, **kwargs
+        )
 
     def drain_benchmark_queue(self):
         while not self.queue.empty():

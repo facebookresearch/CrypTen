@@ -15,7 +15,6 @@ import warnings
 
 import crypten
 import crypten.communicator as comm
-
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
@@ -24,7 +23,7 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 from examples.meters import AverageMeter
-from examples.util import (NoopContextManager, process_mnist_files)
+from examples.util import NoopContextManager, process_mnist_files
 from torchvision import datasets, transforms
 
 
@@ -88,8 +87,9 @@ def run_tfe_benchmarks(
     # Loading MNIST. Normalizing per pytorch/examples/blob/master/mnist/main.py
     def preprocess_data(context_manager, data_dirname):
         if mnist_dir is not None:
-            process_mnist_files(mnist_dir,
-                                os.path.join(data_dirname, "MNIST", "processed"))
+            process_mnist_files(
+                mnist_dir, os.path.join(data_dirname, "MNIST", "processed")
+            )
             download = False
         else:
             download = True
@@ -103,7 +103,7 @@ def run_tfe_benchmarks(
                     transform=transforms.Compose(
                         [
                             transforms.ToTensor(),
-                            transforms.Normalize((0.1307,), (0.3081,))
+                            transforms.Normalize((0.1307,), (0.3081,)),
                         ]
                     ),
                 )
@@ -113,15 +113,16 @@ def run_tfe_benchmarks(
                 download=download,
                 train=False,
                 transform=transforms.Compose(
-                    [
-                        transforms.ToTensor(),
-                        transforms.Normalize((0.1307,), (0.3081,))
-                    ]
+                    [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
                 ),
             )
-        train_loader = torch.utils.data.DataLoader(
-            mnist_train, batch_size=batch_size, shuffle=True
-        ) if not evaluate else None
+        train_loader = (
+            torch.utils.data.DataLoader(
+                mnist_train, batch_size=batch_size, shuffle=True
+            )
+            if not evaluate
+            else None
+        )
         test_loader = torch.utils.data.DataLoader(
             mnist_test, batch_size=batch_size, shuffle=False
         )
@@ -144,7 +145,7 @@ def run_tfe_benchmarks(
         private_model = create_private_benchmark_model(model, flatten=flatten)
         logging.info("===== Evaluating Private benchmark network =====")
         validate(val_loader, private_model, criterion, print_freq, flatten=flatten)
-        #validate_side_by_side(val_loader, model, private_model, flatten=flatten)
+        # validate_side_by_side(val_loader, model, private_model, flatten=flatten)
         return
 
     os.makedirs(save_checkpoint_dir, exist_ok=True)
@@ -336,7 +337,7 @@ def save_checkpoint(
 ):
     # TODO: use crypten.save() in future.
     rank = comm.get().get_rank()
-    #only save for process rank = 0
+    # only save for process rank = 0
     if rank == 0:
         torch.save(state, filename)
         if is_best:

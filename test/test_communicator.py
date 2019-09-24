@@ -5,12 +5,12 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
 import crypten.communicator as comm
 import torch
-import unittest
 
 
 class TestCommunicator(MultiProcessTestCase):
@@ -153,12 +153,12 @@ class TestCommunicator(MultiProcessTestCase):
                 # Setup op-specific kwargs / inputs
                 args = ()
                 if op in ["gather", "reduce"]:
-                    args = (0, )        # dst arg
+                    args = (0,)  # dst arg
                 if op == "broadcast":
-                    args = (0, )        # dst arg
+                    args = (0,)  # dst arg
                 if op == "scatter":
                     tensor = [tensor] * self.world_size
-                    args = (0, )        # src arg
+                    args = (0,)  # src arg
 
                 tensor = getattr(comm.get(), op)(tensor, *args)
                 self.assertEqual(comm.get().comm_rounds, 1)
@@ -175,6 +175,7 @@ class TestCommunicator(MultiProcessTestCase):
         tensor = comm.get().broadcast(tensor, src=0)
         self.assertEqual(comm.get().comm_rounds, 0)
         self.assertEqual(comm.get().comm_bytes, 0)
+
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)

@@ -12,6 +12,7 @@ class Communicator:
     """
     Abstract class defining the functions that a Communicator should implement.
     """
+
     # Determines whether communicators log communication stats
     __verbosity = False
 

@@ -46,7 +46,7 @@ def main():
         args.model,
         imagenet_folder=args.imagenet_folder,
         tensorboard_folder=args.tensorboard_folder,
-        num_samples=args.num_samples
+        num_samples=args.num_samples,
     )
 
 

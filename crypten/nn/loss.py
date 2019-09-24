@@ -59,10 +59,12 @@ class BCELoss(_Loss):
     """
 
     def forward(self, yhat, y):
-        assert yhat.nelement() == y.nelement(), \
-            "input and target must have the same number of elements"
-        assert all(isinstance(val, AutogradCrypTensor) for val in [y, yhat]), \
-            "inputs must be AutogradCrypTensors"
+        assert (
+            yhat.nelement() == y.nelement()
+        ), "input and target must have the same number of elements"
+        assert all(
+            isinstance(val, AutogradCrypTensor) for val in [y, yhat]
+        ), "inputs must be AutogradCrypTensors"
         return yhat.binary_cross_entropy(y)
 
 
@@ -75,6 +77,7 @@ class CrossEntropyLoss(_Loss):
 
     def forward(self, yhat, y):
         assert yhat.size() == y.size(), "input and target must have the same size"
-        assert all(isinstance(val, AutogradCrypTensor) for val in [y, yhat]), \
-            "inputs must be AutogradCrypTensors"
+        assert all(
+            isinstance(val, AutogradCrypTensor) for val in [y, yhat]
+        ), "inputs must be AutogradCrypTensors"
         return yhat.cross_entropy(y)

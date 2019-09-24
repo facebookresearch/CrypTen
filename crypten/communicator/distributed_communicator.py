@@ -84,6 +84,7 @@ class DistributedCommunicator(Communicator):
         # setting its seed to None will produce different seeds even from
         # forked proecesses.
         import numpy
+
         numpy.random.seed(seed=None)
         next_seed = numpy.random.randint(-2 ** 63, 2 ** 63 - 1, (1,)).item()
 

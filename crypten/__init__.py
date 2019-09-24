@@ -6,7 +6,13 @@
 # LICENSE file in the root directory of this source tree.
 
 import crypten.communicator as comm
+import crypten.mpc  # noqa: F401
+import crypten.nn  # noqa: F401
 import torch
+
+# other imports:
+from .cryptensor import CrypTensor
+from .mpc import ptype
 
 
 def init():
@@ -15,14 +21,6 @@ def init():
 
 def uninit():
     return comm.uninit()
-
-
-import crypten.mpc  # noqa: F401
-import crypten.nn  # noqa: F401
-
-# other imports:
-from .cryptensor import CrypTensor
-from .mpc import ptype
 
 
 # the different private type attributes of an mpc encrypted tensor
@@ -96,8 +94,9 @@ def load(f, encrypted=False, src=None, **kwargs):
             return torch.load(f, **kwargs)
         else:
             assert isinstance(src, int), "Load failed: src argument must be an integer"
-            assert src >= 0 and src < comm.get().get_world_size(), \
-                "Load failed: src must be in [0, world_size)"
+            assert (
+                src >= 0 and src < comm.get().get_world_size()
+            ), "Load failed: src must be in [0, world_size)"
 
             if comm.get().get_rank() == src:
                 result = torch.load(f, **kwargs)
@@ -134,8 +133,9 @@ def save(obj, f, src=0, **kwargs):
         raise NotImplementedError("Saving encrypted tensors is not yet supported")
     else:
         assert isinstance(src, int), "Save failed: src must be an integer"
-        assert src >= 0 and src < comm.get().get_world_size(), \
-            "Save failed: src must be an integer in [0, world_size)"
+        assert (
+            src >= 0 and src < comm.get().get_world_size()
+        ), "Save failed: src must be an integer in [0, world_size)"
 
         if comm.get().get_rank() == src:
             torch.save(obj, f, **kwargs)
@@ -161,11 +161,4 @@ for func in __PASSTHROUGH_FUNCTIONS:
     __add_top_level_function(func)
 
 # expose classes and functions in package:
-__all__ = [
-    "CrypTensor",
-    "debug",
-    "init",
-    "mpc",
-    "nn",
-    "uninit",
-]
+__all__ = ["CrypTensor", "debug", "init", "mpc", "nn", "uninit"]

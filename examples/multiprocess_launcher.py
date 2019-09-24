@@ -5,10 +5,11 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import crypten
 import multiprocessing
 import os
 import uuid
+
+import crypten
 
 
 class MultiProcessLauncher:
@@ -17,7 +18,7 @@ class MultiProcessLauncher:
     def __init__(self, world_size, run_process_fn, fn_args=None):
         env = os.environ.copy()
         env["WORLD_SIZE"] = str(world_size)
-        multiprocessing.set_start_method('spawn')
+        multiprocessing.set_start_method("spawn")
 
         # Use random file so multiple jobs can be run simultaneously
         INIT_METHOD = "file:///tmp/crypten-rendezvous-{}".format(uuid.uuid1())

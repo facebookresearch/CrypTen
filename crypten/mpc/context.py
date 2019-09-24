@@ -5,14 +5,14 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from operator import itemgetter
-
-import crypten
 import functools
 import logging
 import multiprocessing
 import os
 import tempfile
+from operator import itemgetter
+
+import crypten
 
 
 def _launch(func, rank, world_size, rendezvous_file, queue, func_args, func_kwargs):
@@ -42,15 +42,7 @@ def run_multiprocess(world_size):
             processes = [
                 multiprocessing.Process(
                     target=_launch,
-                    args=(
-                        func,
-                        rank,
-                        world_size,
-                        rendezvous_file,
-                        queue,
-                        args,
-                        kwargs,
-                    ),
+                    args=(func, rank, world_size, rendezvous_file, queue, args, kwargs),
                 )
                 for rank in range(world_size)
             ]
@@ -78,15 +70,15 @@ def run_multiprocess(world_size):
 
             successful = [process.exitcode == 0 for process in processes]
             if not all(successful):
-                logging.error('One of the parties failed. Check past logs')
+                logging.error("One of the parties failed. Check past logs")
                 return None
 
             return_values = []
             while not queue.empty():
                 return_values.append(queue.get())
 
-            return [value for _, value in sorted(return_values,
-                                                 key=itemgetter(0))]
+            return [value for _, value in sorted(return_values, key=itemgetter(0))]
 
         return wrapper
+
     return decorator

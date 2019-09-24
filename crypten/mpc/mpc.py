@@ -40,11 +40,11 @@ def mode(ptype, inplace=False):
 
 
 def _one_hot_to_index(tensor, dim, keepdim):
-    '''
+    """
     Converts a one-hot tensor output from an argmax / argmin function to a
     tensor containing indices from the input tensor from which the result of the
     argmax / argmin was obtained.
-    '''
+    """
     if dim is None:
         result = tensor.flatten()
         result = result * torch.tensor([i for i in range(tensor.nelement())])
@@ -393,8 +393,9 @@ class MPCTensor(CrypTensor):
         k0, k1 = kernel_size
 
         assert self.dim() == 4, "Input to _max_pool2d_backward must have 4 dimensions"
-        assert indices.dim() == 6, \
-            "Indices input for _max_pool2d_backward must have 6 dimensions"
+        assert (
+            indices.dim() == 6
+        ), "Indices input for _max_pool2d_backward must have 6 dimensions"
 
         # Computes one-hot gradient blocks from each output variable that
         # has non-zero value corresponding to the argmax of the corresponding
@@ -404,7 +405,8 @@ class MPCTensor(CrypTensor):
         # Use minimal size if output_size is not specified.
         if output_size is None:
             output_size = (
-                self.size(0), self.size(1),
+                self.size(0),
+                self.size(1),
                 s0 * self.size(2) - 2 * p0,
                 s1 * self.size(3) - 2 * p1,
             )
@@ -416,10 +418,11 @@ class MPCTensor(CrypTensor):
                 left_ind = s0 * i
                 top_ind = s1 * j
 
-                result[:, :, left_ind:left_ind + k0, top_ind:top_ind + k1] \
-                    += kernels[:, :, i, j]
+                result[
+                    :, :, left_ind : left_ind + k0, top_ind : top_ind + k1
+                ] += kernels[:, :, i, j]
 
-        result = result[:, :, p0:result.size(2) - p0, p1:result.size(3) - p1]
+        result = result[:, :, p0 : result.size(2) - p0, p1 : result.size(3) - p1]
         return result
 
     def where(self, condition, y):
@@ -574,13 +577,9 @@ class MPCTensor(CrypTensor):
         """Divide by a given scalar or tensor"""
         result = self.clone()
         if isinstance(y, CrypTensor):
-            result.share = torch.broadcast_tensors(
-                result.share, y.share
-            )[0].clone()
+            result.share = torch.broadcast_tensors(result.share, y.share)[0].clone()
         elif torch.is_tensor(y):
-            result.share = torch.broadcast_tensors(result.share, y)[
-                0
-            ].clone()
+            result.share = torch.broadcast_tensors(result.share, y)[0].clone()
         return result.div_(y)
 
     def div_(self, y):
@@ -641,11 +640,11 @@ class MPCTensor(CrypTensor):
         """
         return self.pos_pow(0.5)
 
-    def norm(self, p='fro', dim=None, keepdim=False):
+    def norm(self, p="fro", dim=None, keepdim=False):
         """
         Computes the p-norm of the input tensor (or along a dimsion)
         """
-        if p == 'fro':
+        if p == "fro":
             p = 2
 
         if isinstance(p, (int, float)):
@@ -658,7 +657,7 @@ class MPCTensor(CrypTensor):
                 if dim is None:
                     return self.square().sum().sqrt()
                 return self.square().sum(dim, keepdim=keepdim).sqrt()
-            elif p == float('inf'):
+            elif p == float("inf"):
                 if dim is None:
                     return self.abs().max()
                 return self.abs().max(dim=dim, keepdim=keepdim)[0]
@@ -666,7 +665,7 @@ class MPCTensor(CrypTensor):
                 if dim is None:
                     return self.abs().pos_pow(p).sum().pos_pow(1 / p)
                 return self.abs().pos_pow(p).sum(dim, keepdim=keepdim).pos_pow(1 / p)
-        elif p == 'nuc':
+        elif p == "nuc":
             raise NotImplementedError("Nuclear norm is not implemented")
         else:
             raise ValueError(f"Improper value p ({p})for p-norm")
@@ -750,12 +749,21 @@ class MPCTensor(CrypTensor):
         return self
 
     @mode(Ptype.arithmetic)
-    def batchnorm(self, ctx, weight, bias, running_mean=None, running_var=None,
-                training=False, eps=1e-05, momentum=0.1):
+    def batchnorm(
+        self,
+        ctx,
+        weight,
+        bias,
+        running_mean=None,
+        running_var=None,
+        training=False,
+        eps=1e-05,
+        momentum=0.1,
+    ):
         """Implements batchnorm forward"""
         # determine dimensions over which means and variances are computed:
         dimensions = []
-        if self.dim() == 3:    # 1D input
+        if self.dim() == 3:  # 1D input
             dimensions = [0, 2]
         elif self.dim() == 4:  # 2D input
             dimensions = [0, 2, 3]
@@ -781,10 +789,10 @@ class MPCTensor(CrypTensor):
         if isinstance(variance, MPCTensor):
             inv_var = (variance + eps).pos_pow(0.5).pow(-1)
         else:
-            inv_var = (variance + eps)**(-0.5)
+            inv_var = (variance + eps) ** (-0.5)
         alpha = inv_var * weight
         # enrypted must be first operand
-        beta = - mean * alpha + bias
+        beta = -mean * alpha + bias
 
         # ensure dimensionality of bias and gain matches input dimensionality:
         for dimension in dimensions:
@@ -802,8 +810,9 @@ class MPCTensor(CrypTensor):
         """
         if torch.is_tensor(src):
             src = MPCTensor(src)
-        assert isinstance(src, MPCTensor), \
-            "Unrecognized scatter src type: %s" % type(src)
+        assert isinstance(src, MPCTensor), "Unrecognized scatter src type: %s" % type(
+            src
+        )
         self.share.scatter_(dim, index, src.share)
         return self
 

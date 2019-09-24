@@ -60,18 +60,18 @@ class AutogradCrypTensor(object):
     def __init__(self, tensor, requires_grad=True):
         if torch.is_tensor(tensor):
             raise ValueError("Cannot create AutogradCrypTensor from PyTorch tensor.")
-        self._tensor = tensor               # value of tensor
+        self._tensor = tensor  # value of tensor
         self.requires_grad = requires_grad  # whether tensors needs gradient
         self._reset_gradients()
 
     def _reset_gradients(self):
         """Resets gradient information in tensor."""
-        self.grad = None                    # gradient itself
-        self.grad_fn = None                 # functions to call for gradient
-        self.grad_computed = False          # whether gradient already computed
-        self.parents = []                   # parents of node in graph
-        self.children = []                  # children of node in graph
-        self.ctx = AutogradContext()        # contexts for AutogradFunctions
+        self.grad = None  # gradient itself
+        self.grad_fn = None  # functions to call for gradient
+        self.grad_computed = False  # whether gradient already computed
+        self.parents = []  # parents of node in graph
+        self.children = []  # children of node in graph
+        self.ctx = AutogradContext()  # contexts for AutogradFunctions
 
     @property
     def tensor(self):
@@ -92,7 +92,7 @@ class AutogradCrypTensor(object):
                     self.grad = grad_input.view(self.size())  # store gradient...
                 else:
                     self.grad.add_(grad_input)  # ... or accumulate gradient...
-                return                          # ... and do not proceed.
+                return  # ... and do not proceed.
 
             # if undefined, set gradient input to all ones:
             if grad_input is None:
@@ -111,11 +111,12 @@ class AutogradCrypTensor(object):
             # perform backpropagation:
             grad = self.grad_fn.backward(self.ctx, grad_input)
             self.grad_computed = True  # mark gradient as computed
-            self.ctx.reset()           # free up memory used for context
+            self.ctx.reset()  # free up memory used for context
             if not isinstance(grad, (list, tuple)):
                 grad = (grad,)
-            assert len(self.children) <= len(grad), \
-                "number of gradients to backpropagate does not match number of children"
+            assert len(self.children) <= len(
+                grad
+            ), "number of gradients to backpropagate does not match number of children"
             for idx, child in enumerate(self.children):
                 child.backward(grad_input=grad[idx], top_node=False)
 
@@ -179,15 +180,16 @@ class AutogradCrypTensor(object):
                 # prepare inputs and context for forward call:
                 ctx = AutogradContext()
                 inputs = [self] + list(args)
-                inputs = [input._tensor if isinstance(input, AutogradCrypTensor)
-                          else input for input in inputs]
+                inputs = [
+                    input._tensor if isinstance(input, AutogradCrypTensor) else input
+                    for input in inputs
+                ]
                 if len(inputs) == 1:
                     inputs = inputs[0]  # unpack input list if possible
 
                 # apply correct autograd function and wrap result:
                 result = AutogradCrypTensor(
-                    grad_fn.forward(ctx, inputs, **kwargs),
-                    requires_grad=requires_grad,
+                    grad_fn.forward(ctx, inputs, **kwargs), requires_grad=requires_grad
                 )
                 if result.requires_grad:
                     result.children = children

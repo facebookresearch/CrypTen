@@ -15,9 +15,7 @@ def generate_random_ring_element(size, ring_size=(2 ** 64), **kwargs):
     )
 
 
-def generate_kbit_random_tensor(
-    size, bitlength=None, **kwargs
-):
+def generate_kbit_random_tensor(size, bitlength=None, **kwargs):
     """Helper function to generate a random k-bit number"""
     if bitlength is None:
         bitlength = torch.iinfo(torch.long).bits

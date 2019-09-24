@@ -13,13 +13,14 @@ import torch
 import torchvision.datasets as datasets
 import torchvision.models as models
 import torchvision.transforms as transforms
+from examples.meters import AccuracyMeter
+from examples.util import NoopContextManager
+
+
 try:
     from crypten.nn.tensorboard import SummaryWriter
 except ImportError:  # tensorboard not installed
     SummaryWriter = None
-
-from examples.meters import AccuracyMeter
-from examples.util import NoopContextManager
 
 
 def run_experiment(

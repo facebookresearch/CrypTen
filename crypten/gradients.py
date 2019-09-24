@@ -5,9 +5,11 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from functools import reduce
+
 import crypten
 import torch
-from functools import reduce
+
 
 # registry that maps function names to AutogradFunctions:
 FUNCTION_REGISTRY = {}
@@ -21,8 +23,9 @@ def register_function(name):
         if name in FUNCTION_REGISTRY:
             raise ValueError("Cannot register duplicate function ({})".format(name))
         if not issubclass(cls, AutogradFunction):
-            raise ValueError("Function (%s: %s) must extend AutogradFunction" %
-                             (name, cls.__name__))
+            raise ValueError(
+                "Function (%s: %s) must extend AutogradFunction" % (name, cls.__name__)
+            )
         cls.name = name
         FUNCTION_REGISTRY[name] = cls
         return cls
@@ -64,8 +67,7 @@ def _inverse_broadcast(grad_output, input_size):
     # remove batch dimension:
     if grad_output.dim() == len(input_size) + 1:
         grad_output = grad_output.sum(0, keepdim=False)
-    assert grad_output.dim() == len(input_size), \
-        "cannot perform inverse broadcast"
+    assert grad_output.dim() == len(input_size), "cannot perform inverse broadcast"
 
     # perform accumulation across broadcast dimensions:
     for dim in range(grad_output.dim()):
@@ -78,6 +80,7 @@ class AutogradFunction(object):
     """
     Base implementation of a function that supports autograd.
     """
+
     differentiable = True
 
     @staticmethod
@@ -95,7 +98,6 @@ class AutogradFunction(object):
 
 @register_function("t")
 class AutogradT(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         return input.t()
@@ -107,7 +109,6 @@ class AutogradT(AutogradFunction):
 
 @register_function("transpose")
 class AutogradTranspose(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, dim1, dim2 = input
@@ -122,7 +123,6 @@ class AutogradTranspose(AutogradFunction):
 
 @register_function("flip")
 class AutogradFlip(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, dims = input
@@ -137,7 +137,6 @@ class AutogradFlip(AutogradFunction):
 
 @register_function("view")
 class AutogradView(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, size = input
@@ -152,7 +151,6 @@ class AutogradView(AutogradFunction):
 
 @register_function("reshape")
 class AutogradReshape(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, shape = input
@@ -167,7 +165,6 @@ class AutogradReshape(AutogradFunction):
 
 @register_function("flatten")
 class AutogradFlatten(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input.size())
@@ -181,7 +178,6 @@ class AutogradFlatten(AutogradFunction):
 
 @register_function("narrow")
 class AutogradNarrow(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, dim, start, length = input
@@ -205,7 +201,6 @@ class AutogradNarrow(AutogradFunction):
 
 @register_function("take")
 class AutogradTake(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, index, dimension = input
@@ -224,15 +219,15 @@ class AutogradTake(AutogradFunction):
             grad = grad_flat.reshape(size)
         else:
             flat_index = index.flatten()
-            grad_output_flat = grad_output.flatten(start_dim=dimension,
-                                    end_dim=(dimension + index.dim() - 1))
+            grad_output_flat = grad_output.flatten(
+                start_dim=dimension, end_dim=(dimension + index.dim() - 1)
+            )
             grad.index_add_(dimension, flat_index, grad_output_flat)
         return grad
 
 
 @register_function("gather")
 class AutogradGather(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, dim, index = input
@@ -247,7 +242,6 @@ class AutogradGather(AutogradFunction):
 
 @register_function("scatter")
 class AutogradScatter(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, dim, index, src = input
@@ -268,7 +262,6 @@ class AutogradScatter(AutogradFunction):
 
 @register_function("roll")
 class AutogradRoll(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         if len(input) < 3:
@@ -300,13 +293,12 @@ class AutogradRoll(AutogradFunction):
 
 @register_function("squeeze")
 class AutogradSqueeze(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
 
         # preprocess inputs:
         if isinstance(input, (tuple, list)) and len(input) == 1:
-            input, = input      # no dimension to squeeze specified
+            input, = input  # no dimension to squeeze specified
         else:
             input, dim = input  # dimension to squeeze specified
 
@@ -332,7 +324,6 @@ class AutogradSqueeze(AutogradFunction):
 
 @register_function("unsqueeze")
 class AutogradUnsqueeze(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, dim = input
@@ -347,7 +338,6 @@ class AutogradUnsqueeze(AutogradFunction):
 
 @register_function("__getitem__")
 class AutogradGetItem(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, index = input
@@ -364,7 +354,6 @@ class AutogradGetItem(AutogradFunction):
 
 @register_function("neg")
 class AutogradNeg(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         return input.neg()
@@ -376,10 +365,9 @@ class AutogradNeg(AutogradFunction):
 
 @register_function("relu")
 class AutogradReLU(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
-        mask = input.gt(0.)
+        mask = input.gt(0.0)
         ctx.save_for_backward(mask)
         return input.mul(mask)
 
@@ -391,7 +379,6 @@ class AutogradReLU(AutogradFunction):
 
 @register_function("tanh")
 class AutogradTanh(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         activations = input.tanh()
@@ -406,7 +393,6 @@ class AutogradTanh(AutogradFunction):
 
 @register_function("add")
 class AutogradAdd(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input = _ensure_tensors(input)
@@ -424,7 +410,6 @@ class AutogradAdd(AutogradFunction):
 
 @register_function("sub")
 class AutogradSub(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input = _ensure_tensors(input)
@@ -442,7 +427,6 @@ class AutogradSub(AutogradFunction):
 
 @register_function("mul")
 class AutogradMul(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input = _ensure_tensors(input)
@@ -461,7 +445,6 @@ class AutogradMul(AutogradFunction):
 
 @register_function("matmul")
 class AutogradMatMul(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
@@ -476,7 +459,6 @@ class AutogradMatMul(AutogradFunction):
 
 @register_function("div")
 class AutogradDiv(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, scalar = input
@@ -491,7 +473,6 @@ class AutogradDiv(AutogradFunction):
 
 @register_function("pow")
 class AutogradPow(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
@@ -507,12 +488,10 @@ class AutogradPow(AutogradFunction):
 
 @register_function("pos_pow")
 class AutogradPosPow(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, power = input
-        if isinstance(power, int) or \
-                (isinstance(power, float) and int(power) == power):
+        if isinstance(power, int) or (isinstance(power, float) and int(power) == power):
             ctx.save_multiple_for_backward([input, power])
             return input.pow(power)
         else:
@@ -523,8 +502,7 @@ class AutogradPosPow(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         input, power = ctx.saved_tensors
-        if isinstance(power, int) or \
-                (isinstance(power, float) and int(power) == power):
+        if isinstance(power, int) or (isinstance(power, float) and int(power) == power):
             return input.pow(power - 1.0).mul_(power).mul_(grad_output)
         else:
             return input.mul(power - 1.0).mul_(power).exp().mul(grad_output)
@@ -532,7 +510,6 @@ class AutogradPosPow(AutogradFunction):
 
 @register_function("square")
 class AutogradSquare(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
@@ -546,7 +523,6 @@ class AutogradSquare(AutogradFunction):
 
 @register_function("sqrt")
 class AutogradSqrt(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         output = input.sqrt()
@@ -561,7 +537,6 @@ class AutogradSqrt(AutogradFunction):
 
 @register_function("exp")
 class AutogradExp(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         output = input.exp()
@@ -576,7 +551,6 @@ class AutogradExp(AutogradFunction):
 
 @register_function("log")
 class AutogradLog(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
@@ -590,7 +564,6 @@ class AutogradLog(AutogradFunction):
 
 @register_function("reciprocal")
 class AutogradReciprocal(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         reciprocal = input.reciprocal()
@@ -605,7 +578,6 @@ class AutogradReciprocal(AutogradFunction):
 
 @register_function("dot")
 class AutogradDot(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
@@ -620,7 +592,6 @@ class AutogradDot(AutogradFunction):
 
 @register_function("ger")
 class AutogradGer(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
@@ -635,7 +606,6 @@ class AutogradGer(AutogradFunction):
 
 @register_function("sin")
 class AutogradSin(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         cossin = input.cossin()
@@ -650,7 +620,6 @@ class AutogradSin(AutogradFunction):
 
 @register_function("cos")
 class AutogradCos(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         cossin = input.cossin()
@@ -665,7 +634,6 @@ class AutogradCos(AutogradFunction):
 
 @register_function("abs")
 class AutogradAbs(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         sign = input.sign()
@@ -680,7 +648,6 @@ class AutogradAbs(AutogradFunction):
 
 @register_function("sign")
 class AutogradSign(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         return input.sign()
@@ -692,11 +659,9 @@ class AutogradSign(AutogradFunction):
 
 @register_function("norm")
 class AutogradNorm(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input, dim=None, keepdim=False):
-        norm = input.norm(dim=dim, keepdim=keepdim) if dim is not None \
-            else input.norm()
+        norm = input.norm(dim=dim, keepdim=keepdim) if dim is not None else input.norm()
         ctx.save_multiple_for_backward((input, norm, dim, keepdim))
         return norm
 
@@ -710,12 +675,10 @@ class AutogradNorm(AutogradFunction):
 
 @register_function("sum")
 class AutogradSum(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input, dim=None, keepdim=False):
         ctx.save_multiple_for_backward((input.size(), dim, keepdim))
-        return input.sum(dim=dim, keepdim=keepdim) if dim is not None \
-            else input.sum()
+        return input.sum(dim=dim, keepdim=keepdim) if dim is not None else input.sum()
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -727,7 +690,6 @@ class AutogradSum(AutogradFunction):
 
 @register_function("cumsum")
 class AutogradCumsum(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, dim = input
@@ -742,7 +704,6 @@ class AutogradCumsum(AutogradFunction):
 
 @register_function("trace")
 class AutogradTrace(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input.size()[0])
@@ -756,52 +717,52 @@ class AutogradTrace(AutogradFunction):
 
 @register_function("mean")
 class AutogradMean(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input, dim=None, keepdim=False):
         ctx.save_multiple_for_backward((input.size(), dim, keepdim))
-        return input.mean(dim, keepdim=keepdim) if dim is not None \
-            else input.mean()
+        return input.mean(dim, keepdim=keepdim) if dim is not None else input.mean()
 
     @staticmethod
     def backward(ctx, grad_output):
         input_size, dim, keepdim = ctx.saved_tensors
         if not keepdim and dim is not None:
             grad_output.unsqueeze(dim)
-        nelement = float(reduce(lambda x, y: x * y, input_size)
-                         if dim is None else input_size[dim])
+        nelement = float(
+            reduce(lambda x, y: x * y, input_size) if dim is None else input_size[dim]
+        )
         return grad_output.new(torch.ones(input_size)).mul_(grad_output).div_(nelement)
 
 
 @register_function("var")
 class AutogradVariance(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input, dim=None, keepdim=False):
         ctx.save_multiple_for_backward((input, dim, keepdim))
-        return input.var(dim, keepdim=keepdim) if dim is not None \
-            else input.var()
+        return input.var(dim, keepdim=keepdim) if dim is not None else input.var()
 
     @staticmethod
     def backward(ctx, grad_output):
         input, dim, keepdim = ctx.saved_tensors
         if not keepdim and dim is not None:
             grad_output.unsqueeze(dim)
-        nelement = float(reduce(lambda x, y: x * y, input.size())
-                         if dim is None else input.size(dim))
+        nelement = float(
+            reduce(lambda x, y: x * y, input.size()) if dim is None else input.size(dim)
+        )
         mean = input.mean() if dim is None else input.mean(dim=dim, keepdim=keepdim)
         return (input - mean).mul_(2.0).mul_(grad_output).div_(nelement)
 
 
 @register_function("min")
 class AutogradMin(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input, dim=None, keepdim=False):
 
         # find minimum value (and corresponding argmin):
-        min = input.min(dim=dim, keepdim=keepdim, one_hot=True) \
-            if dim is not None else input.min(one_hot=True)
+        min = (
+            input.min(dim=dim, keepdim=keepdim, one_hot=True)
+            if dim is not None
+            else input.min(one_hot=True)
+        )
         argmin = None
         if isinstance(min, tuple):
             min, argmin = min
@@ -822,13 +783,15 @@ class AutogradMin(AutogradFunction):
 
 @register_function("max")
 class AutogradMax(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input, dim=None, keepdim=False):
 
         # find maximum value (and corresponding argmax):
-        max = input.max(dim=dim, keepdim=keepdim, one_hot=True) \
-            if dim is not None else input.max(one_hot=True)
+        max = (
+            input.max(dim=dim, keepdim=keepdim, one_hot=True)
+            if dim is not None
+            else input.max(one_hot=True)
+        )
         argmax = None
         if isinstance(max, tuple):
             max, argmax = max
@@ -849,7 +812,6 @@ class AutogradMax(AutogradFunction):
 
 @register_function("sigmoid")
 class AutogradSigmoid(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         probs = input.sigmoid()
@@ -864,7 +826,6 @@ class AutogradSigmoid(AutogradFunction):
 
 @register_function("softmax")
 class AutogradSoftmax(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         input, dim = input
@@ -880,9 +841,8 @@ class AutogradSoftmax(AutogradFunction):
 
 @register_function("pad")
 class AutogradPad(AutogradFunction):
-
     @staticmethod
-    def forward(ctx, input, value=0., mode="constant"):
+    def forward(ctx, input, value=0.0, mode="constant"):
         input, padding = input
         ctx.save_for_backward(padding)
         output = input.pad(padding, value=value, mode=mode)
@@ -901,7 +861,6 @@ class AutogradPad(AutogradFunction):
 
 @register_function("avg_pool2d")
 class AutogradAvgPool2D(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input, padding=0, stride=None):
 
@@ -947,7 +906,6 @@ class AutogradAvgPool2D(AutogradFunction):
 
 @register_function("max_pool2d")
 class AutogradMaxPool2D(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input, padding=0, stride=None):
 
@@ -962,7 +920,7 @@ class AutogradMaxPool2D(AutogradFunction):
 
         # perform max pooling:
         output, indices = input.max_pool2d(
-            kernel_size, padding=padding, stride=stride, return_indices=True,
+            kernel_size, padding=padding, stride=stride, return_indices=True
         )
 
         # store information for backward pass:
@@ -985,7 +943,6 @@ class AutogradMaxPool2D(AutogradFunction):
 
 @register_function("conv2d")
 class AutogradConv2D(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input, padding=0, stride=1):
         input, kernel = input
@@ -1012,10 +969,7 @@ class AutogradConv2D(AutogradFunction):
             grad_output, input.size(), stride, padding, (kernel_size_y, kernel_size_x)
         )
         grad_input = grad_output.conv_transpose2d(
-            kernel,
-            stride=stride,
-            padding=padding,
-            output_padding=output_padding
+            kernel, stride=stride, padding=padding, output_padding=output_padding
         )
 
         # compute gradient with respect to kernel:
@@ -1026,13 +980,11 @@ class AutogradConv2D(AutogradFunction):
             grad_output.size(2),
             grad_output.size(3),
         )
-        input = input.view(1, input.size(0) * input.size(1),
-                              input.size(2), input.size(3))
+        input = input.view(
+            1, input.size(0) * input.size(1), input.size(2), input.size(3)
+        )
         grad_kernel = input.conv2d(
-            grad_output,
-            padding=padding,
-            stride=stride,
-            groups=in_channels * batch_size,
+            grad_output, padding=padding, stride=stride, groups=in_channels * batch_size
         )
         grad_kernel = grad_kernel.view(
             batch_size,
@@ -1040,12 +992,11 @@ class AutogradConv2D(AutogradFunction):
             grad_kernel.size(2),
             grad_kernel.size(3),
         )
-        grad_kernel = grad_kernel.sum(dim=0).view(
-            in_channels,
-            out_channels,
-            grad_kernel.size(2),
-            grad_kernel.size(3),
-        ).transpose(0, 1)
+        grad_kernel = (
+            grad_kernel.sum(dim=0)
+            .view(in_channels, out_channels, grad_kernel.size(2), grad_kernel.size(3))
+            .transpose(0, 1)
+        )
         grad_kernel = grad_kernel.narrow(2, 0, kernel_size_y)
         grad_kernel = grad_kernel.narrow(3, 0, kernel_size_x)
         return (grad_input, grad_kernel)
@@ -1053,17 +1004,23 @@ class AutogradConv2D(AutogradFunction):
 
 @register_function("batchnorm")
 class AutogradBatchNorm(AutogradFunction):
-
     @staticmethod
-    def forward(ctx, input, running_mean=None, running_var=None,
-                training=False, eps=1e-05, momentum=0.1):
+    def forward(
+        ctx,
+        input,
+        running_mean=None,
+        running_var=None,
+        training=False,
+        eps=1e-05,
+        momentum=0.1,
+    ):
 
         # unpack inputs:
         input, weight, bias = input
 
         # determine dimensions over which means and variances are computed:
         dimensions = []
-        if input.dim() == 3:    # 1D input
+        if input.dim() == 3:  # 1D input
             dimensions = [0, 2]
         elif input.dim() == 4:  # 2D input
             dimensions = [0, 2, 3]
@@ -1114,7 +1071,6 @@ class AutogradBatchNorm(AutogradFunction):
 
 @register_function("binary_cross_entropy")
 class AutogradBinaryCrossEntropy(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         pred, target = input
@@ -1133,7 +1089,6 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
 
 @register_function("cross_entropy")
 class AutogradCrossEntropy(AutogradFunction):
-
     @staticmethod
     def forward(ctx, input):
         pred, target = input  # NOTE: target is assumed to be one-hot vector.

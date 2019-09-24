@@ -6,19 +6,19 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from crypten.common.rng import generate_random_ring_element
-from crypten.common.tensor_types import is_float_tensor
-from crypten.common.util import count_wraps
-from crypten.mpc.primitives import ArithmeticSharedTensor
+import itertools
+import logging
+import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
 import crypten.communicator as comm
-import itertools
-import logging
 import torch
 import torch.nn.functional as F
-import unittest
+from crypten.common.rng import generate_random_ring_element
+from crypten.common.tensor_types import is_float_tensor
+from crypten.common.util import count_wraps
+from crypten.mpc.primitives import ArithmeticSharedTensor
 
 
 class TestArithmetic(MultiProcessTestCase):
@@ -59,12 +59,14 @@ class TestArithmetic(MultiProcessTestCase):
             encrypted_tensor = ArithmeticSharedTensor(reference)
             self.assertTrue(
                 torch.equal(encrypted_tensor.share, encrypted_tensor.share),
-                "share getter failed")
+                "share getter failed",
+            )
 
             new_share = get_random_test_tensor(is_float=False)
             encrypted_tensor.share = new_share
-            self.assertTrue(torch.equal(encrypted_tensor.share, new_share),
-                            "share setter failed")
+            self.assertTrue(
+                torch.equal(encrypted_tensor.share, new_share), "share setter failed"
+            )
 
     def test_encrypt_decrypt(self):
         """
@@ -266,42 +268,34 @@ class TestArithmetic(MultiProcessTestCase):
                     encrypted2 = tensor_type(tensor2)
 
                     reference = getattr(tensor1, func)(dimension, index, tensor2)
-                    encrypted_out = getattr(encrypted, func)(dimension, index,
-                        encrypted2)
+                    encrypted_out = getattr(encrypted, func)(
+                        dimension, index, encrypted2
+                    )
                     private = tensor_type == ArithmeticSharedTensor
                     self._check(
                         encrypted_out,
                         reference,
-                        "%s %s failed" % ("private" if private else "public",
-                            func),
+                        "%s %s failed" % ("private" if private else "public", func),
                     )
                     if func.endswith("_"):
                         # Check in-place index_add worked
                         self._check(
                             encrypted,
                             reference,
-                            "%s %s failed"
-                            % ("private" if private else "public", func),
+                            "%s %s failed" % ("private" if private else "public", func),
                         )
                     else:
                         # Check original is not modified
                         self._check(
                             encrypted,
                             tensor1,
-                            "%s %s failed"
-                            % (
-                                "private" if private else "public", func
-                            ),
+                            "%s %s failed" % ("private" if private else "public", func),
                         )
 
     def test_scatter_add(self):
         """Test index_add function of encrypted tensor"""
         funcs = ["scatter_add", "scatter_add_"]
-        sizes = [
-            (5, 5),
-            (5, 5, 5),
-            (5, 5, 5, 5)
-        ]
+        sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
         for func in funcs:
             for size in sizes:
                 for tensor_type in [lambda x: x, ArithmeticSharedTensor]:
@@ -313,15 +307,12 @@ class TestArithmetic(MultiProcessTestCase):
                         encrypted = ArithmeticSharedTensor(tensor1)
                         encrypted2 = tensor_type(tensor2)
                         reference = getattr(tensor1, func)(dim, index, tensor2)
-                        encrypted_out = getattr(encrypted, func)(
-                            dim, index, encrypted2
-                        )
+                        encrypted_out = getattr(encrypted, func)(dim, index, encrypted2)
                         private = tensor_type == ArithmeticSharedTensor
                         self._check(
                             encrypted_out,
                             reference,
-                            "%s %s failed" % ("private" if private else "public",
-                                func),
+                            "%s %s failed" % ("private" if private else "public", func),
                         )
                         if func.endswith("_"):
                             # Check in-place index_add worked
@@ -729,7 +720,7 @@ class TestArithmetic(MultiProcessTestCase):
     def test_src_failure(self):
         """Tests that out-of-bounds src fails as expected"""
         tensor = get_random_test_tensor(is_float=True)
-        for src in [None, 'abc', -2, self.world_size]:
+        for src in [None, "abc", -2, self.world_size]:
             with self.assertRaises(AssertionError):
                 ArithmeticSharedTensor(tensor, src=src)
 
@@ -744,38 +735,46 @@ class TestArithmetic(MultiProcessTestCase):
             tensor2 = get_random_test_tensor(size=size, is_float=True)
             encrypted_tensor2 = y_type(tensor2)
 
-            condition_tensor = get_random_test_tensor(
-                max_value=1, size=size, is_float=False) + 1
+            condition_tensor = (
+                get_random_test_tensor(max_value=1, size=size, is_float=False) + 1
+            )
             condition_encrypted = ArithmeticSharedTensor(condition_tensor)
             condition_bool = condition_tensor.bool()
 
             reference_out = tensor1.where(condition_bool, tensor2)
 
-            encrypted_out = encrypted_tensor1.where(condition_bool,
-                                                    encrypted_tensor2)
+            encrypted_out = encrypted_tensor1.where(condition_bool, encrypted_tensor2)
             y_is_private = y_type == ArithmeticSharedTensor
-            self._check(encrypted_out,
-                        reference_out,
-                        f"{'private' if y_is_private else 'public'} y "
-                        "where failed with public condition")
+            self._check(
+                encrypted_out,
+                reference_out,
+                f"{'private' if y_is_private else 'public'} y "
+                "where failed with public condition",
+            )
 
-            encrypted_out = encrypted_tensor1.where(condition_encrypted,
-                                                    encrypted_tensor2)
-            self._check(encrypted_out,
-                        reference_out,
-                        f"{'private' if y_is_private else 'public'} y "
-                        "where failed with private condition")
+            encrypted_out = encrypted_tensor1.where(
+                condition_encrypted, encrypted_tensor2
+            )
+            self._check(
+                encrypted_out,
+                reference_out,
+                f"{'private' if y_is_private else 'public'} y "
+                "where failed with private condition",
+            )
 
             # test scalar y
-            scalar = get_random_test_tensor(
-                max_value=0, size=[1], is_float=True)
-            self._check(encrypted_tensor1.where(condition_bool, scalar),
-                        tensor1.where(condition_bool, scalar),
-                        "where failed against scalar y with public condition")
+            scalar = get_random_test_tensor(max_value=0, size=[1], is_float=True)
+            self._check(
+                encrypted_tensor1.where(condition_bool, scalar),
+                tensor1.where(condition_bool, scalar),
+                "where failed against scalar y with public condition",
+            )
 
-            self._check(encrypted_tensor1.where(condition_encrypted, scalar),
-                        tensor1.where(condition_bool, scalar),
-                        "where failed against scalar y with private condition")
+            self._check(
+                encrypted_tensor1.where(condition_encrypted, scalar),
+                tensor1.where(condition_bool, scalar),
+                "where failed against scalar y with private condition",
+            )
 
     # TODO: Write the following unit tests
     @unittest.skip("Test not implemented")

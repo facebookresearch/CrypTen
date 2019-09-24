@@ -73,6 +73,7 @@ def _run_experiment(args):
         format="%(asctime)s - %(process)d - %(name)s - %(levelname)s - %(message)s",
     )
     from mpc_linear_svm import run_mpc_linear_svm
+
     run_mpc_linear_svm(
         args.epochs, args.examples, args.features, args.lr, args.skip_plaintext
     )

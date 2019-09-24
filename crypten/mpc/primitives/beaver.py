@@ -22,9 +22,7 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
     assert op in ["mul", "matmul", "conv2d", "conv_transpose2d"]
 
     provider = crypten.mpc.get_default_provider()
-    a, b, c = provider.generate_additive_triple(
-        x.size(), y.size(), op, *args, **kwargs
-    )
+    a, b, c = provider.generate_additive_triple(x.size(), y.size(), op, *args, **kwargs)
 
     # Stack to vectorize reveal if possible
     if x.size() == y.size():

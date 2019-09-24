@@ -5,16 +5,20 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
+import unittest
+from test.multiprocess_test_case import (
+    MultiProcessTestCase,
+    get_random_linear,
+    get_random_test_tensor,
+    onehot,
+)
+
 import crypten
 import crypten.communicator as comm
-import logging
 import torch
-import unittest
-
 from crypten.autograd_cryptensor import AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
-from test.multiprocess_test_case import \
-    MultiProcessTestCase, get_random_test_tensor, get_random_linear, onehot
 
 
 class TestNN(MultiProcessTestCase):
@@ -47,12 +51,14 @@ class TestNN(MultiProcessTestCase):
     def _compute_reference_parameters(self, init_name, reference, model, learning_rate):
         for name, param in model.named_parameters(recurse=False):
             local_name = init_name + "_" + name
-            reference[local_name] = param.get_plain_text() - \
-                learning_rate * param.grad.get_plain_text()
+            reference[local_name] = (
+                param.get_plain_text() - learning_rate * param.grad.get_plain_text()
+            )
         for name, module in model._modules.items():
             local_name = init_name + "_" + name
-            reference = self._compute_reference_parameters(local_name, reference,
-                module, learning_rate)
+            reference = self._compute_reference_parameters(
+                local_name, reference, module, learning_rate
+            )
         return reference
 
     def _check_reference_parameters(self, init_name, reference, model):
@@ -244,7 +250,7 @@ class TestNN(MultiProcessTestCase):
 
                 # generate inputs:
                 input = get_random_test_tensor(
-                    size=input_sizes[module_name], is_float=True,
+                    size=input_sizes[module_name], is_float=True
                 )
                 input.requires_grad = True
                 encr_input = crypten.cryptensor(input)
@@ -302,14 +308,20 @@ class TestNN(MultiProcessTestCase):
                 reference.backward(torch.ones(reference.size()))
                 encr_output.backward()
                 if wrap:  # you cannot get input gradients on MPCTensor inputs
-                    self._check(encr_input.grad, input.grad,
-                                "%s backward on input failed" % module_name)
+                    self._check(
+                        encr_input.grad,
+                        input.grad,
+                        "%s backward on input failed" % module_name,
+                    )
                 else:
                     self.assertFalse(hasattr(encr_input, "grad"))
                 for name, param in module.named_parameters():
                     encr_param = getattr(encr_module, name)
-                    self._check(encr_param.grad, param.grad,
-                                "%s backward on %s failed" % (module_name, name))
+                    self._check(
+                        encr_param.grad,
+                        param.grad,
+                        "%s backward on %s failed" % (module_name, name),
+                    )
 
     def test_sequential(self):
         """
@@ -408,7 +420,7 @@ class TestNN(MultiProcessTestCase):
         for loss_name in ["BCELoss", "L1Loss", "MSELoss"]:
             loss = getattr(torch.nn, loss_name)()(input, target)
             encrypted_loss = getattr(crypten.nn, loss_name)()(
-                encrypted_input, encrypted_target,
+                encrypted_input, encrypted_target
             )
             self._check(encrypted_loss, loss, "%s failed" % loss_name)
             encrypted_loss = getattr(crypten.nn, loss_name)()(
@@ -421,18 +433,17 @@ class TestNN(MultiProcessTestCase):
         batch_size, num_targets = 16, 5
         input = get_random_test_tensor(size=(batch_size, num_targets), is_float=True)
         target = get_random_test_tensor(
-            size=(batch_size,), max_value=num_targets - 1,
+            size=(batch_size,), max_value=num_targets - 1
         ).abs()
         encrypted_input = crypten.cryptensor(input)
         encrypted_target = crypten.cryptensor(onehot(target, num_targets=num_targets))
         loss = torch.nn.CrossEntropyLoss()(input, target)
         encrypted_loss = crypten.nn.CrossEntropyLoss()(
-            encrypted_input, encrypted_target,
+            encrypted_input, encrypted_target
         )
         self._check(encrypted_loss, loss, "cross-entropy loss failed")
         encrypted_loss = crypten.nn.CrossEntropyLoss()(
-            AutogradCrypTensor(encrypted_input),
-            AutogradCrypTensor(encrypted_target),
+            AutogradCrypTensor(encrypted_input), AutogradCrypTensor(encrypted_target)
         )
         self._check(encrypted_loss, loss, "cross-entropy loss failed")
 
@@ -444,11 +455,13 @@ class TestNN(MultiProcessTestCase):
         # create MLP with one hidden layer:
         learning_rate = 0.1
         batch_size, num_inputs, num_intermediate, num_outputs = 8, 10, 5, 1
-        model = crypten.nn.Sequential([
-            crypten.nn.Linear(num_inputs, num_intermediate),
-            crypten.nn.ReLU(),
-            crypten.nn.Linear(num_intermediate, num_outputs),
-        ])
+        model = crypten.nn.Sequential(
+            [
+                crypten.nn.Linear(num_inputs, num_intermediate),
+                crypten.nn.ReLU(),
+                crypten.nn.Linear(num_intermediate, num_outputs),
+            ]
+        )
         model.train()
         model.encrypt()
         loss = crypten.nn.MSELoss()
@@ -459,7 +472,7 @@ class TestNN(MultiProcessTestCase):
 
                 # get training sample:
                 input = get_random_test_tensor(
-                    size=(batch_size, num_inputs), is_float=True,
+                    size=(batch_size, num_inputs), is_float=True
                 )
                 target = input.mean(dim=1, keepdim=True)
 
@@ -484,8 +497,9 @@ class TestNN(MultiProcessTestCase):
 
                 # perform parameter update:
                 reference = {}
-                reference = self._compute_reference_parameters("", reference, model,
-                    learning_rate)
+                reference = self._compute_reference_parameters(
+                    "", reference, model, learning_rate
+                )
                 model.update_parameters(learning_rate)
                 self._check_reference_parameters("", reference, model)
 
@@ -517,8 +531,9 @@ class TestNN(MultiProcessTestCase):
         model_plaintext = ExampleNet()
         batch_size = 5
         x_orig = get_random_test_tensor(size=(batch_size, 1, 28, 28), is_float=True)
-        y_orig = get_random_test_tensor(size=(batch_size, 2),
-            is_float=True).gt(0).float()
+        y_orig = (
+            get_random_test_tensor(size=(batch_size, 2), is_float=True).gt(0).float()
+        )
 
         loss = crypten.nn.MSELoss()
 
@@ -547,20 +562,22 @@ class TestNN(MultiProcessTestCase):
             loss_value.backward()
             for param in model.parameters():
                 if param.requires_grad:
-                    self.assertIsNotNone(param.grad,
-                        "required parameter gradient not created")
+                    self.assertIsNotNone(
+                        param.grad, "required parameter gradient not created"
+                    )
 
-            #update parameters
+            # update parameters
             model.update_parameters(learning_rate)
 
-            #record initial and current loss
+            # record initial and current loss
             if i == 0:
                 orig_loss = loss_value.get_plain_text()
             curr_loss = loss_value.get_plain_text()
 
-        #check that the loss has decreased after training
-        self.assertTrue(curr_loss.item() < orig_loss.item(),
-            "loss has not decreased after training")
+        # check that the loss has decreased after training
+        self.assertTrue(
+            curr_loss.item() < orig_loss.item(), "loss has not decreased after training"
+        )
 
 
 # This code only runs when executing the file outside the test harness (e.g.

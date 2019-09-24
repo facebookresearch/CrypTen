@@ -33,6 +33,8 @@ def configure_logging():
     logging.getLogger().setLevel(level)
     logging.basicConfig(
         level=level,
-        format=("[%(asctime)s][%(levelname)s][%(filename)s:%(lineno)d]"
-                + "[%(processName)s] %(message)s"),
+        format=(
+            "[%(asctime)s][%(levelname)s][%(filename)s:%(lineno)d]"
+            + "[%(processName)s] %(message)s"
+        ),
     )

@@ -5,14 +5,12 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from crypten.common.tensor_types import is_float_tensor
-from crypten.common.tensor_types import is_int_tensor
-from crypten.mpc.primitives import ArithmeticSharedTensor
-from crypten.mpc.primitives import BinarySharedTensor
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
 import torch
+from crypten.common.tensor_types import is_float_tensor, is_int_tensor
+from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 
 class MPCBenchmark(MultiProcessTestCase):
@@ -55,7 +53,6 @@ class MPCBenchmark(MultiProcessTestCase):
         self.tensors = self.int_tensors + self.float_tensors
         self.operands = self.int_operands + self.float_operands
         self.sizes = self.sizes + self.sizes
-
 
     @staticmethod
     def is_float(tensor):

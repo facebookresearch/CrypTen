@@ -12,18 +12,15 @@ import tempfile
 import unittest
 from functools import wraps
 
-import torch
-import torch.distributed as dist
 import crypten.communicator as comm
 import crypten.debug
+import torch
+import torch.distributed as dist
 
 from .benchmark_helper import BenchmarkHelper
 
 
-def get_random_test_tensor(max_value=6,
-                           size=(1, 5),
-                           is_float=False,
-                           ex_zero=False):
+def get_random_test_tensor(max_value=6, size=(1, 5), is_float=False, ex_zero=False):
     """Generates random tensor for testing
 
     Args:
@@ -108,12 +105,11 @@ class MultiProcessTestCase(unittest.TestCase):
 
         cls.benchmark_helper = None
 
-
     def __init__(self, methodName):
         super().__init__(methodName)
 
         self.rank = self.MAIN_PROCESS_RANK
-        self.mp_context = multiprocessing.get_context('spawn')
+        self.mp_context = multiprocessing.get_context("spawn")
 
     def setUp(self):
         super(MultiProcessTestCase, self).setUp()
@@ -125,10 +121,10 @@ class MultiProcessTestCase(unittest.TestCase):
 
         cls = self.__class__
         queue = self.mp_context.Queue()
-        cls.benchmark_helper = BenchmarkHelper(self.benchmarks_enabled,
-                                               self.benchmark_iters,
-                                               queue)
-        if hasattr(self, 'benchmark_queue'):
+        cls.benchmark_helper = BenchmarkHelper(
+            self.benchmarks_enabled, self.benchmark_iters, queue
+        )
+        if hasattr(self, "benchmark_queue"):
             cls.benchmark_helper.queue = self.benchmark_queue
 
         # This gets called in the children process as well to give subclasses a

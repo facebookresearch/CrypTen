@@ -6,13 +6,13 @@
 # LICENSE file in the root directory of this source tree.
 
 from .meters import AccuracyMeter, AverageMeter
-from .util import NoopContextManager
 from .multiprocess_launcher import MultiProcessLauncher
+from .util import NoopContextManager
 
 
 __all__ = [
     "AverageMeter",
     "AccuracyMeter",
     "NoopContextManager",
-    "MultiProcessLauncher"
+    "MultiProcessLauncher",
 ]

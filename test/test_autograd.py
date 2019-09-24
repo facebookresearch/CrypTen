@@ -5,18 +5,21 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
+import unittest
+from test.multiprocess_test_case import (
+    MultiProcessTestCase,
+    get_random_test_tensor,
+    onehot,
+)
+
 import crypten
 import crypten.gradients as gradients
-import logging
 import torch
 import torch.nn.functional as F
-import unittest
-
 from crypten.autograd_cryptensor import AutogradContext, AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
 from crypten.gradients import AutogradFunction
-from test.multiprocess_test_case \
-    import MultiProcessTestCase, get_random_test_tensor, onehot
 
 
 class TestAutograd(MultiProcessTestCase):
@@ -94,9 +97,9 @@ class TestAutograd(MultiProcessTestCase):
             "reshape": (8, 6),
             "flatten": (8, 6),
             "narrow": (10, 7),
-            "take": (5, 10, 15),    # NOTE: this only tests the pytorch take
-                                    # functionality. The remaining take functionality
-                                    # is tested separately
+            "take": (5, 10, 15),  # NOTE: this only tests the pytorch take
+            # functionality. The remaining take functionality
+            # is tested separately
             "gather": (2, 2),
             "scatter": (3, 5),
             "roll": (4, 8),
@@ -148,7 +151,8 @@ class TestAutograd(MultiProcessTestCase):
             "narrow": [1, 2, 3],
             "gather": [1, torch.tensor([[0, 0], [1, 0]])],
             "scatter": [
-                0, torch.tensor([[0, 1, 2, 0, 0], [2, 0, 0, 1, 2]]),
+                0,
+                torch.tensor([[0, 1, 2, 0, 0], [2, 0, 0, 1, 2]]),
                 get_random_test_tensor(size=(2, 5), is_float=True),
             ],
             "roll": [(2, -1), (0, 1)],
@@ -164,12 +168,14 @@ class TestAutograd(MultiProcessTestCase):
             "max_pool2d": [3],
             "conv2d": [get_random_test_tensor(size=(2, 4, 3, 3), is_float=True)],
             "take": [torch.tensor([0, 5, 10])],
-            "binary_cross_entropy": [get_random_test_tensor(
-                                     size=(8,), is_float=True).gt(0.0).float()],
-            "cross_entropy": [onehot(
-                get_random_test_tensor(size=(8,), max_value=3).abs(),
-                num_targets=4,
-            )],
+            "binary_cross_entropy": [
+                get_random_test_tensor(size=(8,), is_float=True).gt(0.0).float()
+            ],
+            "cross_entropy": [
+                onehot(
+                    get_random_test_tensor(size=(8,), max_value=3).abs(), num_targets=4
+                )
+            ],
         }
         binary_functions = ["add", "sub", "mul", "dot", "ger", "matmul"]
         positive_only = ["pow", "sqrt", "log", "binary_cross_entropy"]
@@ -180,10 +186,9 @@ class TestAutograd(MultiProcessTestCase):
             # generate inputs:
             inputs = [
                 get_random_test_tensor(
-                    size=input_size[func_name],
-                    max_value=1.0,
-                    is_float=True,
-                ) for _ in range(2 if func_name in binary_functions else 1)
+                    size=input_size[func_name], max_value=1.0, is_float=True
+                )
+                for _ in range(2 if func_name in binary_functions else 1)
             ]
             if func_name in positive_only:  # some functions do not take negative values
                 inputs = [input.abs().add_(0.001) for input in inputs]
@@ -199,8 +204,10 @@ class TestAutograd(MultiProcessTestCase):
                 if func_name == "take":
                     encr_inputs += [None]
                 elif func_name not in ["gather", "scatter"]:
-                    encr_inputs = [crypten.cryptensor(t) if torch.is_tensor(t)
-                        else t for t in encr_inputs]
+                    encr_inputs = [
+                        crypten.cryptensor(t) if torch.is_tensor(t) else t
+                        for t in encr_inputs
+                    ]
 
             # cross_entropy uses one-hot targets in crypten but not in PyTorch:
             if func_name == "cross_entropy":
@@ -213,7 +220,7 @@ class TestAutograd(MultiProcessTestCase):
             # test forward function:
             if hasattr(inputs[0], func_name):  # torch.function()
                 reference = getattr(inputs[0], func_name)(*inputs[1:])
-            elif hasattr(F, func_name):        # torch.nn.functional.function()
+            elif hasattr(F, func_name):  # torch.nn.functional.function()
                 reference = getattr(F, func_name)(*inputs)
             elif func_name == "square":
                 reference = inputs[0].pow(2.0)
@@ -236,8 +243,9 @@ class TestAutograd(MultiProcessTestCase):
             if not isinstance(encr_grad, (list, tuple)):
                 encr_grad = (encr_grad,)
             for idx in range(number_of_inputs):
-                self._check(encr_grad[idx], inputs[idx].grad,
-                            "%s backward failed" % func_name)
+                self._check(
+                    encr_grad[idx], inputs[idx].grad, "%s backward failed" % func_name
+                )
 
     def test_autograd_func_take(self):
         """Tests the part of autograd take that does not have a torch equivalent"""
@@ -251,7 +259,7 @@ class TestAutograd(MultiProcessTestCase):
             encrypted_tensor = crypten.cryptensor(tensor)
             encr_inputs = [encrypted_tensor, index, dimension]
 
-            #test forward
+            # test forward
             ctx = AutogradContext()
             grad_fn_take = gradients.get_grad_fn("take")
             encr_output = grad_fn_take.forward(ctx, encr_inputs)
@@ -272,8 +280,7 @@ class TestAutograd(MultiProcessTestCase):
             encr_grad = grad_fn_take.backward(ctx, encr_grad_output)
 
             # finally, compare values
-            self._check(encr_grad, tensor2.grad,
-                "take backward failed: dimension set")
+            self._check(encr_grad, tensor2.grad, "take backward failed: dimension set")
 
     def test_detach(self):
         """Tests that detach() works as expected."""
@@ -310,16 +317,16 @@ class TestAutograd(MultiProcessTestCase):
             return output, encr_output
 
         def test_case2(input, encr_input):
-            intermediate = input.pow(2.0)            # PyTorch
+            intermediate = input.pow(2.0)  # PyTorch
             output = intermediate.add(1.0).add(intermediate.mul(2.0)).sum()
             encr_intermediate = encr_input.square()  # CrypTen
-            encr_output = encr_intermediate.add(1.0).add(
-                encr_intermediate.mul(2.0)
-            ).sum()
+            encr_output = (
+                encr_intermediate.add(1.0).add(encr_intermediate.mul(2.0)).sum()
+            )
             return output, encr_output
 
         def test_case3(input, encr_input):
-            intermediate1 = input.pow(2.0)            # PyTorch
+            intermediate1 = input.pow(2.0)  # PyTorch
             intermediate2 = intermediate1.add(1.0).add(intermediate1.mul(2.0))
             output = intermediate2.pow(2.0).sum()
             encr_intermediate1 = encr_input.square()  # CrypTen
@@ -339,16 +346,20 @@ class TestAutograd(MultiProcessTestCase):
 
             # perform multiple forward computations on input that get combined:
             output, encr_output = test_case(input, encr_input)
-            self._check(encr_output._tensor, output,
-                        "forward for test case %d failed" % idx)
-            self.assertTrue(encr_output.requires_grad,
-                            "requires_grad incorrect for test case %d" % idx)
+            self._check(
+                encr_output._tensor, output, "forward for test case %d failed" % idx
+            )
+            self.assertTrue(
+                encr_output.requires_grad,
+                "requires_grad incorrect for test case %d" % idx,
+            )
 
             # perform backward computation:
             output.backward()
             encr_output.backward()
-            self._check(encr_input.grad, input.grad,
-                        "backward for test case %d failed" % idx)
+            self._check(
+                encr_input.grad, input.grad, "backward for test case %d failed" % idx
+            )
 
         # test cases in which tensor gets combined with itself:
         for func_name in ["sub", "add", "mul"]:
@@ -426,8 +437,7 @@ class TestAutograd(MultiProcessTestCase):
 
             # test result of running backward function:
             for idx in range(number_of_inputs):
-                self._check(encr_inputs[idx].grad, inputs[idx].grad,
-                            "backward failed")
+                self._check(encr_inputs[idx].grad, inputs[idx].grad, "backward failed")
 
     def test_autograd_repetition(self):
         """Tests running autograd on the same input repeatedly."""

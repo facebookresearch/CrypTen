@@ -6,10 +6,11 @@
 # LICENSE file in the root directory of this source tree.
 
 import unittest
+from test.multiprocess_test_case import MultiProcessTestCase
 
 import crypten
 import crypten.nn.tensorboard as tensorboard
-from test.multiprocess_test_case import MultiProcessTestCase
+
 
 class TestTensorboard(MultiProcessTestCase):
     """This class tests the crypten.nn.tensorboad package."""

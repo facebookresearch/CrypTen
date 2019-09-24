@@ -5,16 +5,15 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from crypten.common.tensor_types import is_int_tensor
-from crypten.mpc.primitives import BinarySharedTensor
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
-
-import torch
-import crypten
 import itertools
 import logging
 import unittest
+from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+
+import crypten
 import torch
+from crypten.common.tensor_types import is_int_tensor
+from crypten.mpc.primitives import BinarySharedTensor
 
 
 class TestBinary(MultiProcessTestCase):
@@ -182,11 +181,12 @@ class TestBinary(MultiProcessTestCase):
                     else:
                         tensor2_transformed_type = "public"
 
-                    self._check(getattr(encrypted_tensor1, op)(
-                                tensor2_transformed),
-                                getattr(tensor1, op)(tensor2),
-                                f"{tensor2_transformed_type} {op} broadcasting "
-                                f"failed with sizes {size1}, {size2}")
+                    self._check(
+                        getattr(encrypted_tensor1, op)(tensor2_transformed),
+                        getattr(tensor1, op)(tensor2),
+                        f"{tensor2_transformed_type} {op} broadcasting "
+                        f"failed with sizes {size1}, {size2}",
+                    )
 
     def test_invert(self):
         """Test bitwise-invert function on BinarySharedTensor"""
@@ -270,12 +270,14 @@ class TestBinary(MultiProcessTestCase):
             encrypted_tensor = BinarySharedTensor(reference)
             self.assertTrue(
                 torch.equal(encrypted_tensor.share, encrypted_tensor.share),
-                "share getter failed")
+                "share getter failed",
+            )
 
             new_share = get_random_test_tensor(is_float=False)
             encrypted_tensor.share = new_share
-            self.assertTrue(torch.equal(encrypted_tensor.share, new_share),
-                            "share setter failed")
+            self.assertTrue(
+                torch.equal(encrypted_tensor.share, new_share), "share setter failed"
+            )
 
     def test_inplace(self):
         """Test inplace vs. out-of-place functions"""
@@ -348,7 +350,7 @@ class TestBinary(MultiProcessTestCase):
     def test_src_failure(self):
         """Tests that out-of-bounds src fails as expected"""
         tensor = get_random_test_tensor(is_float=True)
-        for src in [None, 'abc', -2, self.world_size]:
+        for src in [None, "abc", -2, self.world_size]:
             with self.assertRaises(AssertionError):
                 BinarySharedTensor(tensor, src=src)
 
@@ -363,29 +365,35 @@ class TestBinary(MultiProcessTestCase):
             tensor2 = get_random_test_tensor(size=size, is_float=False)
             encrypted_tensor2 = y_type(tensor2)
 
-            condition_tensor = get_random_test_tensor(
-                max_value=1, size=[1], is_float=False) + 1
+            condition_tensor = (
+                get_random_test_tensor(max_value=1, size=[1], is_float=False) + 1
+            )
             condition_encrypted = BinarySharedTensor(condition_tensor)
             condition_bool = condition_tensor.bool()
 
-            reference_out = tensor1 * condition_tensor + \
-                            tensor2 * (1 - condition_tensor)
+            reference_out = tensor1 * condition_tensor + tensor2 * (
+                1 - condition_tensor
+            )
 
-            encrypted_out = encrypted_tensor1.where(condition_bool,
-                                                    encrypted_tensor2)
+            encrypted_out = encrypted_tensor1.where(condition_bool, encrypted_tensor2)
 
             y_is_private = y_type == BinarySharedTensor
-            self._check(encrypted_out,
-                        reference_out,
-                        f"{'private' if y_is_private else 'public'} y "
-                        "where failed with public condition")
+            self._check(
+                encrypted_out,
+                reference_out,
+                f"{'private' if y_is_private else 'public'} y "
+                "where failed with public condition",
+            )
 
-            encrypted_out = encrypted_tensor1.where(condition_encrypted,
-                                                    encrypted_tensor2)
-            self._check(encrypted_out,
-                        reference_out,
-                        f"{'private' if y_is_private else 'public'} y "
-                        "where failed with private condition")
+            encrypted_out = encrypted_tensor1.where(
+                condition_encrypted, encrypted_tensor2
+            )
+            self._check(
+                encrypted_out,
+                reference_out,
+                f"{'private' if y_is_private else 'public'} y "
+                "where failed with private condition",
+            )
 
     # TODO: Write the following unit tests
     @unittest.skip("Test not implemented")

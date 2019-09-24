@@ -25,11 +25,11 @@ import logging
 import os
 import random
 
-import torch
 import examples.util
+import torch
 import visdom
-from examples.util import NoopContextManager
 from examples.multiprocess_launcher import MultiProcessLauncher
+from examples.util import NoopContextManager
 from torchvision.datasets.mnist import MNIST
 
 
@@ -61,7 +61,10 @@ def _download_mnist(split="train"):
 
 
 def load_data(
-    split="train", pca=None, clusters=None, bandwidth=1.0,
+    split="train",
+    pca=None,
+    clusters=None,
+    bandwidth=1.0,
     download_mnist=_download_mnist,
 ):
     """
@@ -97,7 +100,11 @@ def load_data(
 
 
 def load_data_sampler(
-    split="train", pca=None, clusters=None, bandwidth=1.0, permfile=None,
+    split="train",
+    pca=None,
+    clusters=None,
+    bandwidth=1.0,
+    permfile=None,
     download_mnist=_download_mnist,
 ):
     """
@@ -106,7 +113,10 @@ def load_data_sampler(
 
     # load dataset:
     context, rewards = load_data(
-        split=split, pca=pca, clusters=clusters, bandwidth=bandwidth,
+        split=split,
+        pca=pca,
+        clusters=clusters,
+        bandwidth=bandwidth,
         download_mnist=download_mnist,
     )
     if permfile is not None:
@@ -359,8 +369,11 @@ def build_learner(args, bandits, download_mnist):
 
     # run contextual bandit algorithm on MNIST:
     sampler = load_data_sampler(
-        pca=pca, clusters=clusters, bandwidth=args.bandwidth, permfile=args.permfile,
-        download_mnist=download_mnist
+        pca=pca,
+        clusters=clusters,
+        bandwidth=args.bandwidth,
+        permfile=args.permfile,
+        download_mnist=download_mnist,
     )
     assert hasattr(bandits, args.learner), "unknown learner: %s" % args.learner
 
@@ -373,6 +386,7 @@ def build_learner(args, bandits, download_mnist):
             checkpoint_every=args.checkpoint_every,
             **kwargs,
         )
+
     return learner_func
 
 
@@ -384,6 +398,7 @@ def _run_experiment(args):
 
     learner_func = build_learner(args, bandits, _download_mnist)
     import crypten
+
     crypten.init()
     learner_func()
 

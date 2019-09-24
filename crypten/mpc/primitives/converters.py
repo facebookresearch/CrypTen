@@ -5,14 +5,14 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import torch
 import crypten.communicator as comm
+import torch
 from crypten.encoder import FixedPointEncoder
 
 from ..ptype import ptype as Ptype
+from . import beaver
 from .arithmetic import ArithmeticSharedTensor
 from .binary import BinarySharedTensor
-from . import beaver
 
 
 def _A2B(arithmetic_tensor):

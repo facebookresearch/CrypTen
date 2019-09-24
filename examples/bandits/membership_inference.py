@@ -27,7 +27,6 @@ import pickle
 import examples.util
 import torch
 import visdom
-
 from examples.multiprocess_launcher import MultiProcessLauncher
 
 
@@ -192,6 +191,7 @@ def membership_inference(args, load_data_module):
 
 def _run_experiment(args):
     import launcher
+
     membership_inference(args, launcher)
 
 

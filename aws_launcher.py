@@ -139,9 +139,7 @@ def main():
     cf.read(args.credentials)
 
     warnings.filterwarnings(
-        "ignore",
-        category=ResourceWarning,
-        message="unclosed.*<ssl.SSLSocket.*>"
+        "ignore", category=ResourceWarning, message="unclosed.*<ssl.SSLSocket.*>"
     )
 
     session = boto3.session.Session(

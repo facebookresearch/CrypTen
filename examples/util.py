@@ -6,9 +6,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import os
+
 import numpy as np
 import numpy.linalg as nla
-import os
 import torch
 
 
@@ -130,23 +131,21 @@ def process_mnist_files(raw_dir, processed_dir):
     train_image_file = extract_mnist_archive("train-images-idx3-ubyte")
     train_label_file = extract_mnist_archive("train-labels-idx1-ubyte")
 
-    with open(os.path.join(processed_dir, datasets.MNIST.training_file),
-              "wb") as f:
+    with open(os.path.join(processed_dir, datasets.MNIST.training_file), "wb") as f:
         if train_image_file and train_label_file:
             training_set = (
                 datasets.mnist.read_image_file(train_image_file),
-                datasets.mnist.read_label_file(train_label_file)
+                datasets.mnist.read_label_file(train_label_file),
             )
             torch.save(training_set, f)
 
     test_image_file = extract_mnist_archive("t10k-images-idx3-ubyte")
     test_label_file = extract_mnist_archive("t10k-labels-idx1-ubyte")
 
-    with open(os.path.join(processed_dir, datasets.MNIST.test_file),
-              "wb") as f:
+    with open(os.path.join(processed_dir, datasets.MNIST.test_file), "wb") as f:
         if test_image_file and test_label_file:
             test_set = (
                 datasets.mnist.read_image_file(test_image_file),
-                datasets.mnist.read_label_file(test_label_file)
+                datasets.mnist.read_label_file(test_label_file),
             )
             torch.save(test_set, f)

@@ -5,8 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import torch
 import crypten.communicator as comm
+import torch
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.util import count_wraps
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor

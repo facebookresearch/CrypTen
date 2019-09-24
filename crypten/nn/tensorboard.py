@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
+import crypten.nn as nn
+from tensorboard.compat.proto.attr_value_pb2 import AttrValue
 from tensorboard.compat.proto.graph_pb2 import GraphDef
 from tensorboard.compat.proto.node_def_pb2 import NodeDef
 from tensorboard.compat.proto.versions_pb2 import VersionDef
-from tensorboard.compat.proto.attr_value_pb2 import AttrValue
 from torch.utils.tensorboard import SummaryWriter as _SummaryWriter
-
-import crypten.nn as nn
 
 
 def graph(model):
@@ -42,17 +41,21 @@ def graph(model):
         module = modules[output_name]
         op = str(type(module))
         input_names = [mapping[name] for name in input_names]
-        parameters = ["%s: %s" % (name, parameter.size())
-                      for name, parameter in module.named_parameters()]
+        parameters = [
+            "%s: %s" % (name, parameter.size())
+            for name, parameter in module.named_parameters()
+        ]
         parameter_string = "; ".join(parameters).encode(encoding="utf_8")
 
         # add to graph:
-        nodes.append(NodeDef(
-            name=mapping[output_name].encode(encoding="utf_8"),
-            op=op,
-            input=input_names,
-            attr={"attr": AttrValue(s=parameter_string)},
-        ))
+        nodes.append(
+            NodeDef(
+                name=mapping[output_name].encode(encoding="utf_8"),
+                op=op,
+                input=input_names,
+                attr={"attr": AttrValue(s=parameter_string)},
+            )
+        )
 
     # return graph definition:
     return GraphDef(node=nodes, versions=VersionDef(producer=22))

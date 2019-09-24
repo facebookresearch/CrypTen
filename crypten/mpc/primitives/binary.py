@@ -5,9 +5,10 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import crypten.communicator as comm
+
 # dependencies:
 import torch
-import crypten.communicator as comm
 from crypten.common.rng import generate_kbit_random_tensor
 from crypten.cryptensor import CrypTensor
 from crypten.encoder import FixedPointEncoder
@@ -31,8 +32,9 @@ class BinarySharedTensor(CrypTensor):
     def __init__(self, tensor=None, size=None, src=0):
         if src == SENTINEL:
             return
-        assert isinstance(src, int) and src >= 0 \
-            and src < comm.get().get_world_size(), "invalid tensor source"
+        assert (
+            isinstance(src, int) and src >= 0 and src < comm.get().get_world_size()
+        ), "invalid tensor source"
 
         #  Assume 0 bits of precision unless encoder is set outside of init
         self.encoder = FixedPointEncoder(precision_bits=0)
@@ -117,14 +119,10 @@ class BinarySharedTensor(CrypTensor):
         """Bitwise XOR operator (element-wise)"""
         result = self.clone()
         if isinstance(y, BinarySharedTensor):
-            broadcast_tensors = torch.broadcast_tensors(
-                result.share, y.share
-            )
+            broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
             result.share = broadcast_tensors[0].clone()
         elif torch.is_tensor(y):
-            broadcast_tensors = torch.broadcast_tensors(
-                result.share, y
-            )
+            broadcast_tensors = torch.broadcast_tensors(result.share, y)
             result.share = broadcast_tensors[0].clone()
         return result.__ixor__(y)
 
@@ -142,14 +140,10 @@ class BinarySharedTensor(CrypTensor):
         """Bitwise AND operator (element-wise)"""
         result = self.clone()
         if isinstance(y, BinarySharedTensor):
-            broadcast_tensors = torch.broadcast_tensors(
-                result.share, y.share
-            )
+            broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
             result.share = broadcast_tensors[0].clone()
         elif torch.is_tensor(y):
-            broadcast_tensors = torch.broadcast_tensors(
-                result.share, y
-            )
+            broadcast_tensors = torch.broadcast_tensors(result.share, y)
             result.share = broadcast_tensors[0].clone()
         return result.__iand__(y)
 
@@ -275,14 +269,14 @@ class BinarySharedTensor(CrypTensor):
             is_binary = ((condition == 1) | (condition == 0)).all()
             assert is_binary, "condition values must be 0 or 1"
             # -1 mult expands 0 into binary 00...00 and 1 into 11...11
-            condition_expanded = - condition
-            y_masked = y & (~ condition_expanded)
+            condition_expanded = -condition
+            y_masked = y & (~condition_expanded)
         elif isinstance(condition, BinarySharedTensor):
             condition_expanded = condition.clone()
             # -1 mult expands binary while & 1 isolates first bit
             condition_expanded.share = -(condition_expanded.share & 1)
             # encrypted tensor must be first operand
-            y_masked = (~ condition_expanded) & y
+            y_masked = (~condition_expanded) & y
         else:
             msg = f"condition {condition} must be torch.bool, or BinarySharedTensor"
             raise ValueError(msg)
@@ -297,8 +291,9 @@ class BinarySharedTensor(CrypTensor):
         """
         if torch.is_tensor(src):
             src = BinarySharedTensor(src)
-        assert isinstance(src, BinarySharedTensor), \
-            "Unrecognized scatter src type: %s" % type(src)
+        assert isinstance(
+            src, BinarySharedTensor
+        ), "Unrecognized scatter src type: %s" % type(src)
         self.share.scatter_(dim, index, src.share)
         return self
 

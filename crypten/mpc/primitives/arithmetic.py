@@ -7,9 +7,10 @@
 
 from functools import reduce
 
+import crypten.communicator as comm
+
 # dependencies:
 import torch
-import crypten.communicator as comm
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 from crypten.cryptensor import CrypTensor
@@ -35,8 +36,9 @@ class ArithmeticSharedTensor(CrypTensor):
     def __init__(self, tensor=None, size=None, precision=None, src=0):
         if src == SENTINEL:
             return
-        assert isinstance(src, int) and src >= 0 \
-            and src < comm.get().get_world_size(), "invalid tensor source"
+        assert (
+            isinstance(src, int) and src >= 0 and src < comm.get().get_world_size()
+        ), "invalid tensor source"
 
         self.encoder = FixedPointEncoder(precision_bits=precision)
         if tensor is not None:
@@ -261,9 +263,7 @@ class ArithmeticSharedTensor(CrypTensor):
         """Divide by a given tensor"""
         result = self.clone()
         if isinstance(y, CrypTensor):
-            result.share = torch.broadcast_tensors(result.share, y.share)[
-                0
-            ].clone()
+            result.share = torch.broadcast_tensors(result.share, y.share)[0].clone()
         elif torch.is_tensor(y):
             result.share = torch.broadcast_tensors(result.share, y)[0].clone()
         return result.div_(y)
@@ -481,8 +481,9 @@ class ArithmeticSharedTensor(CrypTensor):
         """
         if torch.is_tensor(src):
             src = ArithmeticSharedTensor(src)
-        assert isinstance(src, ArithmeticSharedTensor), \
-            "Unrecognized scatter src type: %s" % type(src)
+        assert isinstance(
+            src, ArithmeticSharedTensor
+        ), "Unrecognized scatter src type: %s" % type(src)
         self.share.scatter_(dim, index, src.share)
         return self
 

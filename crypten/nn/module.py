@@ -40,7 +40,7 @@ class Module:
         """
         if name != "forward":  # no-op for any function that is not forward()
             return object.__getattribute__(self, name)
-        else:                  # make sure input to forward() is AutogradCrypTensor
+        else:  # make sure input to forward() is AutogradCrypTensor
 
             def wrapped_forward(*args):
                 """Forward function that wraps CrypTensors in AutogradCrypTensor."""
@@ -84,7 +84,7 @@ class Module:
         if torch.is_tensor(param):  # unencrypted model
             param.requires_grad = requires_grad
             self._parameters[name] = param
-        else:                       # encryped model
+        else:  # encryped model
             self._parameters[name] = AutogradCrypTensor(
                 param, requires_grad=requires_grad
             )
@@ -168,22 +168,28 @@ class Module:
             for name, param in self.named_parameters(recurse=False):
                 requires_grad = param.requires_grad
                 if mode:  # encrypt parameter
-                    self.set_parameter(name, AutogradCrypTensor(
-                        crypten.cryptensor(param, **{'src': src}),
-                        requires_grad=requires_grad,
-                    ))
-                else:     # decrypt parameter
+                    self.set_parameter(
+                        name,
+                        AutogradCrypTensor(
+                            crypten.cryptensor(param, **{"src": src}),
+                            requires_grad=requires_grad,
+                        ),
+                    )
+                else:  # decrypt parameter
                     self.set_parameter(name, param.get_plain_text())
                     self._parameters[name].requires_grad = requires_grad
 
             # encrypt / decrypt buffers:
             for name, buffer in self.named_buffers(recurse=False):
                 if mode:  # encrypt buffer
-                    self.set_buffer(name, AutogradCrypTensor(
-                        crypten.cryptensor(buffer, **{'src': src}),
-                        requires_grad=False,
-                    ))
-                else:     # decrypt buffer
+                    self.set_buffer(
+                        name,
+                        AutogradCrypTensor(
+                            crypten.cryptensor(buffer, **{"src": src}),
+                            requires_grad=False,
+                        ),
+                    )
+                else:  # decrypt buffer
                     self.set_buffer(name, buffer.get_plain_text())
 
             # apply encryption recursively:
@@ -696,9 +702,7 @@ class _Pool2d(Module):
     Module that performs 2D pooling.
     """
 
-    def __init__(
-        self, pool_type, kernel_size, stride=1, padding=0
-    ):
+    def __init__(self, pool_type, kernel_size, stride=1, padding=0):
         super().__init__()
         self.pool_type = pool_type
         self.kernel_size = kernel_size
@@ -763,12 +767,7 @@ class MaxPool2d(_Pool2d):
     """
 
     def __init__(self, kernel_size, stride=1, padding=0):
-        super().__init__(
-            "max",
-            kernel_size,
-            stride=stride,
-            padding=padding,
-        )
+        super().__init__("max", kernel_size, stride=stride, padding=padding)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
@@ -820,7 +819,8 @@ class _BatchNorm(Module):
 
     def forward(self, input):
         return input.batchnorm(
-            self.weight, self.bias,
+            self.weight,
+            self.bias,
             running_mean=self.running_mean,
             running_var=self.running_var,
             training=self.training,
@@ -905,7 +905,6 @@ def _to_autograd(args):
             raise ValueError(
                 "Cannot convert type {} to AutogradCrypTensor.".format(type(args[idx]))
             )
-
 
     # return:
     if convert_to_tuple:

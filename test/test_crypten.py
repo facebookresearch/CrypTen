@@ -6,16 +6,15 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from crypten.common.tensor_types import is_float_tensor
-from crypten.mpc.primitives import ArithmeticSharedTensor
-from crypten.mpc.primitives import BinarySharedTensor
+import logging
+import math
+import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
-import logging
-import math
 import torch
-import unittest
+from crypten.common.tensor_types import is_float_tensor
+from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 
 class TestCrypten(MultiProcessTestCase):
@@ -124,9 +123,11 @@ class TestCrypten(MultiProcessTestCase):
     def test_save_load(self):
         """Test that crypten.save and crypten.load properly save and load tensors"""
         import tempfile
+
         filename = tempfile.NamedTemporaryFile(delete=True).name
 
         import os
+
         for dimensions in range(1, 5):
             # Create tensors with different sizes on each rank
             size = [crypten.communicator.get().get_rank() + 1] * dimensions

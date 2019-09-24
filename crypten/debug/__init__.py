@@ -7,9 +7,7 @@
 
 from .debug import MultiprocessingPdb, configure_logging
 
+
 pdb = MultiprocessingPdb()
 
-__all__ = [
-    "pdb",
-    "configure_logging",
-]
+__all__ = ["pdb", "configure_logging"]

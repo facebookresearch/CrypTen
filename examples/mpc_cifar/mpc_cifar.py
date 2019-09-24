@@ -14,7 +14,6 @@ import warnings
 
 import crypten
 import crypten.communicator as comm
-
 import torch
 import torch.backends.cudnn as cudnn
 import torch.nn as nn
@@ -57,8 +56,9 @@ def run_mpc_cifar(
     model = LeNet()
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=lr, momentum=momentum,
-                                weight_decay=weight_decay)
+    optimizer = torch.optim.SGD(
+        model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay
+    )
 
     # optionally resume from a checkpoint
     best_prec1 = 0
@@ -80,17 +80,25 @@ def run_mpc_cifar(
 
     # Data loading code
     def preprocess_data(context_manager):
-        transform = transforms.Compose([transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]
+        )
         with context_manager:
-            trainset = datasets.CIFAR10(root='/tmp', train=True,
-                            download=True, transform=transform)
-            testset = datasets.CIFAR10(root='/tmp', train=False,
-                            download=True, transform=transform)
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=4,
-                                                  shuffle=True, num_workers=2)
-        testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                                 shuffle=False, num_workers=2)
+            trainset = datasets.CIFAR10(
+                root="/tmp", train=True, download=True, transform=transform
+            )
+            testset = datasets.CIFAR10(
+                root="/tmp", train=False, download=True, transform=transform
+            )
+        trainloader = torch.utils.data.DataLoader(
+            trainset, batch_size=4, shuffle=True, num_workers=2
+        )
+        testloader = torch.utils.data.DataLoader(
+            testset, batch_size=batch_size, shuffle=False, num_workers=2
+        )
         return trainloader, testloader
 
     context_manager = NoopContextManager()
@@ -104,8 +112,8 @@ def run_mpc_cifar(
         input_size = get_input_size(val_loader, batch_size)
         private_model = construct_private_model(input_size, model)
         validate(val_loader, private_model, criterion, print_freq)
-        #logging.info("===== Validating side-by-side ======")
-        #validate_side_by_side(val_loader, model, private_model)
+        # logging.info("===== Validating side-by-side ======")
+        # validate_side_by_side(val_loader, model, private_model)
         return
 
     # define loss function (criterion) and optimizer
@@ -202,12 +210,12 @@ def validate_side_by_side(val_loader, plaintext_model, private_model):
             # assumes that private model is encrypted with src=0
             input_encr = encrypt_data_tensor_with_src(input)
             output_encr = private_model(input_encr)
-            #log all info
+            # log all info
             logging.info("==============================")
             logging.info("Example %d\t target = %d" % (i, target))
             logging.info("Plaintext:\n%s" % output_plaintext)
             logging.info("Encrypted:\n%s\n" % output_encr.get_plain_text())
-            #only use the first 1000 examples
+            # only use the first 1000 examples
             if i > 1000:
                 break
 
@@ -219,7 +227,7 @@ def get_input_size(val_loader, batch_size):
 
 def construct_private_model(input_size, model):
     """Encrypt and validate trained model for multi-party setting."""
-    #get rank of current process
+    # get rank of current process
     rank = comm.get().get_rank()
     dummy_input = torch.empty(input_size)
 
@@ -234,10 +242,10 @@ def construct_private_model(input_size, model):
 
 def encrypt_data_tensor_with_src(input):
     """Encrypt data tensor for multi-party setting"""
-    #get rank of current process
+    # get rank of current process
     rank = comm.get().get_rank()
 
-    #party 1 always gets the actual tensor; remaining parties get dummy model
+    # party 1 always gets the actual tensor; remaining parties get dummy model
     if rank == 1:
         input_upd = input
     else:
@@ -307,7 +315,7 @@ def validate(val_loader, model, criterion, print_freq=10):
 
 def save_checkpoint(state, is_best, filename="checkpoint.pth.tar"):
     """Saves checkpoint of plaintext model"""
-    #only save from rank 0 process to avoid race condition
+    # only save from rank 0 process to avoid race condition
     rank = comm.get().get_rank()
     if rank == 0:
         torch.save(state, filename)
@@ -362,4 +370,3 @@ class LeNet(nn.Sequential):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-

@@ -11,7 +11,7 @@ import onnx
 import torch
 from onnx import numpy_helper
 
-from .loss import BCELoss, L1Loss, MSELoss, CrossEntropyLoss
+from .loss import BCELoss, CrossEntropyLoss, L1Loss, MSELoss
 from .module import (
     Add,
     AvgPool2d,
