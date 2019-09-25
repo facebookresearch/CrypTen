@@ -71,11 +71,13 @@ parser.add_argument(
 def _run_experiment(args):
     # only worker with rank 0 will display logging information:
     level = logging.INFO
+    rank = "0"
     if "RANK" in os.environ and os.environ["RANK"] != "0":
         level = logging.CRITICAL
+        rank = os.environ["RANK"]
     logging.getLogger().setLevel(level)
 
-    tensorboard_folder = "/tmp/mpc_imagenet/" + os.environ["RANK"]
+    tensorboard_folder = "/tmp/mpc_imagenet/" + rank
     os.makedirs(tensorboard_folder, exist_ok=True)
     run_experiment(
         args.model,

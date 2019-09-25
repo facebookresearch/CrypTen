@@ -230,6 +230,16 @@ class TestAutograd(MultiProcessTestCase):
             grad_fn = gradients.get_grad_fn(func_name)
             encr_output = grad_fn.forward(ctx, encr_inputs)
             self._check(encr_output, reference, "%s forward failed" % func_name)
+            if func_name == "view":
+                ctx = AutogradContext()
+                # check view() with a list of int to represent size.
+                # encr_inputs[0]: input
+                # encr_inputs[1]: tuple as torch.Size, to be unpacked.
+                view_input, sizes = encr_inputs
+                encr_output = grad_fn.forward(
+                    ctx, [view_input] + [size for size in sizes]
+                )
+                self._check(encr_output, reference, "%s forward failed" % func_name)
 
             # run backward functions:
             grad_output = get_random_test_tensor(

@@ -139,9 +139,9 @@ class AutogradFlip(AutogradFunction):
 class AutogradView(AutogradFunction):
     @staticmethod
     def forward(ctx, input):
-        input, size = input
+        input, *size = input
         ctx.save_for_backward(input)
-        return input.view(size)
+        return input.view(*size)
 
     @staticmethod
     def backward(ctx, grad_output):
