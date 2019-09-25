@@ -153,7 +153,7 @@ def where(condition, input, other):
     if is_encrypted_tensor(condition):
         return condition * input + (1 - condition) * other
     elif torch.is_tensor(condition):
-        condition = condition.long()
+        condition = condition.float()
     return input * condition + other * (1 - condition)
 
 
