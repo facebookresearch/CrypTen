@@ -145,6 +145,18 @@ def save(obj, f, src=0, **kwargs):
     comm.get().barrier()
 
 
+def where(condition, input, other):
+    """
+    Return a tensor of elements selected from either `input` or `other`, depending
+    on `condition`.
+    """
+    if is_encrypted_tensor(condition):
+        return condition * input + (1 - condition) * other
+    elif torch.is_tensor(condition):
+        condition = condition.long()
+    return input * condition + other * (1 - condition)
+
+
 # Top level tensor functions
 __PASSTHROUGH_FUNCTIONS = ["bernoulli", "cat", "rand", "randperm", "stack"]
 
