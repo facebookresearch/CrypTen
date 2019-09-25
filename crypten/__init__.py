@@ -11,6 +11,7 @@ import crypten.nn  # noqa: F401
 import torch
 
 # other imports:
+from . import debug
 from .cryptensor import CrypTensor
 from .mpc import ptype
 

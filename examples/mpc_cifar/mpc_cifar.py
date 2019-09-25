@@ -52,6 +52,8 @@ def run_mpc_cifar(
             "from checkpoints."
         )
 
+    crypten.init()
+
     # create model
     model = LeNet()
 

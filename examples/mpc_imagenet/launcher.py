@@ -31,6 +31,12 @@ from mpc_imagenet import run_experiment
 # input arguments:
 parser = argparse.ArgumentParser(description="Encrypted inference of vision models")
 parser.add_argument(
+    "--world_size",
+    type=int,
+    default=2,
+    help="The number of parties to launch. Each party acts as its own process",
+)
+parser.add_argument(
     "--model",
     default="resnet18",
     type=str,
@@ -55,14 +61,8 @@ parser.add_argument(
     help="number of samples to test on (default: all)",
 )
 parser.add_argument(
-    "--world_size",
-    type=int,
-    default=2,
-    help="The number of parties to launch. Each party acts as its own process",
-)
-parser.add_argument(
     "--multiprocess",
-    default=False,
+    default=True,
     action="store_true",
     help="Run example in multiprocess mode",
 )

@@ -1019,18 +1019,16 @@ class AutogradBatchNorm(AutogradFunction):
         input, weight, bias = input
 
         # determine dimensions over which means and variances are computed:
-        dimensions = []
-        if input.dim() == 3:  # 1D input
-            dimensions = [0, 2]
-        elif input.dim() == 4:  # 2D input
-            dimensions = [0, 2, 3]
-        elif input.dim() == 5:  # 3D input
-            dimensions = [0, 2, 3, 4]
+        unsqueeze_dimensions = {3: [0, 2], 4: [1, 1], 5: [0, 2, 3, 4]}
 
         # track batch statistics:
         if training:
-            mean = input.mean(dimensions)
-            variance = input.var(dimensions)
+            var_dimensions = unsqueeze_dimensions.clone()
+            var_dimensions[4] = [0, 2, 3]
+
+            var_dimensions = var_dimensions[input.dim()]
+            mean = input.mean(var_dimensions)
+            variance = input.var(var_dimensions)
             if running_mean is not None and running_var is not None:
                 pass
                 # TODO: Add CrypTensor.set() method for this to work.
@@ -1048,14 +1046,15 @@ class AutogradBatchNorm(AutogradFunction):
         beta = bias - mean * alpha
 
         # ensure dimensionality of bias and gain matches input dimensionality:
-        for dimension in dimensions:
+        unsqueeze_dimensions = unsqueeze_dimensions[input.dim()]
+        for dimension in unsqueeze_dimensions:
             inv_var = inv_var.unsqueeze(dimension)
             alpha = alpha.unsqueeze(dimension)
             beta = beta.unsqueeze(dimension)
 
         # apply bias and gain:
         ctx.save_multiple_for_backward((input, alpha, inv_var, alpha.size()))
-        return input * alpha + beta
+        return alpha * input + beta
 
     @staticmethod
     def backward(ctx, grad_output):

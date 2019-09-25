@@ -16,6 +16,8 @@ from examples.meters import AverageMeter
 def run_mpc_linear_svm(
     epochs=50, examples=50, features=100, lr=0.5, skip_plaintext=False
 ):
+    crypten.init()
+
     # Set random seed for reproducibility
     torch.manual_seed(1)
 

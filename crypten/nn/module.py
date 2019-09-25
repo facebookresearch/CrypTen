@@ -57,6 +57,10 @@ class Module:
         for param in self.parameters():
             param.requires_grad = mode
         self.training = mode
+
+        # Recursively set train mode
+        for module in self.modules():
+            module.train(mode=mode)
         return self
 
     def eval(self):
