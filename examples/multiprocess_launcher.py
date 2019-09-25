@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
 import multiprocessing
 import os
 import uuid
@@ -39,7 +40,10 @@ class MultiProcessLauncher:
         for env_key, env_value in env.items():
             os.environ[env_key] = env_value
         os.environ["RANK"] = str(rank)
+        orig_logging_level = logging.getLogger().level
+        logging.getLogger().setLevel(logging.INFO)
         crypten.init()
+        logging.getLogger().setLevel(orig_logging_level)
         run_process_fn(fn_args)
 
     def start(self):

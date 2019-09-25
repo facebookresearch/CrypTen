@@ -5,10 +5,26 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+"""
+To run tfe_benchmarks example in multiprocess mode:
+
+$ python3 examples:mpc_imagenet --multiprocess
+
+To run tfe_benchmarks example on AWS EC2 instances:
+
+$ python3 aws_launcher.py \
+      --ssh_key_file=$HOME/.aws/fair-$USER.pem \
+      --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
+      --aux_files=examples/mpc_imagenet/mpc_imagenet.py \
+      examples/mpc_imagenet/launcher.py
+
+"""
+
 import argparse
 import logging
 import os
 
+from examples.multiprocess_launcher import MultiProcessLauncher
 from mpc_imagenet import run_experiment
 
 
@@ -38,23 +54,47 @@ parser.add_argument(
     type=int,
     help="number of samples to test on (default: all)",
 )
+parser.add_argument(
+    "--world_size",
+    type=int,
+    default=2,
+    help="The number of parties to launch. Each party acts as its own process",
+)
+parser.add_argument(
+    "--multiprocess",
+    default=False,
+    action="store_true",
+    help="Run example in multiprocess mode",
+)
 
 
-def main():
-    args = parser.parse_args()
-    run_experiment(
-        args.model,
-        imagenet_folder=args.imagenet_folder,
-        tensorboard_folder=args.tensorboard_folder,
-        num_samples=args.num_samples,
-    )
-
-
-if __name__ == "__main__":
-
+def _run_experiment(args):
     # only worker with rank 0 will display logging information:
     level = logging.INFO
     if "RANK" in os.environ and os.environ["RANK"] != "0":
         level = logging.CRITICAL
     logging.getLogger().setLevel(level)
+
+    tensorboard_folder = "/tmp/mpc_imagenet/" + os.environ["RANK"]
+    os.makedirs(tensorboard_folder, exist_ok=True)
+    run_experiment(
+        args.model,
+        imagenet_folder=args.imagenet_folder,
+        tensorboard_folder=tensorboard_folder,
+        num_samples=args.num_samples,
+    )
+
+
+def main():
+    args = parser.parse_args()
+    if args.multiprocess:
+        launcher = MultiProcessLauncher(args.world_size, _run_experiment, args)
+        launcher.start()
+        launcher.join()
+        launcher.terminate()
+    else:
+        _run_experiment(args)
+
+
+if __name__ == "__main__":
     main()
