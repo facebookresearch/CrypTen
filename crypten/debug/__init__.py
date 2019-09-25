@@ -11,3 +11,17 @@ from .debug import MultiprocessingPdb, configure_logging
 pdb = MultiprocessingPdb()
 
 __all__ = ["pdb", "configure_logging"]
+
+
+# debug mode handling
+_debug_mode = False
+
+
+def debug_mode():
+    return _debug_mode
+
+
+def set_debug_mode(mode=True):
+    assert isinstance(mode, bool)
+    global _debug_mode
+    _debug_mode = mode

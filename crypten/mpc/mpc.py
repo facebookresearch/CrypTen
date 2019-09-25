@@ -110,10 +110,12 @@ class MPCTensor(CrypTensor):
 
     def __repr__(self):
         """Returns a representation of the tensor useful for debugging."""
-        share = self._tensor
-        plain_text = self._tensor.get_plain_text()
+        from crypten.debug import debug_mode
+
+        share = self.share
+        plain_text = self._tensor.get_plain_text() if debug_mode() else "HIDDEN"
         ptype = self.ptype
-        return f"MPCTensor(_tensor={share}, plain_text={plain_text}, ptype={ptype})"
+        return f"MPCTensor(\n\t_tensor={share}\n\tplain_text={plain_text}\n\tptype={ptype}\n)"
 
     def __setitem__(self, index, value):
         """Set tensor values by index"""
