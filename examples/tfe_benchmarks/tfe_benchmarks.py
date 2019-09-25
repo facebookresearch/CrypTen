@@ -23,7 +23,8 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 from examples.meters import AverageMeter
-from examples.util import NoopContextManager, process_mnist_files
+from examples.mnist_utils import process_mnist_files
+from examples.util import NoopContextManager
 from torchvision import datasets, transforms
 
 
