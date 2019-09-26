@@ -23,9 +23,9 @@ class DistributedCommunicator(Communicator):
     """
 
     BYTES_PER_ELEMENT = 8
+    __instance = None
 
     def __init__(self):
-
         # no need to do anything if we already initialized the communicator:
         if not dist.is_initialized():
             # get configuration variables from environmens:
@@ -55,60 +55,39 @@ class DistributedCommunicator(Communicator):
             )
             logging.info("World size = %d" % dist.get_world_size())
 
-            self.__setup_shared_rng()
+    @classmethod
+    def is_initialized(cls):
+        return dist.is_initialized()
 
-    def __setup_shared_rng(self):
-        """
-            Generate shared random seeds to generate pseudo-random sharings of
-            zero. The random seeds are shared such that each process shares
-            one seed with the previous rank process and one with the next rank.
-            This allows for the generation of `n` random values, each known to
-            exactly two of the `n` parties.
+    @classmethod
+    def initialize(cls, rank, world_size):
+        import os
 
-            For arithmetic sharing, one of theseparties will add the number
-            while the other subtracts it, allowing for the generation of a
-            pseudo-random sharing of zero. (This can be done for binary
-            sharing using bitwise-xor rather than addition / subtraction)
-        """
-        # Initialize RNG Generators
-        self.g0 = torch.Generator()
-        self.g1 = torch.Generator()
+        if os.name == "nt":
+            raise OSError(
+                "Multiprocessing is not supported on Windows. "
+                + "Please initialize CrypTen via crypten.init_thread() instead."
+            )
 
-        # Generate random seeds for Generators
-        # NOTE: Chosen seed can be any number, but we choose as a random 64-bit
-        # integer here so other parties cannot guess its value.
+        # set default arguments for communicator:
+        default_args = {
+            "DISTRIBUTED_BACKEND": "gloo",
+            "RENDEZVOUS": "file:///tmp/sharedfile",
+            "WORLD_SIZE": world_size,
+            "RANK": rank,
+        }
+        for key, val in default_args.items():
+            if key not in os.environ:
+                os.environ[key] = str(val)
 
-        # We sometimes get here from a forked process, which causes all parties
-        # to have the same RNG state. Reset the seed to make sure RNG streams
-        # are different in all the parties. We use numpy's random here since
-        # setting its seed to None will produce different seeds even from
-        # forked proecesses.
-        import numpy
+        cls.instance = DistributedCommunicator()
 
-        numpy.random.seed(seed=None)
-        next_seed = numpy.random.randint(-2 ** 63, 2 ** 63 - 1, (1,)).item()
+    @classmethod
+    def get(cls):
+        return cls.instance
 
-        next_seed = torch.tensor(next_seed, dtype=torch.long)
-        prev_seed = torch.LongTensor([0])  # placeholder
-
-        # Send random seed to next party, receive random seed from prev party
-        if dist.get_world_size() >= 2:  # Otherwise sending seeds will segfault.
-            next_rank = (dist.get_rank() + 1) % dist.get_world_size()
-            prev_rank = (next_rank - 2) % dist.get_world_size()
-
-            req0 = dist.isend(tensor=next_seed, dst=next_rank)
-            req1 = dist.irecv(tensor=prev_seed, src=prev_rank)
-
-            req0.wait()
-            req1.wait()
-        else:
-            prev_seed = next_seed
-
-        # Seed Generators
-        self.g0.manual_seed(next_seed.item())
-        self.g1.manual_seed(prev_seed.item())
-
-    def shutdown(self):
+    @classmethod
+    def shutdown(cls):
         dist.destroy_process_group()
 
     @_logging
@@ -124,6 +103,18 @@ class DistributedCommunicator(Communicator):
         result = tensor.clone()
         dist.recv(result, src=src)
         return result
+
+    @_logging
+    def isend(self, tensor, dst):
+        """Sends the specified tensor to the destination dst."""
+        assert dist.is_initialized(), "initialize the communicator first"
+        return dist.isend(tensor, dst)
+
+    @_logging
+    def irecv(self, tensor, src=None):
+        """Receives a tensor from an (optional) source src."""
+        assert dist.is_initialized(), "initialize the communicator first"
+        return dist.irecv(tensor, src=src)
 
     @_logging
     def scatter(self, scatter_list, src, size=None, async_op=False):
@@ -208,19 +199,3 @@ class DistributedCommunicator(Communicator):
         """Returns name of torch.distributed backend used."""
         assert dist.is_initialized(), "initialize the communicator first"
         return dist.get_backend()
-
-    def reset_communication_stats(self):
-        """Resets communication statistics."""
-        self.comm_rounds = 0
-        self.comm_bytes = 0
-
-    def print_communication_stats(self):
-        """Prints communication statistics."""
-        logging.info("====Communication Stats====")
-        logging.info("Rounds: %d" % self.comm_rounds)
-        logging.info("Bytes : %d" % self.comm_bytes)
-
-    def _log_communication(self, nelement):
-        """Updates log of communication statistics."""
-        self.comm_rounds += 1
-        self.comm_bytes += nelement * self.BYTES_PER_ELEMENT

@@ -13,6 +13,7 @@ import tempfile
 from operator import itemgetter
 
 import crypten
+from crypten.communicator import DistributedCommunicator
 
 
 def _launch(func, rank, world_size, rendezvous_file, queue, func_args, func_kwargs):
@@ -56,8 +57,9 @@ def run_multiprocess(world_size):
             # process.  An alternative fix for this issue would be to use spawn
             # instead of fork, but we run into issues serializing the function
             # in that case.
-            was_initialized = crypten.communicator.__is_initialized
-            crypten.uninit()
+            was_initialized = DistributedCommunicator.is_initialized()
+            if was_initialized:
+                crypten.uninit()
 
             for process in processes:
                 process.start()
