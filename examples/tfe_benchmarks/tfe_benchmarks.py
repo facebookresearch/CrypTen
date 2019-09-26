@@ -45,6 +45,8 @@ def run_tfe_benchmarks(
     context_manager=None,
     mnist_dir=None,
 ):
+    crypten.init()
+
     if seed is not None:
         random.seed(seed)
         torch.manual_seed(seed)

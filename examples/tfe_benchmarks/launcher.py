@@ -150,7 +150,7 @@ def _run_experiment(args):
         args.evaluate,
         args.seed,
         args.skip_plaintext,
-        os.path.join(args.save_checkpoint_dir, os.environ["RANK"]),
+        os.path.join(args.save_checkpoint_dir, os.environ.get("RANK", "")),
         mnist_dir=args.mnist_dir,
     )
 
