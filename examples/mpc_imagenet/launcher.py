@@ -8,7 +8,7 @@
 """
 To run tfe_benchmarks example in multiprocess mode:
 
-$ python3 examples:mpc_imagenet --multiprocess
+$ python3 examples/mpc_imagenet/launcher.py --multiprocess
 
 To run tfe_benchmarks example on AWS EC2 instances:
 
