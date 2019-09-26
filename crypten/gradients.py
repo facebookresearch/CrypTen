@@ -907,7 +907,7 @@ class AutogradAvgPool2D(AutogradFunction):
 @register_function("max_pool2d")
 class AutogradMaxPool2D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, padding=0, stride=None):
+    def forward(ctx, input, padding=0, stride=None, return_indices=False):
 
         # preprocess inputs:
         input, kernel_size = input
@@ -919,6 +919,7 @@ class AutogradMaxPool2D(AutogradFunction):
             padding = (padding, padding)
 
         # perform max pooling:
+        # Note return_indices is required to be True to computing backward.
         output, indices = input.max_pool2d(
             kernel_size, padding=padding, stride=stride, return_indices=True
         )
@@ -927,7 +928,11 @@ class AutogradMaxPool2D(AutogradFunction):
         ctx.save_multiple_for_backward(
             (input.size(), indices, kernel_size, padding, stride)
         )
-        return output
+
+        if return_indices:
+            return output, indices
+        else:
+            return output
 
     @staticmethod
     def backward(ctx, grad_output):

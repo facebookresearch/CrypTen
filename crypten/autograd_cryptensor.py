@@ -188,16 +188,30 @@ class AutogradCrypTensor(object):
                     inputs = inputs[0]  # unpack input list if possible
 
                 # apply correct autograd function and wrap result:
-                result = AutogradCrypTensor(
-                    grad_fn.forward(ctx, inputs, **kwargs), requires_grad=requires_grad
-                )
-                if result.requires_grad:
-                    result.children = children
-                    result.grad_fn = grad_fn
-                    result.ctx = ctx
+                result = grad_fn.forward(ctx, inputs, **kwargs)
+                if isinstance(result, tuple):
+                    result = tuple(
+                        AutogradCrypTensor(res, requires_grad=False) for res in result
+                    )
+                    result[0].requires_grad = requires_grad
+                    if result[0].requires_grad:
+                        result[0].children = children
+                        result[0].grad_fn = grad_fn
+                        result[0].ctx = ctx
 
-                # stroe reference to parent in graph:
-                self.parents.append(result)
+                    # store reference to parent in graph:
+                    for res in result:
+                        self.parents.append(res)
+                else:
+                    result = AutogradCrypTensor(result, requires_grad=requires_grad)
+                    if result.requires_grad:
+                        result.children = children
+                        result.grad_fn = grad_fn
+                        result.ctx = ctx
+
+                    # store reference to parent in graph:
+                    self.parents.append(result)
+
                 return result
 
             return autograd_forward
