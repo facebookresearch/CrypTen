@@ -7,48 +7,37 @@
 
 from .communicator import Communicator
 from .distributed_communicator import DistributedCommunicator
+from .in_process_communicator import InProcessCommunicator
 
 
-__comm = None
-__is_initialized = False
+__use_threads = False
 
 
 def get():
-    if not __is_initialized:
+    cls = InProcessCommunicator if __use_threads else DistributedCommunicator
+    if not cls.is_initialized():
         raise RuntimeError("Crypten not initialized. Please call crypten.init() first.")
-    return __comm
+
+    return cls.get()
 
 
-def init():
-    global __is_initialized, __comm
-    if __is_initialized:
+def _init(use_threads, rank=0, world_size=1):
+    global __tls, __use_threads
+    __use_threads = use_threads
+    cls = InProcessCommunicator if __use_threads else DistributedCommunicator
+
+    if cls.is_initialized():
         return
 
-    __is_initialized = True
-
-    import os
-
-    # set default arguments for communicator:
-    default_args = {
-        "DISTRIBUTED_BACKEND": "gloo",
-        "RENDEZVOUS": "file:///tmp/sharedfile",
-        "WORLD_SIZE": 1,
-        "RANK": 0,
-    }
-    for key, val in default_args.items():
-        if key not in os.environ:
-            os.environ[key] = str(val)
-
-    __comm = DistributedCommunicator()
+    cls.initialize(rank, world_size)
 
 
 def uninit():
-    global __comm, __is_initialized
-    if __comm:
-        __comm.shutdown()
-    __comm = None
-    __is_initialized = False
+    global __use_threads
+    cls = InProcessCommunicator if __use_threads else DistributedCommunicator
+    cls.shutdown()
+    __use_threads = False
 
 
 # expose classes and functions in package:
-__all__ = ["Communicator", "DistributedCommunicator", "init", "uninit", "get"]
+__all__ = ["Communicator", "DistributedCommunicator", "uninit", "get"]

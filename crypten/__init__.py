@@ -17,7 +17,13 @@ from .mpc import ptype
 
 
 def init():
-    return comm.init()
+    comm._init(use_threads=False)
+    _setup_przs()
+
+
+def init_thread(rank, world_size):
+    comm._init(use_threads=True, rank=rank, world_size=world_size)
+    _setup_przs()
 
 
 def uninit():
@@ -73,6 +79,58 @@ def is_encrypted_tensor(obj):
     Returns True if obj is an encrypted tensor.
     """
     return isinstance(obj, CrypTensor)
+
+
+def _setup_przs():
+    """
+        Generate shared random seeds to generate pseudo-random sharings of
+        zero. The random seeds are shared such that each process shares
+        one seed with the previous rank process and one with the next rank.
+        This allows for the generation of `n` random values, each known to
+        exactly two of the `n` parties.
+
+        For arithmetic sharing, one of theseparties will add the number
+        while the other subtracts it, allowing for the generation of a
+        pseudo-random sharing of zero. (This can be done for binary
+        sharing using bitwise-xor rather than addition / subtraction)
+    """
+    # Initialize RNG Generators
+    comm.get().g0 = torch.Generator()
+    comm.get().g1 = torch.Generator()
+
+    # Generate random seeds for Generators
+    # NOTE: Chosen seed can be any number, but we choose as a random 64-bit
+    # integer here so other parties cannot guess its value.
+
+    # We sometimes get here from a forked process, which causes all parties
+    # to have the same RNG state. Reset the seed to make sure RNG streams
+    # are different in all the parties. We use numpy's random here since
+    # setting its seed to None will produce different seeds even from
+    # forked processes.
+    import numpy
+
+    numpy.random.seed(seed=None)
+    next_seed = torch.tensor(numpy.random.randint(-2 ** 63, 2 ** 63 - 1, (1,)))
+    prev_seed = torch.LongTensor([0])  # placeholder
+
+    # Send random seed to next party, receive random seed from prev party
+    world_size = comm.get().get_world_size()
+    rank = comm.get().get_rank()
+    if world_size >= 2:  # Otherwise sending seeds will segfault.
+        next_rank = (rank + 1) % world_size
+        prev_rank = (next_rank - 2) % world_size
+
+        req0 = comm.get().isend(tensor=next_seed, dst=next_rank)
+        req1 = comm.get().irecv(tensor=prev_seed, src=prev_rank)
+
+        req0.wait()
+        req1.wait()
+    else:
+        prev_seed = next_seed
+
+    # Seed Generators
+    comm.get().g0.manual_seed(next_seed.item())
+    comm.get().g1.manual_seed(prev_seed.item())
 
 
 def load(f, encrypted=False, src=None, **kwargs):
@@ -174,4 +232,4 @@ for func in __PASSTHROUGH_FUNCTIONS:
     __add_top_level_function(func)
 
 # expose classes and functions in package:
-__all__ = ["CrypTensor", "debug", "init", "mpc", "nn", "uninit"]
+__all__ = ["CrypTensor", "debug", "init", "init_thread", "mpc", "nn", "uninit"]

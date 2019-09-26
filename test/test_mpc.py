@@ -11,6 +11,7 @@ import logging
 import math
 import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multithread_test_case import MultiThreadTestCase
 
 import crypten
 import torch
@@ -19,18 +20,12 @@ from crypten.common.tensor_types import is_float_tensor
 from crypten.mpc import MPCTensor, ptype
 
 
-class TestMPC(MultiProcessTestCase):
+class TestMPC:
     """
         This class tests all functions of MPCTensor.
     """
 
     benchmarks_enabled = False
-
-    def setUp(self):
-        super().setUp()
-        # We don't want the main process (rank -1) to initialize the communicator
-        if self.rank >= 0:
-            crypten.init()
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
@@ -1527,8 +1522,16 @@ class TestMPC(MultiProcessTestCase):
         pass
 
 
+class TestMPCThreads(TestMPC, MultiThreadTestCase):
+    pass
+
+
+class TestMPCProcess(TestMPC, MultiProcessTestCase):
+    pass
+
+
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)
 if __name__ == "__main__":
-    TestMPC.benchmarks_enabled = True
+    TestMPCProcess.benchmarks_enabled = True
     unittest.main()

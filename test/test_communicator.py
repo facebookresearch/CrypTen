@@ -7,23 +7,19 @@
 
 import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multithread_test_case import MultiThreadTestCase
 
 import crypten
 import crypten.communicator as comm
 import torch
 
 
-class TestCommunicator(MultiProcessTestCase):
+class TestCommunicator:
     """
         This class tests all member functions of crypten package
     """
 
     benchmarks_enabled = False
-
-    def setUp(self):
-        super().setUp()
-        if self.rank >= 0:
-            crypten.init()
 
     def test_przs_generators(self):
         """Tests that przs generators are initialized independently"""
@@ -78,7 +74,16 @@ class TestCommunicator(MultiProcessTestCase):
             self.assertTrue((result == (tensor * self.world_size)).all())
 
     def test_gather(self):
-        sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
+        tensor = torch.tensor([self.rank])
+        for rank in range(self.world_size):
+            result = comm.get().gather(tensor, rank)
+            if rank == self.rank:
+                self.assertEqual(result, [torch.tensor([0]), torch.tensor([1])])
+            else:
+                self.assertIsNone(result)
+
+    def test_gather_random(self):
+        sizes = [(), (1,), (5,), (5, 5), (5, 5, 5), (1000,)]
         for rank in range(self.world_size):
             for size in sizes:
                 tensor = get_random_test_tensor(size=size)
@@ -91,6 +96,25 @@ class TestCommunicator(MultiProcessTestCase):
                     self.assertIsNone(result)
 
     def test_all_gather(self):
+        tensor = torch.tensor([self.rank])
+        result = comm.get().all_gather(tensor)
+        self.assertEqual(
+            result, [torch.tensor([rank]) for rank in range(self.world_size)]
+        )
+
+    def test_mutation(self):
+        for _ in range(10):
+            tensor = torch.tensor([self.rank])
+            result = comm.get().all_gather(tensor)
+            # Mutate the tensor, which should have no effect since the gather
+            # has finished. If we don't clone the tensor though, this might
+            # mutate one of the tensors received by the other party.
+            tensor += 1
+            self.assertEqual(
+                result, [torch.tensor([rank]) for rank in range(self.world_size)]
+            )
+
+    def test_all_gather_random(self):
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size)
@@ -115,6 +139,12 @@ class TestCommunicator(MultiProcessTestCase):
     def test_get_rank(self):
         self.assertEqual(comm.get().get_rank(), self.rank)
 
+
+class TestCommunicatorMultiThread(TestCommunicator, MultiThreadTestCase):
+    pass
+
+
+class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
     def test_logging(self):
         # Assert initialization resets comm.get() stats
         self.assertEqual(comm.get().comm_rounds, 0)

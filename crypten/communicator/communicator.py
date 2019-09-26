@@ -5,6 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
+
 import torch
 
 
@@ -25,9 +27,24 @@ class Communicator:
         assert isinstance(verbosity, bool), "Verbosity must be a boolean value"
         cls.__verbosity = verbosity
 
-    def initialize(self, **kwargs):
+    @classmethod
+    def is_initialized(cls):
+        """Returns whether the communicator has been initialized"""
+        raise NotImplementedError("is_initialized is not implemented")
+
+    @classmethod
+    def get(cls):
+        """Returns an instance of the communicator"""
+        raise NotImplementedError("get is not implemented")
+
+    @classmethod
+    def initialize(cls, **kwargs):
         """Initializes the communicator. Call this function before using it."""
-        pass
+        raise NotImplementedError("initialize is not implemented")
+
+    @classmethod
+    def shutdown(cls):
+        raise NotImplementedError("shutdown is not implemented")
 
     def send(self, tensor, dst):
         """Sends the specified tensor to the destination dst."""
@@ -89,8 +106,21 @@ class Communicator:
         """Updates log of communication statistics."""
         raise NotImplementedError("_log_communication is not implemented")
 
-    def shutdown(self):
-        raise NotImplementedError("shutdown is not implemented")
+    def reset_communication_stats(self):
+        """Resets communication statistics."""
+        self.comm_rounds = 0
+        self.comm_bytes = 0
+
+    def print_communication_stats(self):
+        """Prints communication statistics."""
+        logging.info("====Communication Stats====")
+        logging.info("Rounds: %d" % self.comm_rounds)
+        logging.info("Bytes : %d" % self.comm_bytes)
+
+    def _log_communication(self, nelement):
+        """Updates log of communication statistics."""
+        self.comm_rounds += 1
+        self.comm_bytes += nelement * self.BYTES_PER_ELEMENT
 
 
 def _logging(func):
