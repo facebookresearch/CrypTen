@@ -129,7 +129,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def membership_inference(args, load_data_module):
+def membership_inference(args, load_data_module, download_mnist):
     # load clusters:
     clusters = None
     if args.number_arms is not None:
@@ -139,13 +139,23 @@ def membership_inference(args, load_data_module):
         clusters = torch.load(clusters_file)
 
     # load dataset:
-    train_data, _ = load_data_module.load_data(split="train")
+    train_data, _ = load_data_module.load_data(
+        split="train", download_mnist_func=download_mnist
+    )
     components = examples.util.pca(train_data, args.pca)
     positive_set = load_data_module.load_data(
-        split="train", pca=components, clusters=clusters, bandwidth=args.bandwidth
+        split="train",
+        pca=components,
+        clusters=clusters,
+        bandwidth=args.bandwidth,
+        download_mnist_func=download_mnist,
     )
     negative_set = load_data_module.load_data(
-        split="test", pca=components, clusters=clusters, bandwidth=args.bandwidth
+        split="test",
+        pca=components,
+        clusters=clusters,
+        bandwidth=args.bandwidth,
+        download_mnist_func=download_mnist,
     )
 
     # get list of checkpoints:
@@ -158,7 +168,9 @@ def membership_inference(args, load_data_module):
     iterations = [int(os.path.splitext(f)[0].split("_")[-1]) for f in model_files]
 
     # load permutation used in training:
-    perm = load_data_module.load_data_sampler(permfile=args.permfile)
+    perm = load_data_module.load_data_sampler(
+        permfile=args.permfile, download_mnist_func=download_mnist
+    )
 
     def subset(dataset, iteration):
         ids = perm[:iteration]
@@ -192,7 +204,7 @@ def membership_inference(args, load_data_module):
 def _run_experiment(args):
     import launcher
 
-    membership_inference(args, launcher)
+    membership_inference(args, launcher, launcher.download_mnist)
 
 
 def main(run_experiment):

@@ -28,6 +28,7 @@ import random
 import examples.util
 import torch
 import visdom
+from examples.mnist_utils import process_mnist_files
 from examples.multiprocess_launcher import MultiProcessLauncher
 from examples.util import NoopContextManager
 from torchvision.datasets.mnist import MNIST
@@ -49,14 +50,30 @@ def learning_curve(visualizer, idx, value, window=None, title=""):
     return window
 
 
-def _download_mnist(split="train"):
+def download_mnist(split="train"):
     """
     Loads split from the MNIST dataset and returns data.
     """
+    train = split == "train"
+
+    # If need to downkload MNIST dataset and uncompress,
+    # it is necessary to create a separate for each process.
+    mnist_exists = os.path.exists(
+        os.path.join(
+            "/tmp/MNIST/processed", MNIST.training_file if train else MNIST.test_file
+        )
+    )
+
+    if mnist_exists:
+        mnist_root = "/tmp"
+    else:
+        rank = "0" if "RANK" not in os.environ else os.environ["RANK"]
+        mnist_root = os.path.join("tmp", "bandits", rank)
+        os.makedirs(mnist_root, exist_ok=True)
 
     # download the MNIST dataset:
     with NoopContextManager():
-        mnist = MNIST("/tmp", download=True, train=(split == "train"))
+        mnist = MNIST(mnist_root, download=not mnist_exists, train=train)
     return mnist
 
 
@@ -65,14 +82,14 @@ def load_data(
     pca=None,
     clusters=None,
     bandwidth=1.0,
-    download_mnist=_download_mnist,
+    download_mnist_func=download_mnist,
 ):
     """
     Loads split from the MNIST dataset and returns data.
     """
 
     # download the MNIST dataset:
-    mnist = download_mnist(split)
+    mnist = download_mnist_func(split)
 
     # preprocess the MNIST dataset:
     context = mnist.data.float().div_(255.0)
@@ -105,7 +122,7 @@ def load_data_sampler(
     clusters=None,
     bandwidth=1.0,
     permfile=None,
-    download_mnist=_download_mnist,
+    download_mnist_func=download_mnist,
 ):
     """
     Loads split from the MNIST dataset and returns sampler.
@@ -117,7 +134,7 @@ def load_data_sampler(
         pca=pca,
         clusters=clusters,
         bandwidth=bandwidth,
-        download_mnist=download_mnist,
+        download_mnist_func=download_mnist_func,
     )
     if permfile is not None:
         perm = torch.load(permfile)
@@ -154,6 +171,18 @@ def parse_args(hostname):
     )
     parser.add_argument(
         "--backend", default="mpc", type=str, help="crypten backend: mpc (default)"
+    )
+    parser.add_argument(
+        "--mnist-split",
+        default="train",
+        type=str,
+        help="The split from the MNIST dataset (default = train)",
+    )
+    parser.add_argument(
+        "--mnist-dir",
+        default=None,
+        type=str,
+        help="path to the dir of MNIST raw data files",
     )
     parser.add_argument(
         "--learner",
@@ -334,7 +363,9 @@ def build_learner(args, bandits, download_mnist):
     checkpoint_func = get_checkpoint_func(args)
 
     # compute pca:
-    context, _ = load_data(split="train", pca=None)
+    context, _ = load_data(
+        split=args.mnist_split, pca=None, download_mnist_func=download_mnist
+    )
     pca = examples.util.pca(context, args.pca)
 
     # create or load clustering if custom number of arms is used:
@@ -350,7 +381,9 @@ def build_learner(args, bandits, download_mnist):
         else:
 
             # load data and allocate clusters:
-            context, _ = load_data(split="train", pca=pca)
+            context, _ = load_data(
+                split=args.mnist_split, pca=pca, download_mnist_func=download_mnist
+            )
             clusters = context.new((args.number_arms, context.size(1)))
 
             # run clustering in process 0:
@@ -369,11 +402,12 @@ def build_learner(args, bandits, download_mnist):
 
     # run contextual bandit algorithm on MNIST:
     sampler = load_data_sampler(
+        split=args.mnist_split,
         pca=pca,
         clusters=clusters,
         bandwidth=args.bandwidth,
         permfile=args.permfile,
-        download_mnist=download_mnist,
+        download_mnist_func=download_mnist,
     )
     assert hasattr(bandits, args.learner), "unknown learner: %s" % args.learner
 
@@ -396,7 +430,7 @@ def _run_experiment(args):
     else:
         import private_contextual_bandits as bandits
 
-    learner_func = build_learner(args, bandits, _download_mnist)
+    learner_func = build_learner(args, bandits, download_mnist)
     import crypten
 
     crypten.init()
@@ -409,6 +443,8 @@ def main(run_experiment):
     """
     # parse input arguments:
     args = parse_args(os.environ.get("HOSTNAME", "localhost"))
+    if args.mnist_dir is not None:
+        process_mnist_files(args.mnist_dir, "/tmp/MNIST/processed")
 
     if args.multiprocess:
         launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
