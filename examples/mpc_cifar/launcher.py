@@ -114,7 +114,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--multiprocess",
-    default=True,
+    default=False,
     action="store_true",
     help="Run example in multiprocess mode",
 )
