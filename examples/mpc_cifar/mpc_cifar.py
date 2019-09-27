@@ -103,7 +103,8 @@ def run_mpc_cifar(
         )
         return trainloader, testloader
 
-    context_manager = NoopContextManager()
+    if context_manager is None:
+        context_manager = NoopContextManager()
     train_loader, val_loader = preprocess_data(context_manager)
 
     if evaluate:

@@ -22,8 +22,8 @@ $ python3 aws_launcher.py \
       --ssh_key_file=$HOME/.aws/fair-$USER.pem \
       --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
       --aux_files=examples/mpc_cifar/mpc_cifar.py,\
-path-to-model/model.pth.tar,\
-      examples/mpc_cifar/launcher.py . \
+path-to-model/model.pth.tar\
+      examples/mpc_cifar/launcher.py \
       --evaluate \
       --resume model.pth.tar \
       --batch-size 1 \
