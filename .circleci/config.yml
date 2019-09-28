@@ -33,17 +33,17 @@ jobs:
           name: Linear svm example
           command: |
             . ~/crypten-test/bin/activate
-            PYTHONPATH=. python3 examples/mpc_linear_svm/launcher.py --lr 0.1 --world_size 2
-      - run:
-          name: Linear svm example
-          command: |
-            . ~/crypten-test/bin/activate
-            PYTHONPATH=. python3 examples/mpc_linear_svm/launcher.py --lr 0.1 --world_size 4
-      - run:
-          name: Linear svm example
-          command: |
-            . ~/crypten-test/bin/activate
             PYTHONPATH=. python3 examples/mpc_linear_svm/launcher.py --lr 0.1 --epochs 2 --skip_plaintext
+      - run:
+          name: Linear svm example multiprocess
+          command: |
+            . ~/crypten-test/bin/activate
+            PYTHONPATH=. python3 examples/mpc_linear_svm/launcher.py --lr 0.1 --world_size 2 --multiprocess
+      - run:
+          name: Linear svm example multiprocess
+          command: |
+            . ~/crypten-test/bin/activate
+            PYTHONPATH=. python3 examples/mpc_linear_svm/launcher.py --lr 0.1 --world_size 4 --multiprocess
       - run:
           name: Linear svm example multiprocess
           command: |
@@ -54,22 +54,20 @@ jobs:
           command: |
             . ~/crypten-test/bin/activate
             pip3 install torchvision
+            PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network A --epochs 2
             PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network C --epochs 2
       - run:
           name: TFE benchmarks example
           command: |
             . ~/crypten-test/bin/activate
             PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network A --epochs 1 --multiprocess
+            PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network C --epochs 1 --multiprocess
       - run:
           name: TFE benchmarks example
           command: |
             . ~/crypten-test/bin/activate
             PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network A --epochs 3 --multiprocess --world_size 1 --skip-plaintext
-      - run:
-          name: TFE benchmarks example
-          command: |
-            . ~/crypten-test/bin/activate
-            PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --multiprocess
+            PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network C --epochs 3 --multiprocess --world_size 1 --skip-plaintext
 
 
 # -------------------------------------------------------------------------------------
