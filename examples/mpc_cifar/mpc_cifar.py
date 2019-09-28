@@ -15,7 +15,6 @@ import warnings
 import crypten
 import crypten.communicator as comm
 import torch
-import torch.backends.cudnn as cudnn
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim
@@ -43,14 +42,6 @@ def run_mpc_cifar(
     if seed is not None:
         random.seed(seed)
         torch.manual_seed(seed)
-        cudnn.deterministic = True
-        warnings.warn(
-            "You have chosen to seed training. "
-            "This will turn on the CUDNN deterministic setting, "
-            "which can slow down your training considerably! "
-            "You may see unexpected behavior when restarting "
-            "from checkpoints."
-        )
 
     crypten.init()
 
