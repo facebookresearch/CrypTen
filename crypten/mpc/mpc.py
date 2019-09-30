@@ -509,7 +509,7 @@ class MPCTensor(CrypTensor):
             result = result.square()
         return result
 
-    def log(self, iterations=1, exp_iterations=8):
+    def log(self, iterations=2, exp_iterations=8):
         """Approximates the natural logarithm using 6th order modified
         Householder iterations:
 
@@ -613,7 +613,7 @@ class MPCTensor(CrypTensor):
             # This is consistent with PyTorch's pow function.
             return MPCTensor(torch.ones(self.size()))
         elif p == 1:
-            return self
+            return self.clone()
         elif p == 2:
             return self.square()
         elif p % 2 == 0:
