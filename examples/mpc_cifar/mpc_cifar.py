@@ -239,12 +239,12 @@ def encrypt_data_tensor_with_src(input):
     # get rank of current process
     rank = comm.get().get_rank()
 
-    # party 1 always gets the actual tensor; remaining parties get dummy model
-    if rank == 1:
+    # party 0 always gets the actual tensor; remaining parties get dummy model
+    if rank == 0:
         input_upd = input
     else:
         input_upd = torch.empty(input.size())
-    private_input = crypten.cryptensor(input_upd, src=1)
+    private_input = crypten.cryptensor(input_upd, src=0)
     return private_input
 
 
