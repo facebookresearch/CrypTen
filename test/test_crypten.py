@@ -141,18 +141,7 @@ class TestCrypten(MultiProcessTestCase):
 
                 reference_size = tuple([src + 1] * dimensions)
                 self.assertEqual(result.size(), reference_size)
-
-            # Test load with src=None
-            syncd_filename = "/tmp/tmpsyncdfile"
-            tensor = get_random_test_tensor()
-            crypten.save(tensor, syncd_filename)
-            result = crypten.load(syncd_filename)
-            self.assertTrue(result.eq(tensor).all().item())
-
-        # Only remove tempfile once
-        if self.rank == 0 and os.path.exists(syncd_filename):
-            os.remove(syncd_filename)
-
+            
     def test_save_load_module(self):
         """Test that crypten.save and crypten.load properly save and load modules"""
         import tempfile

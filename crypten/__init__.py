@@ -262,7 +262,7 @@ def load(f, encrypted=False, dummy_model=None, src=0, **kwargs):
             else:
                 raise TypeError("Unrecognized load type on src")
 
-        return result
+        return result.float()
 
 
 def save(obj, f, src=0, **kwargs):
