@@ -14,8 +14,10 @@ from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_te
 
 import crypten
 import torch
+import torch.nn.functional as F
 from crypten.common.tensor_types import is_float_tensor
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
+from torch import nn
 
 
 class TestCrypten(MultiProcessTestCase):
@@ -124,11 +126,9 @@ class TestCrypten(MultiProcessTestCase):
     def test_save_load(self):
         """Test that crypten.save and crypten.load properly save and load tensors"""
         import tempfile
-
-        filename = tempfile.NamedTemporaryFile(delete=True).name
-
         import os
 
+        filename = tempfile.NamedTemporaryFile(delete=True).name
         for dimensions in range(1, 5):
             # Create tensors with different sizes on each rank
             size = [crypten.communicator.get().get_rank() + 1] * dimensions
@@ -152,6 +152,37 @@ class TestCrypten(MultiProcessTestCase):
         # Only remove tempfile once
         if self.rank == 0 and os.path.exists(syncd_filename):
             os.remove(syncd_filename)
+
+    def test_save_load_module(self):
+        """Test that crypten.save and crypten.load properly save and load modules"""
+        import tempfile
+
+        for model_type in [TestModule, NestedTestModule]:
+            # Create models with different parameter values on each rank
+            rank = crypten.communicator.get().get_rank()
+
+            test_model = model_type(200, 10)
+            test_model.set_all_parameters(rank)
+
+            filename = tempfile.NamedTemporaryFile(delete=True).name
+            for src in range(crypten.communicator.get().get_world_size()):
+                crypten.save(test_model, filename, src=src)
+
+                dummy_model = model_type(200, 10)
+                result = crypten.load(filename, dummy_model=dummy_model, src=src)
+                if src == rank:
+                    for param in result.parameters(recurse=True):
+                        self.assertTrue(
+                            param.eq(rank).all().item(), "Model load failed"
+                        )
+
+                failure_dummy_model = model_type(200, 11)
+                with self.assertRaises(
+                    AssertionError, msg="Expected load failure not raised"
+                ):
+                    result = crypten.load(
+                        filename, dummy_model=failure_dummy_model, src=src
+                    )
 
     def test_where(self):
         """Test that crypten.where properly conditions"""
@@ -193,6 +224,45 @@ class TestCrypten(MultiProcessTestCase):
                 f"{'private' if y_is_private else 'public'} y "
                 "where failed with private condition",
             )
+
+
+# Modules used for testing saveing / loading of modules
+class TestModule(nn.Module):
+    def __init__(self, input_features, output_features):
+        super(TestModule, self).__init__()
+        self.fc1 = nn.Linear(input_features, 100)
+        self.fc2 = nn.Linear(100, 50)
+        self.fc3 = nn.Linear(50, output_features)
+
+    def forward(self, input):
+        out = F.relu(self.fc1(input))
+        out = F.relu(self.fc2(out))
+        out = self.fc3(out)
+        return out
+
+    def set_all_parameters(self, value):
+        self.fc1.weight.data.fill_(value)
+        self.fc1.bias.data.fill_(value)
+        self.fc2.weight.data.fill_(value)
+        self.fc2.bias.data.fill_(value)
+        self.fc3.weight.data.fill_(value)
+        self.fc3.bias.data.fill_(value)
+
+
+class NestedTestModule(nn.Module):
+    def __init__(self, input_features, output_features):
+        super(NestedTestModule, self).__init__()
+        self.fc1 = nn.Linear(input_features, input_features)
+        self.nested = TestModule(input_features, output_features)
+
+    def forward(self, input):
+        out = F.relu(self.fc1(input))
+        out = self.nested(out)
+
+    def set_all_parameters(self, value):
+        self.fc1.weight.data.fill_(value)
+        self.fc1.bias.data.fill_(value)
+        self.nested.set_all_parameters(value)
 
 
 # This code only runs when executing the file outside the test harness (e.g.

@@ -133,7 +133,38 @@ def _setup_przs():
     comm.get().g1.manual_seed(prev_seed.item())
 
 
-def load(f, encrypted=False, src=None, **kwargs):
+def __validate_model(loaded_model, dummy_model):
+    """Validates that two models have the same architecture"""
+    loaded_modules = [loaded_model]
+    dummy_modules = [dummy_model]
+
+    valid = torch.tensor(1, dtype=torch.long)
+    try:
+        while len(loaded_modules) > 0:
+            loaded_module = loaded_modules.pop(0)
+            dummy_module = dummy_modules.pop(0)
+
+            # Assert modules have the same number of parameters
+            loaded_params = [param for param in loaded_module.parameters()]
+            dummy_params = [param for param in dummy_module.parameters()]
+            assert len(loaded_params) == len(dummy_params)
+
+            for i, param in enumerate(loaded_params):
+                assert param.size() == dummy_params[i].size()
+
+            # Assert that modules have the same number of sub-modules
+            loaded_module_modules = [mod for mod in loaded_module.modules()][1:]
+            dummy_module_modules = [mod for mod in dummy_module.modules()][1:]
+
+            loaded_modules.extend(loaded_module_modules)
+            dummy_modules.extend(dummy_module_modules)
+            assert len(loaded_modules) == len(dummy_modules)
+    except AssertionError:
+        valid = torch.tensor(0, dtype=torch.long)
+    return valid
+
+
+def load(f, encrypted=False, dummy_model=None, src=0, **kwargs):
     """
     Loads an object saved with `torch.save()` or `crypten.save()`.
 
@@ -142,6 +173,12 @@ def load(f, encrypted=False, src=None, **kwargs):
               :meth`tell`, and :meth`seek`), or a string containing a file name
         `encrypted` - Determines whether crypten should load an encrypted tesnor
                       or a plaintext torch tensor.
+        `dummy_model` - Takes a model architecture to fill with the loaded model
+                (on the `src` party only). Non-source parties will return the
+                `dummy_model` input (with data unchanged). Loading a model will
+                assert the correctness of the model architecture provided against
+                the model loaded. This argument is ignored if the file loaded is
+                a tensor.
         `src` - Determines the source of the tensor. If `src` is None, each
                 party will attempt to read in the specified file. If `src` is
                 specified, the source party will read the tensor from
@@ -149,16 +186,20 @@ def load(f, encrypted=False, src=None, **kwargs):
     if encrypted:
         raise NotImplementedError("Loading encrypted tensors is not yet supported")
     else:
-        if src is None:
-            return torch.load(f, **kwargs)
-        else:
-            assert isinstance(src, int), "Load failed: src argument must be an integer"
-            assert (
-                src >= 0 and src < comm.get().get_world_size()
-            ), "Load failed: src must be in [0, world_size)"
+        assert isinstance(src, int), "Load failed: src argument must be an integer"
+        assert (
+            src >= 0 and src < comm.get().get_world_size()
+        ), "Load failed: src must be in [0, world_size)"
 
-            if comm.get().get_rank() == src:
-                result = torch.load(f, **kwargs)
+        # source party
+        if comm.get().get_rank() == src:
+            result = torch.load(f, **kwargs)
+
+            # file contains torch.tensor
+            if torch.is_tensor(result):
+                # Broadcast load type
+                load_type = torch.tensor(0, dtype=torch.long)
+                comm.get().broadcast(load_type, src=src)
 
                 # Broadcast size to other parties.
                 dim = torch.tensor(result.dim(), dtype=torch.long)
@@ -167,15 +208,61 @@ def load(f, encrypted=False, src=None, **kwargs):
                 comm.get().broadcast(dim, src=src)
                 comm.get().broadcast(size, src=src)
 
+            # file contains torch module
+            elif isinstance(result, torch.nn.Module):
+                # Broadcast load type
+                load_type = torch.tensor(1, dtype=torch.long)
+                comm.get().broadcast(load_type, src=src)
+
+                # Assert that dummy_model is provided
+                assert dummy_model is not None and isinstance(
+                    dummy_model, torch.nn.Module
+                ), "dummy model must be provided when loading a model"
+
+                # Assert that model architectures are the same
+                valid = __validate_model(result, dummy_model)
+                comm.get().broadcast(valid, src=src)  # Broadcast validation
+                assert valid.item(), "Model architecture does not match loaded module"
+
+            # file contains unrecognized type
             else:
+                # Broadcast load type
+                load_type = torch.tensor(-1, dtype=torch.long)
+                comm.get().broadcast(load_type, src=src)
+
+                # raise error
+                raise TypeError("Unrecognized load type %s" % type(result))
+
+        # Non-source party
+        else:
+            # Receive load type from source party
+            load_type = torch.tensor(-1, dtype=torch.long)
+            comm.get().broadcast(load_type, src=src)
+
+            # Load in tensor
+            if load_type.item() == 0:
                 # Receive size from source party
                 dim = torch.empty(size=(), dtype=torch.long)
                 comm.get().broadcast(dim, src=src)
                 size = torch.empty(size=(dim.item(),), dtype=torch.long)
                 comm.get().broadcast(size, src=src)
                 result = torch.empty(size=tuple(size.tolist()))
+            # Load module using dummy_model
+            elif load_type.item() == 1:
+                # Assert dummy_model is given
+                assert dummy_model is not None and isinstance(
+                    dummy_model, torch.nn.Module
+                ), "dummy model must be provided when loading a model"
+                result = dummy_model
 
-            return result
+                # Receive model architecture validation
+                valid = torch.tensor(1, dtype=torch.long)
+                comm.get().broadcast(valid, src=src)
+                assert valid.item(), "Model architecture does not match loaded module"
+            else:
+                raise TypeError("Unrecognized load type on src")
+
+        return result
 
 
 def save(obj, f, src=0, **kwargs):
