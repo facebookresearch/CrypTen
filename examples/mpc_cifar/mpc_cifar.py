@@ -9,6 +9,7 @@ import logging
 import os
 import random
 import shutil
+import tempfile
 import time
 import warnings
 
@@ -72,7 +73,7 @@ def run_mpc_cifar(
             logging.info("=> no checkpoint found at '{}'".format(resume))
 
     # Data loading code
-    def preprocess_data(context_manager):
+    def preprocess_data(context_manager, data_dirname):
         transform = transforms.Compose(
             [
                 transforms.ToTensor(),
@@ -81,10 +82,10 @@ def run_mpc_cifar(
         )
         with context_manager:
             trainset = datasets.CIFAR10(
-                root="/tmp", train=True, download=True, transform=transform
+                data_dirname, train=True, download=True, transform=transform
             )
             testset = datasets.CIFAR10(
-                root="/tmp", train=False, download=True, transform=transform
+                data_dirname, train=False, download=True, transform=transform
             )
         trainloader = torch.utils.data.DataLoader(
             trainset, batch_size=4, shuffle=True, num_workers=2
@@ -96,7 +97,9 @@ def run_mpc_cifar(
 
     if context_manager is None:
         context_manager = NoopContextManager()
-    train_loader, val_loader = preprocess_data(context_manager)
+
+    data_dir = tempfile.TemporaryDirectory()
+    train_loader, val_loader = preprocess_data(context_manager, data_dir.name)
 
     if evaluate:
         if not skip_plaintext:
@@ -133,6 +136,7 @@ def run_mpc_cifar(
             },
             is_best,
         )
+    data_dir.cleanup()
 
 
 def train(train_loader, model, criterion, optimizer, epoch, print_freq=10):
