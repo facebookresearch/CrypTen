@@ -62,10 +62,10 @@ def _inverse_broadcast(grad_output, input_size):
 
     # special case where input was a scalar:
     if input_size == torch.Size():
-        return grad_output.sum().unsqueeze(-1)
+        return grad_output.sum()
 
-    # remove batch dimension:
-    if grad_output.dim() == len(input_size) + 1:
+    # remove leading dimensions:
+    while grad_output.dim() > len(input_size):
         grad_output = grad_output.sum(0, keepdim=False)
     assert grad_output.dim() == len(input_size), "cannot perform inverse broadcast"
 
@@ -133,6 +133,19 @@ class AutogradFlip(AutogradFunction):
     def backward(ctx, grad_output):
         dims, = ctx.saved_tensors
         return grad_output.flip(dims)
+
+
+"""
+@register_function("clone")
+class AutogradClone(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input):
+        return input.clone()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output.clone()
+"""
 
 
 @register_function("view")
@@ -297,9 +310,10 @@ class AutogradSqueeze(AutogradFunction):
     def forward(ctx, input):
 
         # preprocess inputs:
+        dim = None
         if isinstance(input, (tuple, list)) and len(input) == 1:
             input, = input  # no dimension to squeeze specified
-        else:
+        elif isinstance(input, (tuple, list)):
             input, dim = input  # dimension to squeeze specified
 
         # perform the actual squeeze:
@@ -341,13 +355,13 @@ class AutogradGetItem(AutogradFunction):
     @staticmethod
     def forward(ctx, input):
         input, index = input
-        ctx.save_multiple_for_backward([input, index])
+        ctx.save_multiple_for_backward([input.size(), index])
         return input[index]
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, index = ctx.saved_tensors
-        grad = input - input
+        size, index = ctx.saved_tensors
+        grad = grad_output.new(torch.zeros(size))
         grad[index] = grad_output
         return grad
 
@@ -425,6 +439,23 @@ class AutogradSub(AutogradFunction):
         )
 
 
+@register_function("__rsub__")
+class AutogradRSub(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input):
+        input = _ensure_tensors(input)
+        ctx.save_multiple_for_backward([input[0].size(), input[1].size()])
+        return (-input[0]).add(input[1])
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        input_size1, input_size2 = ctx.saved_tensors
+        return (
+            _inverse_broadcast(grad_output.clone(), input_size1).neg(),
+            _inverse_broadcast(grad_output.clone(), input_size2),
+        )
+
+
 @register_function("mul")
 class AutogradMul(AutogradFunction):
     @staticmethod
@@ -454,21 +485,73 @@ class AutogradMatMul(AutogradFunction):
     def backward(ctx, grad_output):
         input, = ctx.saved_tensors
         self_, other = input
-        return (grad_output.matmul(other.t()), self_.t().matmul(grad_output))
+        return (
+            _inverse_broadcast(
+                grad_output.matmul(other.transpose(-2, -1)), self_.size()
+            ),
+            _inverse_broadcast(
+                self_.transpose(-2, -1).matmul(grad_output), other.size()
+            ),
+        )
 
 
 @register_function("div")
 class AutogradDiv(AutogradFunction):
     @staticmethod
     def forward(ctx, input):
-        input, scalar = input
-        ctx.save_for_backward(scalar)
-        return input.div(scalar)
+        input, other = input
+        if crypten.is_encrypted_tensor(other):
+            other_reciprocal = other.reciprocal()
+            ctx.save_multiple_for_backward([input, other_reciprocal])
+            return input.mul(other_reciprocal)
+        else:
+            ctx.save_multiple_for_backward([input.size(), other])
+            return input.div(other)
 
     @staticmethod
     def backward(ctx, grad_output):
-        scalar, = ctx.saved_tensors
-        return grad_output.div(scalar)  # may be sped up by caching input.log()
+        saved = ctx.saved_tensors
+
+        # saved is a list of [input, other_reciprocal]
+        if crypten.is_encrypted_tensor(saved[1]):
+            input, other_reciprocal = saved
+            grad_input = other_reciprocal.mul(grad_output)
+            grad_other = other_reciprocal.square().mul(input).mul(grad_output).neg()
+            return (
+                _inverse_broadcast(grad_input, input.size()),
+                _inverse_broadcast(grad_other, other_reciprocal.size()),
+            )
+        # saved is a public tensor or scalar
+        else:
+            input_size, other = saved
+            grad_input = grad_output.div(other)
+            if torch.is_tensor(other):
+                return _inverse_broadcast(grad_input, input_size)
+            else:
+                return grad_input
+
+
+@register_function("__rtruediv__")
+class AutogradRDiv(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input):
+        input, other = input
+        reciprocal = input.reciprocal()
+        ctx.save_multiple_for_backward([reciprocal, other])
+        return reciprocal.mul(other)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        reciprocal, other = ctx.saved_tensors
+        grad_input = reciprocal.square().mul(other).mul(grad_output).neg()
+        grad_input = _inverse_broadcast(grad_input, reciprocal.size())
+
+        if torch.is_tensor(other) or crypten.is_encrypted_tensor(other):
+            grad_other = reciprocal.mul(grad_output)
+            grad_other = _inverse_broadcast(grad_other, other.size())
+            return (grad_input, grad_other)
+        else:
+            return grad_input
 
 
 @register_function("pow")
@@ -518,7 +601,7 @@ class AutogradSquare(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         input, = ctx.saved_tensors
-        return grad_output.mul(input.mul_(2.0))
+        return grad_output.mul(input.mul(2.0))
 
 
 @register_function("sqrt")
@@ -660,17 +743,41 @@ class AutogradSign(AutogradFunction):
 @register_function("norm")
 class AutogradNorm(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, dim=None, keepdim=False):
-        norm = input.norm(dim=dim, keepdim=keepdim) if dim is not None else input.norm()
-        ctx.save_multiple_for_backward((input, norm, dim, keepdim))
-        return norm
+    def forward(ctx, input, p="fro", dim=None, keepdim=False):
+        if p == float("inf"):
+            sign = input.sign()
+            if dim is None:
+                input = input.mul(sign)
+                argmax = input.argmax(one_hot=True)
+                max = input.mul(argmax).sum()
+            else:
+                max, argmax = input.mul(sign).max(dim, keepdim=keepdim, one_hot=True)
+
+            ctx.save_multiple_for_backward((sign, argmax, p, dim, keepdim))
+            return max
+        else:
+            if dim is None:
+                norm = input.norm(p=p)
+            else:
+                norm = input.norm(p=p, dim=dim, keepdim=keepdim)
+            ctx.save_multiple_for_backward((input, norm, p, dim, keepdim))
+            return norm
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, norm, dim, keepdim = ctx.saved_tensors
+        input, norm, p, dim, keepdim = ctx.saved_tensors
         if not keepdim and dim is not None:
             grad_output.unsqueeze(dim)
-        return grad_output.mul(input.div(norm))
+
+        if p == 2 or p == "fro":
+            return grad_output.mul(input.div(norm))
+        elif p == float("inf"):
+            sign, argmax = input, norm
+            return grad_output.mul(argmax).mul(sign)
+        else:
+            sign = input.sign()
+            abs = input.mul(sign)
+            return grad_output.mul(abs.div(norm).pos_pow(p - 1).mul(sign))
 
 
 @register_function("sum")
@@ -684,8 +791,8 @@ class AutogradSum(AutogradFunction):
     def backward(ctx, grad_output):
         input_size, dim, keepdim = ctx.saved_tensors
         if not keepdim and dim is not None:
-            grad_output.unsqueeze(dim)
-        return grad_output.new(torch.ones(input_size)).mul_(grad_output)
+            grad_output = grad_output.unsqueeze(dim)
+        return grad_output.mul(torch.ones(input_size))
 
 
 @register_function("cumsum")
@@ -725,12 +832,17 @@ class AutogradMean(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         input_size, dim, keepdim = ctx.saved_tensors
-        if not keepdim and dim is not None:
-            grad_output.unsqueeze(dim)
+
+        # Handle special case where input is 0-dimensional
+        if len(input_size) == 0:
+            return grad_output
+
         nelement = float(
             reduce(lambda x, y: x * y, input_size) if dim is None else input_size[dim]
         )
-        return grad_output.new(torch.ones(input_size)).mul_(grad_output).div_(nelement)
+        if not keepdim and dim is not None:
+            grad_output = grad_output.unsqueeze(dim)
+        return grad_output.mul(torch.ones(input_size)).div_(nelement)
 
 
 @register_function("var")
@@ -743,11 +855,11 @@ class AutogradVariance(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         input, dim, keepdim = ctx.saved_tensors
-        if not keepdim and dim is not None:
-            grad_output.unsqueeze(dim)
         nelement = float(
             reduce(lambda x, y: x * y, input.size()) if dim is None else input.size(dim)
         )
+        if not keepdim and dim is not None:
+            grad_output = grad_output.unsqueeze(dim)
         mean = input.mean() if dim is None else input.mean(dim=dim, keepdim=keepdim)
         return (input - mean).mul_(2.0).mul_(grad_output).div_(nelement)
 
@@ -758,26 +870,24 @@ class AutogradMin(AutogradFunction):
     def forward(ctx, input, dim=None, keepdim=False):
 
         # find minimum value (and corresponding argmin):
-        min = (
-            input.min(dim=dim, keepdim=keepdim, one_hot=True)
-            if dim is not None
-            else input.min(one_hot=True)
-        )
-        argmin = None
-        if isinstance(min, tuple):
-            min, argmin = min
+        if dim is None:
+            argmin = input.argmin(one_hot=True)
+            min = input.mul(argmin).sum()
+        else:
+            min, argmin = input.min(dim=dim, keepdim=keepdim, one_hot=True)
 
         # save context and return:
-        ctx.save_multiple_for_backward((input, dim, keepdim, argmin))
-        return min
+        ctx.save_multiple_for_backward((dim, keepdim, argmin))
+        if dim is None:
+            return min
+        else:
+            return min, argmin
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, dim, keepdim, argmin = ctx.saved_tensors
+        dim, keepdim, argmin = ctx.saved_tensors
         if not keepdim and dim is not None:
-            grad_output.unsqueeze(dim)
-        if argmin is None:
-            argmin = input.argmin(one_hot=True)
+            grad_output = grad_output.unsqueeze(dim)
         return grad_output.mul(argmin)
 
 
@@ -787,26 +897,24 @@ class AutogradMax(AutogradFunction):
     def forward(ctx, input, dim=None, keepdim=False):
 
         # find maximum value (and corresponding argmax):
-        max = (
-            input.max(dim=dim, keepdim=keepdim, one_hot=True)
-            if dim is not None
-            else input.max(one_hot=True)
-        )
-        argmax = None
-        if isinstance(max, tuple):
-            max, argmax = max
+        if dim is None:
+            argmax = input.argmax(one_hot=True)
+            max = input.mul(argmax).sum()
+        else:
+            max, argmax = input.max(dim=dim, keepdim=keepdim, one_hot=True)
 
         # save context and return:
-        ctx.save_multiple_for_backward((input, dim, keepdim, argmax))
-        return max
+        ctx.save_multiple_for_backward((dim, keepdim, argmax))
+        if dim is None:
+            return max
+        else:
+            return max, argmax
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, dim, keepdim, argmax = ctx.saved_tensors
+        dim, keepdim, argmax = ctx.saved_tensors
         if not keepdim and dim is not None:
-            grad_output.unsqueeze(dim)
-        if argmax is None:
-            argmax = input.argmax(one_hot=True)
+            grad_output = grad_output.unsqueeze(dim)
         return grad_output.mul(argmax)
 
 
@@ -830,13 +938,17 @@ class AutogradSoftmax(AutogradFunction):
     def forward(ctx, input):
         input, dim = input
         probs = input.softmax(dim)
-        ctx.save_for_backward(probs)
+        ctx.save_multiple_for_backward([probs, dim])
         return probs
 
     @staticmethod
     def backward(ctx, grad_output):
-        probs, = ctx.saved_tensors
-        return grad_output.add(-probs.mul(grad_output).sum(1, keepdim=True)).mul_(probs)
+        probs, dim = ctx.saved_tensors
+        if grad_output.dim() == 0 or grad_output.size(dim) == 1:
+            return grad_output.new(torch.zeros(grad_output.size()))
+        return grad_output.add(-probs.mul(grad_output).sum(dim, keepdim=True)).mul_(
+            probs
+        )
 
 
 @register_function("pad")

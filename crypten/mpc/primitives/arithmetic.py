@@ -307,12 +307,19 @@ class ArithmeticSharedTensor(CrypTensor):
     def mean(self, *args, **kwargs):
         """Computes mean of given tensor"""
         result = self.sum(*args, **kwargs)
+
+        # Handle special case where input has 0 dimensions
+        if self.dim() == 0:
+            return result
+
+        # Compute divisor to use to compute mean
         size = self.size()
         if len(args) > 0:  # dimension is specified
             dims = [args[0]] if isinstance(args[0], int) else args[0]
             size = [size[dim] for dim in dims]
         assert len(size) > 0, "cannot reduce over zero dimensions"
         divisor = reduce(lambda x, y: x * y, size)
+
         return result.div(divisor)
 
     def var(self, *args, **kwargs):

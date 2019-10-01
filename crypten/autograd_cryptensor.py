@@ -88,8 +88,10 @@ class AutogradCrypTensor(object):
             # if we are in a leaf or if not all parents have backpropagated:
             parents_done = all(parent.grad_computed for parent in self.parents)
             if len(self.children) == 0 or (not top_node and not parents_done):
+                # Set grad_input to correct dimension and size if not already
+                grad_input = grad_input.view(self.size())
                 if self.grad is None:
-                    self.grad = grad_input.view(self.size())  # store gradient...
+                    self.grad = grad_input  # store gradient...
                 else:
                     self.grad.add_(grad_input)  # ... or accumulate gradient...
                 return  # ... and do not proceed.
@@ -145,6 +147,8 @@ class AutogradCrypTensor(object):
         if name in AutogradCrypTensor.PROTECTED_ATTRIBUTES:
             return object.__getattribute__(self, name)
         else:
+            # replace pytorch buildins with corresponding functions
+            name = PYTORCH_BUILTIN.get(name, name)
 
             # determine if we are applying an autograd function:
             grad_fn = get_grad_fn(name)
@@ -227,19 +231,21 @@ def register_python_builtin(name, value):
 
 PYTORCH_BUILTIN = {
     "__abs__": "abs",
+    "__neg__": "neg",
     "__pow__": "pow",
     "__rpow__": "pow",
     "__add__": "add",
     "__radd__": "add",
     "__iadd__": "add_",
     "__sub__": "sub",
-    "__rsub__": "sub",
+    "__rsub__": "__rsub__",
     "__isub__": "sub_",
     "__mul__": "mul",
     "__rmul__": "mul",
     "__imul__": "mul_",
     "__div__": "div",
     "__truediv__": "div",
+    "__rtruediv__": "__rtruediv__",
     "__itruediv__": "div_",
     "__matmul__": "matmul",
     "__imatmul__": "matmul",  # not in-place, matching PyTorch
