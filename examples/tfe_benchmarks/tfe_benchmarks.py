@@ -22,8 +22,7 @@ import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
 from examples.meters import AverageMeter
-from examples.mnist_utils import process_mnist_files
-from examples.util import NoopContextManager
+from examples.util import NoopContextManager, process_mnist_files
 from torchvision import datasets, transforms
 
 
@@ -125,6 +124,7 @@ def run_tfe_benchmarks(
     if context_manager is None:
         context_manager = NoopContextManager()
 
+    warnings.filterwarnings("ignore")
     data_dir = tempfile.TemporaryDirectory()
     train_loader, val_loader = preprocess_data(context_manager, data_dir.name)
 
