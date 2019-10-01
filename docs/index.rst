@@ -9,6 +9,13 @@ train models using encrypted data. CrypTen currently supports
 `Secure multi-party computation
 <https://en.wikipedia.org/wiki/Secure_multi-party_computation>`_ as its encryption
 mechanism.
+    
+.. toctree::
+    :hidden:
+
+    self
+
+
 
 Installation on Linux and Mac
 =============================
@@ -76,10 +83,14 @@ Some MPC specific options are
 
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+    :maxdepth: 2
+    :caption: Package Reference
+    
 
-
+    MPC <mpc>
+    NN <nn>
+    CrypTensor <cryptensor>
+    Gradients <gradients>
 
 Indices and tables
 ==================
@@ -87,3 +98,4 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+

@@ -511,11 +511,10 @@ class MPCTensor(CrypTensor):
 
     def log(self, iterations=2, exp_iterations=8):
         """Approximates the natural logarithm using 6th order modified
-        Householder iterations:
+        Householder iterations.
 
-        Iterations are computed by:
-                              h = 1 - x * exp(-y_n)
-        y_{n+1} = y_n - h * (1 + h / 2 + h^2 / 3 + h^3 / 6 + h^4 / 5 + h^5 / 7)
+        Iterations are computed by: `h = 2 - x * exp(-y_n)`
+        `y_{n+1} = y_n - h * (1 + h / 2 + h^2 / 3 + h^3 / 6 + h^4 / 5 + h^5 / 7)`
         """
 
         # Initialization to a decent estimate (found by qualitative inspection):

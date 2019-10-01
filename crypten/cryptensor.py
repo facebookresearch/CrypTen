@@ -279,7 +279,7 @@ class CrypTensor(object):
         The returned tensor shares the same underlying data with this tensor.
 
         A `dim` value within the range `[-self.dim() - 1, self.dim() + 1)`
-        can be used. Negative `dim` will correspond to `unsqueeze()`` applied at
+        can be used. Negative `dim` will correspond to `unsqueeze()` applied at
         `dim = dim + self.dim() + 1`
         """
         raise NotImplementedError("unsqueeze is not implemented")
@@ -290,7 +290,7 @@ class CrypTensor(object):
 
         For example, if `self` is of shape:
         `(A \times 1 \times B \times C \times 1 \times D)(A×1×B×C×1×D)` then the
-        returned tensor will be of shape: ``(A \times B \times C \times D)(A×B×C×D)`.
+        returned tensor will be of shape: `(A \times B \times C \times D)(A×B×C×D)`.
 
         When `dim` is given, a `squeeze` operation is done only in the given
         dimension. If `self` is of shape: `(A \times 1 \times B)(A×1×B)` ,
@@ -352,7 +352,7 @@ class CrypTensor(object):
 
         If sizedim is the size of dimension `dimension` for `self`, the size of
         dimension `dimension` in the returned tensor will be
-        ``(sizedim - size) / step + 1`.
+        `(sizedim - size) / step + 1`.
 
         An additional dimension of size `size` is appended in the returned tensor.
         """
@@ -402,11 +402,9 @@ class CrypTensor(object):
         Gathers values along an axis specified by dim.
 
         For a 3-D tensor the output is specified by:
-        ```
-        out[i][j][k] = input[index[i][j][k]][j][k]  # if dim == 0
-        out[i][j][k] = input[i][index[i][j][k]][k]  # if dim == 1
-        out[i][j][k] = input[i][j][index[i][j][k]]  # if dim == 2
-        ```
+            - out[i][j][k] = input[index[i][j][k]][j][k]  # if dim == 0
+            - out[i][j][k] = input[i][index[i][j][k]][k]  # if dim == 1
+            - out[i][j][k] = input[i][j][index[i][j][k]]  # if dim == 2
         """
         raise NotImplementedError("reshape is not implemented")
 
