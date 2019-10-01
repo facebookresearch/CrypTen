@@ -8,6 +8,7 @@
 import logging
 import multiprocessing
 import os
+import torch.multiprocessing as mp
 import uuid
 
 import crypten
@@ -19,21 +20,17 @@ class MultiProcessLauncher:
     def __init__(self, world_size, run_process_fn, fn_args=None):
         env = os.environ.copy()
         env["WORLD_SIZE"] = str(world_size)
-        multiprocessing.set_start_method("spawn")
 
         # Use random file so multiple jobs can be run simultaneously
         INIT_METHOD = "file:///tmp/crypten-rendezvous-{}".format(uuid.uuid1())
         env["RENDEZVOUS"] = INIT_METHOD
 
-        self.processes = []
-        for rank in range(world_size):
-            process_name = "process " + str(rank)
-            process = multiprocessing.Process(
-                target=self.__class__._run_process,
-                name=process_name,
-                args=(rank, env, run_process_fn, fn_args),
-            )
-            self.processes.append(process)
+        self.spawn_context = mp.spawn(
+            fn=self.__class__._run_process,
+            args=(env, run_process_fn, fn_args),
+            nprocs=world_size,
+            join=False,
+        )
 
     @classmethod
     def _run_process(cls, rank, env, run_process_fn, fn_args):
@@ -47,16 +44,10 @@ class MultiProcessLauncher:
         run_process_fn(fn_args)
 
     def start(self):
-        for process in self.processes:
-            process.start()
+        pass
 
     def join(self):
-        for process in self.processes:
-            process.join()
-            assert (
-                process.exitcode == 0
-            ), f"{process.name} has non-zero exit code {process.exitcode}"
+        self.spawn_context.join()
 
     def terminate(self):
-        for process in self.processes:
-            process.terminate()
+        pass
