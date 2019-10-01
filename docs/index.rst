@@ -44,30 +44,41 @@ the following
 
 For any example, the following should show the available command line options
 
+We have the following examples, covering a range of models
+
+- The linear SVM example, ``mpc_linear_svm``, generates random data and trains a
+  SVM classifier on encrypted data.  On a single node, you can run it as follows
+- The LeNet example, ``mpc_cifar``, trains an adaptation of LeNet on CIFAR in
+  cleartext and encrypts the model and data for inference
+- The TFE benchmark example, ``tfe_benchmarks``, trains three different network
+  architectures on MNIST in cleartext, and encrypts the trained model and data
+  for inference
+- The bandits example, ``bandits``, trains a contextual bandits model on
+  encrypted data (MNIST)
+- The imagenet example, ``mpc_imagenet``, does inference on pretrained model from
+  ``torchvision``
+
+For examples that train in the cleartext, we also provide pre-trained models in
+cleartext in ``model`` subdirectory of each example.
+
+You can check all example specific command line options by doing the following;
+shown here for ``tfe_benchmarks``
+
 .. code-block:: bash
 
-    $ python3 examples/<example>/launcher.py --help
+    $ python3 examples/tfe_benchmarks/launcher.py --help
 
-The linear SVM example, generates random data and trains a SVM classifier.
-On a single node, you can run it as follows
+Some MPC specific options are
 
-.. code-block:: bash
-
-    $ python3 examples/mpc_linear_svm/launcher.py --multiprocess
+- ``--world_size`` Number of peers in MPC
+- ``--multiprocess`` Run in multiprocess mode on one machine, where each peer is a
+  separate process
 
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-
-The CIFAR example uses an adaptation of LeNet with ReLU activations. 
-A pre-trained model checkpoint is available in the ``mpc_cifar/model`` directory.
-On a single node, you can train using
-
-.. code-block:: bash
-
-    $ python3 examples/mpc_cifar/launcher.py --batch-size 4 --world_size 1
 
 
 Indices and tables
