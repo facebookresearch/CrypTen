@@ -133,7 +133,7 @@ def _logging(func):
         if self.get_world_size() < 2:
             if func.__name__ in ["gather", "all_gather"]:
                 return [args[0]]
-            else:
+            elif len(args) > 0:
                 return args[0]
 
         # only log if needed:
