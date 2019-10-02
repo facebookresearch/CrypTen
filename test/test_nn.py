@@ -505,9 +505,6 @@ class TestNN(MultiProcessTestCase):
 
     def test_from_pytorch_training(self):
         """Tests the from_pytorch code path for training CrypTen models"""
-        # FIXME(shobha): This is an _early_ version of the test, added to ensure that
-        # the basic from_pytorch code path always passes
-
         import torch.nn as nn
         import torch.nn.functional as F
 
@@ -532,52 +529,79 @@ class TestNN(MultiProcessTestCase):
         batch_size = 5
         x_orig = get_random_test_tensor(size=(batch_size, 1, 28, 28), is_float=True)
         y_orig = (
-            get_random_test_tensor(size=(batch_size, 2), is_float=True).gt(0).float()
+            get_random_test_tensor(size=(batch_size, 1), is_float=True).gt(0).long()
         )
-
-        loss = crypten.nn.MSELoss()
-
-        dummy_input = torch.empty((1, 1, 28, 28))
-        model = crypten.nn.from_pytorch(model_plaintext, dummy_input)
-        model.train()
-        model.encrypt()
+        y_one_hot = onehot(y_orig, num_targets=2)
 
         # encrypt training sample:
         x_train = AutogradCrypTensor(crypten.cryptensor(x_orig))
-        y_train = AutogradCrypTensor(crypten.cryptensor(y_orig))
+        y_train = crypten.cryptensor(y_one_hot)
+        dummy_input = torch.empty((1, 1, 28, 28))
 
-        num_epochs = 10
-        learning_rate = 0.001
+        for loss_name in ["BCELoss", "CrossEntropyLoss", "MSELoss"]:
+            # create loss function
+            loss = getattr(crypten.nn, loss_name)()
 
-        for i in range(num_epochs):
-            output = model(x_train)
-            loss_value = loss(output, y_train)
+            # create encrypted model
+            model = crypten.nn.from_pytorch(model_plaintext, dummy_input)
+            model.train()
+            model.encrypt()
 
-            # set gradients to "zero"
-            model.zero_grad()
-            for param in model.parameters():
-                self.assertIsNone(param.grad, "zero_grad did not reset gradients")
+            num_epochs = 3
+            learning_rate = 0.001
 
-            # perform backward pass:
-            loss_value.backward()
-            for param in model.parameters():
-                if param.requires_grad:
-                    self.assertIsNotNone(
-                        param.grad, "required parameter gradient not created"
-                    )
+            for i in range(num_epochs):
+                output = model(x_train)
+                if loss_name == "MSELoss":
+                    output_norm = output
+                else:
+                    output_norm = output.softmax(1)
+                loss_value = loss(output_norm, y_train)
 
-            # update parameters
-            model.update_parameters(learning_rate)
+                # set gradients to "zero"
+                model.zero_grad()
+                for param in model.parameters():
+                    self.assertIsNone(param.grad, "zero_grad did not reset gradients")
 
-            # record initial and current loss
-            if i == 0:
-                orig_loss = loss_value.get_plain_text()
-            curr_loss = loss_value.get_plain_text()
+                # perform backward pass:
+                loss_value.backward()
+                for param in model.parameters():
+                    if param.requires_grad:
+                        self.assertIsNotNone(
+                            param.grad, "required parameter gradient not created"
+                        )
 
-        # check that the loss has decreased after training
-        self.assertTrue(
-            curr_loss.item() < orig_loss.item(), "loss has not decreased after training"
-        )
+                # update parameters
+                orig_parameters, upd_parameters = {}, {}
+                orig_parameters = self._compute_reference_parameters(
+                    "", orig_parameters, model, 0
+                )
+                model.update_parameters(learning_rate)
+                upd_parameters = self._compute_reference_parameters(
+                    "", upd_parameters, model, learning_rate
+                )
+
+                # FIX check that any parameter with a non-zero gradient has changed??
+                parameter_changed = False
+                for name, value in orig_parameters.items():
+                    if param.requires_grad and param.grad is not None:
+                        unchanged = torch.allclose(upd_parameters[name], value)
+                        if unchanged is False:
+                            parameter_changed = True
+                        self.assertTrue(
+                            parameter_changed, "no parameter changed in training step"
+                        )
+
+                # record initial and current loss
+                if i == 0:
+                    orig_loss = loss_value.get_plain_text()
+                curr_loss = loss_value.get_plain_text()
+
+            # check that the loss has decreased after training
+            self.assertTrue(
+                curr_loss.item() < orig_loss.item(),
+                "loss has not decreased after training",
+            )
 
 
 # This code only runs when executing the file outside the test harness (e.g.

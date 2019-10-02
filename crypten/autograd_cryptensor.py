@@ -120,17 +120,22 @@ class AutogradCrypTensor(object):
             # perform backpropagation:
             grad = self.grad_fn.backward(self.ctx, grad_input)
             self.grad_computed = True  # mark gradient as computed
+            differentiable_children = [
+                x for x in self.children if self.ctx.is_differentiable(x._tensor)
+            ]
+
             self.ctx.reset()  # free up memory used for context
             if not isinstance(grad, (list, tuple)):
                 grad = (grad,)
-            assert len(self.children) <= len(
+
+            assert len(differentiable_children) <= len(
                 grad
             ), "number of gradients to backpropagate does not match number of children"
-            for idx, child in enumerate(self.children):
+            for idx, child in enumerate(differentiable_children):
                 child.backward(grad_input=grad[idx], top_node=False)
 
             # clean up gradients except in leaf nodes:
-            if len(self.children) > 0:
+            if len(differentiable_children) > 0:
                 self.grad = None
 
             # remove node from graph:

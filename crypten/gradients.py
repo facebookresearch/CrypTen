@@ -1191,6 +1191,7 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
     def forward(ctx, input):
         pred, target = input
         ctx.save_multiple_for_backward([pred, target])
+        ctx.mark_non_differentiable(target)
         log_pos, log_neg = crypten.stack([pred, 1.0 - pred]).log().unbind(dim=0)
         loss_values = target * log_pos + ((1.0 - target) * log_neg)
         return loss_values.sum().div(-target.nelement())
@@ -1210,6 +1211,7 @@ class AutogradCrossEntropy(AutogradFunction):
         pred, target = input  # NOTE: target is assumed to be one-hot vector.
         softmax = pred.softmax(1)
         ctx.save_multiple_for_backward([softmax, target])
+        ctx.mark_non_differentiable(target)
         loss_values = softmax.log().mul_(target).neg_()
         return loss_values.sum().div_(target.size(0))
 
