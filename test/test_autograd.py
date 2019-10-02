@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import random
 import unittest
 from test.multiprocess_test_case import (
     MultiProcessTestCase,
@@ -56,6 +57,60 @@ class TestAutograd(MultiProcessTestCase):
             logging.info(msg)
             logging.info("Result = %s;\nreference = %s" % (tensor, reference))
         self.assertTrue(test_passed, msg=msg)
+
+    def test_non_differentiable_marking(self):
+        """Tests whether marking of non-differentiability works correctly."""
+
+        # generate random inputs:
+        inputs = [get_random_test_tensor(is_float=True) for _ in range(5)]
+        inputs = [crypten.cryptensor(input) for input in inputs]
+        ctx = AutogradContext()
+
+        # repeat test multiple times:
+        for _ in range(10):
+
+            # mark non-differentiable inputs as such:
+            differentiable = [random.random() > 0.5 for _ in range(len(inputs))]
+            for idx, diff in enumerate(differentiable):
+                if not diff:
+                    ctx.mark_non_differentiable(inputs[idx])
+
+            # check that inputs were correctly marked:
+            for idx, input in enumerate(inputs):
+                self.assertEqual(
+                    ctx.is_differentiable(input),
+                    differentiable[idx],
+                    "marking of differentiability failed",
+                )
+            ctx.reset()
+
+        # test behavior of AutogradCrypTensor:
+        input = AutogradCrypTensor(inputs[0])
+        reference = [True, True, False]
+        for func_name in ["min", "max"]:
+            outputs = [None] * 3
+            outputs[0] = getattr(input, func_name)()
+            outputs[1], outputs[2] = getattr(input, func_name)(dim=0)
+            for idx, output in enumerate(outputs):
+                self.assertEqual(
+                    output.requires_grad,
+                    reference[idx],
+                    "value of requires_grad is incorrect",
+                )
+
+        # behavior of max_pool2d in which indices are returned:
+        input = get_random_test_tensor(size=(1, 3, 8, 8), is_float=True)
+        input = AutogradCrypTensor(crypten.cryptensor(input))
+        reference = [True, True, False]
+        outputs = [None] * 3
+        outputs[0] = input.max_pool2d(2, return_indices=False)
+        outputs[1], outputs[2] = input.max_pool2d(2, return_indices=True)
+        for idx, output in enumerate(outputs):
+            self.assertEqual(
+                output.requires_grad,
+                reference[idx],
+                "value of requires_grad is incorrect",
+            )
 
     def test_autograd_registation(self):
         """Tests registration of new autograd function."""

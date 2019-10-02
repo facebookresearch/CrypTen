@@ -20,6 +20,7 @@ class AutogradContext(object):
 
     def reset(self):
         self.context = []
+        self.non_differentiable = []
 
     def save_for_backward(self, value):
         self.context.append(value)
@@ -27,6 +28,14 @@ class AutogradContext(object):
     def save_multiple_for_backward(self, values):
         for value in values:
             self.save_for_backward(value)
+
+    def mark_non_differentiable(self, non_differentiable):
+        if not isinstance(non_differentiable, list):
+            non_differentiable = [non_differentiable]
+        self.non_differentiable.extend(id(x) for x in non_differentiable)
+
+    def is_differentiable(self, tensor):
+        return id(tensor) not in self.non_differentiable
 
     @property
     def saved_tensors(self):
@@ -103,8 +112,6 @@ class AutogradCrypTensor(object):
             # check that we can actually backpropagate:
             if self.grad_fn is None:
                 raise ValueError("Cannot call backward() before forward().")
-            if not self.grad_fn.differentiable:
-                raise ValueError("Function {} not differentiable.".format(self.grad_fn))
             if self.grad_fn is None:
                 raise NotImplementedError(
                     "Gradient for {} not implemented.".format(self.grad_fn)
@@ -191,31 +198,31 @@ class AutogradCrypTensor(object):
                 if len(inputs) == 1:
                     inputs = inputs[0]  # unpack input list if possible
 
-                # apply correct autograd function and wrap result:
+                # apply correct autograd function:
                 result = grad_fn.forward(ctx, inputs, **kwargs)
-                if isinstance(result, tuple):
-                    result = tuple(
-                        AutogradCrypTensor(res, requires_grad=False) for res in result
-                    )
-                    result[0].requires_grad = requires_grad
-                    if result[0].requires_grad:
-                        result[0].children = children
-                        result[0].grad_fn = grad_fn
-                        result[0].ctx = ctx
-
-                    # store reference to parent in graph:
-                    for res in result:
-                        self.parents.append(res)
+                if not isinstance(result, tuple):  # output may be tensor or tuple
+                    result = (result,)
+                    remove_tuple = True
                 else:
-                    result = AutogradCrypTensor(result, requires_grad=requires_grad)
-                    if result.requires_grad:
-                        result.children = children
-                        result.grad_fn = grad_fn
-                        result.ctx = ctx
+                    remove_tuple = False
 
-                    # store reference to parent in graph:
-                    self.parents.append(result)
+                # wrap results and maintain references to children and context:
+                result = tuple(
+                    AutogradCrypTensor(res, requires_grad=False) for res in result
+                )
+                for res in result:
+                    res.requires_grad = requires_grad and ctx.is_differentiable(
+                        res.tensor
+                    )
+                    if res.requires_grad:
+                        res.children = children
+                        res.grad_fn = grad_fn
+                        res.ctx = ctx
+                    self.parents.append(res)
 
+                # return result:
+                if remove_tuple:
+                    result = result[0]
                 return result
 
             return autograd_forward
