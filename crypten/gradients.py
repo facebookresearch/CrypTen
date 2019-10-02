@@ -81,8 +81,6 @@ class AutogradFunction(object):
     Base implementation of a function that supports autograd.
     """
 
-    differentiable = True
-
     @staticmethod
     def forward(ctx, input):
         raise NotImplementedError("Forward function not implemented.")
@@ -881,6 +879,7 @@ class AutogradMin(AutogradFunction):
         if dim is None:
             return min
         else:
+            ctx.mark_non_differentiable(argmin)
             return min, argmin
 
     @staticmethod
@@ -908,6 +907,7 @@ class AutogradMax(AutogradFunction):
         if dim is None:
             return max
         else:
+            ctx.mark_non_differentiable(argmax)
             return max, argmax
 
     @staticmethod
@@ -1036,12 +1036,12 @@ class AutogradMaxPool2D(AutogradFunction):
             kernel_size, padding=padding, stride=stride, return_indices=True
         )
 
-        # store information for backward pass:
+        # store information for backward pass and return:
         ctx.save_multiple_for_backward(
             (input.size(), indices, kernel_size, padding, stride)
         )
-
         if return_indices:
+            ctx.mark_non_differentiable(indices)
             return output, indices
         else:
             return output
