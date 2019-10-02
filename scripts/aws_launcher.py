@@ -20,28 +20,16 @@ $ aws ec2 run-instances \
 Two EC2 instances will be created by the command line shown above. Assume
 the ids of the two instances created are i-068681e808235a851 and
 i-0d7ebacfe1e3f28eb. Next, pytorch and crypten must be properly installed
-on every instance. Here assume the following command line would activate
-pytorch environment on each instance:
-
-$ source activate pytorch_p36
-
-And assume crypten has been properly installed on each instance. For example,
-the following script can help deploy Crytorch onto each instances:
-
-$ INSTANCES=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
-  deeplearning/projects/crypten/scripts/aws_deploy.sh
+on every instance.
 
 Then the following command lines can run the mpc_linear_svm example on the two
-EC2 instances created above (note that on devvm machines, proxy must be used
-in order to communicate with AWS service):
+EC2 instances created above:
 
-$ http_proxy=http://fwdproxy:8080 https_proxy=http://fwdproxy:8080 \
-  buck run @mode/dev-nosan deeplearning/projects/crypten:aws_launcher -- \
+$ python3 crypten/scripts/aws_launcher.py \
     --ssh_key_file=/home/$USER/.aws/fair-$USER.pem \
-    --http_proxy=fwdproxy:8080 \
     --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
     --aux_files=deeplearning/projects/crypten/examples/mpc_linear_svm/mpc_linear_svm.py \
-    deeplearning/projects/crypten/examples/mpc_linear_svm/experiment.py \
+    deeplearning/projects/crypten/examples/mpc_linear_svm/launcher.py \
         --features 50 \
         --examples 100 \
         --epochs 50 \
@@ -116,12 +104,22 @@ def run_command(instance, client, cmd, environment=None, inputs=None):
     if inputs:
         for inp in inputs:
             stdin.write(inp)
-    stdout_str = stdout.read().decode("utf8")
-    stderr_str = stderr.read().decode("utf8")
-    if stdout_str:
-        print(add_prefix_each_line(f"[{instance}] ", stdout_str))
-    if stderr_str:
-        print(add_prefix_each_line(f"[{instance}] ", stderr_str), file=sys.stderr)
+
+    def read_lines(fin, fout, line_head):
+        line = ""
+        while not fin.channel.exit_status_ready():
+            line += fin.read(1).decode("utf8")
+            if line.endswith("\n"):
+                print(f"{line_head}{line[:-1]}", file=fout)
+                line = ""
+        if line:
+            # print what remains in line buffer, in case fout does not
+            # end with '\n'
+            print(f"{line_head}{line[:-1]}", file=fout)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as printer:
+        printer.submit(read_lines, stdout, sys.stdout, f"[{instance} STDOUT] ")
+        printer.submit(read_lines, stderr, sys.stderr, f"[{instance} STDERR] ")
 
 
 def upload_file(instance_id, client, localpath, remotepath):
