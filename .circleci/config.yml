@@ -7,6 +7,7 @@ jobs:
   rununittests:
     docker:
       - image: circleci/python:3.7.4-buster
+    resource_class: 2xlarge+
     working_directory: ~/CrypTen
     steps:
       - checkout
