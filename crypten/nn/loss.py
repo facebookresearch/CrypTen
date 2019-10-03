@@ -71,8 +71,6 @@ class BCELoss(_Loss):
 class CrossEntropyLoss(_Loss):
     """
     Cross-entropy loss between predictions and ground-truth values.
-
-    This loss function expects the
     """
 
     def forward(self, yhat, y):

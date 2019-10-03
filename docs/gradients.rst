@@ -1,4 +1,4 @@
 Gradients
 =========
-.. automodule:: crypten.gradients
+.. automodule:: crypten.autograd_cryptensor
     :members:

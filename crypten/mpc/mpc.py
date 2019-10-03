@@ -80,7 +80,11 @@ class MPCTensor(CrypTensor):
 
     # Handle share types and conversions
     def to(self, ptype, **kwargs):
-        """Converts self._tensor to the given ptype"""
+        """Converts self._tensor to the given ptype
+
+        Args:
+            ptype: Ptype.arithmetic or Ptype.binary.
+        """
         retval = self.clone()
         if retval.ptype == ptype:
             return retval
@@ -97,7 +101,7 @@ class MPCTensor(CrypTensor):
         return self.to(Ptype.binary)
 
     def get_plain_text(self):
-        """Decrypt the tensor"""
+        """Decrypts the tensor"""
         return self._tensor.get_plain_text()
 
     def __bool__(self):
@@ -115,7 +119,11 @@ class MPCTensor(CrypTensor):
         share = self.share
         plain_text = self._tensor.get_plain_text() if debug_mode() else "HIDDEN"
         ptype = self.ptype
-        return f"MPCTensor(\n\t_tensor={share}\n\tplain_text={plain_text}\n\tptype={ptype}\n)"
+        repr = (
+            f"MPCTensor(\n\t_tensor={share}\n"
+            f"\tplain_text={plain_text}\n\tptype={ptype}\n)"
+        )
+        return repr
 
     def __setitem__(self, index, value):
         """Set tensor values by index"""
@@ -134,7 +142,7 @@ class MPCTensor(CrypTensor):
         self._tensor.share = value
 
     def bernoulli(self):
-        """Draws a random tensor of {0, 1} with given probabilities"""
+        """Draws a random tensor from {0, 1} with probability 0.5"""
         return self > crypten.mpc.rand(self.size())
 
     # Comparators
@@ -499,10 +507,15 @@ class MPCTensor(CrypTensor):
     def exp(self, iterations=8):
         """Approximates the exponential function using a limit approximation:
 
-            exp(x) = lim (1 + x / n) ^ n
+        .. math::
 
-        Here we compute exp by choosing n = 2 ** d for some large d and then
-        computing (1 + x / n) once and squaring d times.
+            exp(x) = \lim_{n \\rightarrow \\infty} (1 + x / n) ^ n
+
+        Here we compute exp by choosing n = 2 ** d for some large d equal to `iterations`.
+        We then compute (1 + x / n) once and square `d` times.
+
+        Args:
+            iterations (int): number of iterations for limit approximation
         """
         result = 1 + self.div(2 ** iterations)
         for _ in range(iterations):
@@ -513,8 +526,16 @@ class MPCTensor(CrypTensor):
         """Approximates the natural logarithm using 6th order modified
         Householder iterations.
 
-        Iterations are computed by: `h = 2 - x * exp(-y_n)`
-        `y_{n+1} = y_n - h * (1 + h / 2 + h^2 / 3 + h^3 / 6 + h^4 / 5 + h^5 / 7)`
+        Iterations are computed by: :math:`h = 2 - x * exp(-y_n)`
+
+        .. math::
+
+            y_{n+1} = y_n - h * (1 + h / 2 + h^2 / 3 + h^3 / 6 + h^4 / 5 + h^5 / 7)
+
+        Args:
+            iterations (int): number of iterations for 6th order modified
+                Householder approximation.
+            exp_iterations (int): number of iterations for limit approximation of exp
         """
 
         # Initialization to a decent estimate (found by qualitative inspection):
@@ -538,20 +559,18 @@ class MPCTensor(CrypTensor):
         """
         Methods:
             'NR' : Newton Raphson method computes the reciprocal using iterations
-                    of x[i+1] = (2x[i] - self * x[i]^2) and uses
-                    3exp(-(x-.5)) + 0.003 as an initial guess
+                    of :math:`x_{i+1} = (2x_i - self * x_i^2)` and uses
+                    :math:`3*exp(-(x-.5)) + 0.003` as an initial guess
 
             'log' : Computes the reciprocal of the input from the observation that:
-                    x ^ -1 = exp(-log(x))
+                    :math:`x^{-1} = exp(-log(x))`
 
-        Parameters:
-            `nr_iters`:  determines the number of Newton-Raphson iterations to run
+        Args:
+            nr_iters (int):  determines the number of Newton-Raphson iterations to run
                          for the `NR` method
-
-            `log_iters`: determines the number of Householder iterations to run
+            log_iters (int): determines the number of Householder iterations to run
                          when computing logarithms for the `log` method
-
-            `all_pos`: an optional boolean input to determine whether all elements
+            all_pos (bool): determines whether all elements
                        of the input are known to be positive, which optimizes
                        the step of computing the sign of the input.
         """
@@ -575,7 +594,25 @@ class MPCTensor(CrypTensor):
             raise ValueError("Invalid method %s given for reciprocal function" % method)
 
     def div(self, y):
-        """Divide by a given scalar or tensor"""
+        r"""Divides each element of :attr:`self` with the scalar :attr:`y` or
+        each element of the tensor :attr:`y` and returns a new resulting tensor.
+
+        For `y` a scalar:
+
+        .. math::
+            \text{out}_i = \frac{\text{self}_i}{\text{y}}
+
+        For `y` a tensor:
+
+        .. math::
+            \text{out}_i = \frac{\text{self}_i}{\text{y}_i}
+
+        Note for :attr:`y` a tensor, the shapes of :attr:`self` and :attr:`y` must be
+        `broadcastable`_.
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         result = self.clone()
         if isinstance(y, CrypTensor):
             result.share = torch.broadcast_tensors(result.share, y.share)[0].clone()
@@ -584,6 +621,7 @@ class MPCTensor(CrypTensor):
         return result.div_(y)
 
     def div_(self, y):
+        """In-place version of :meth:`div`"""
         if isinstance(y, MPCTensor):
             return self.mul_(y.reciprocal())
         self._tensor.div_(y)
@@ -622,8 +660,7 @@ class MPCTensor(CrypTensor):
 
     def pos_pow(self, p):
         """
-        Approximates self ** p by computing:
-            x ^ p = exp(p * log(x))
+        Approximates self ** p by computing: :math:`x^p = exp(p * log(x))`
 
         Note that this requires that the base `self` contain only positive values
         since log can only be computed on positive numbers.
@@ -643,7 +680,12 @@ class MPCTensor(CrypTensor):
 
     def norm(self, p="fro", dim=None, keepdim=False):
         """
-        Computes the p-norm of the input tensor (or along a dimsion)
+        Computes the p-norm of the input tensor (or along a dimension)
+
+        Args:
+            p (str, int, or float): specifying type of p-norm
+            dim (int): optional dimension along which to compute p-norm
+            keepdim (bool): whether the output tensor has `dim` retained or not
         """
         if p == "fro":
             p = 2
@@ -693,25 +735,55 @@ class MPCTensor(CrypTensor):
         return re, im
 
     def cos(self, iterations=10):
-        """Computes the cosine of the input using cos(x) = Re{exp(i * x)}"""
+        """Computes the cosine of the input using cos(x) = Re{exp(i * x)}
+
+        Args:
+            iterations (int): for approximating exp(i * x)
+        """
         return self.cossin(iterations=iterations)[0]
 
     def sin(self, iterations=10):
-        """Computes the sine of the input using sin(x) = Im{exp(i * x)}"""
+        """Computes the sine of the input using sin(x) = Im{exp(i * x)}
+
+        Args:
+            iterations (int): for approximating exp(i * x)
+        """
         return self.cossin(iterations=iterations)[1]
 
     def cossin(self, iterations=10):
-        """Computes cosine and sine of input via exp(i * x)."""
+        """Computes cosine and sine of input via exp(i * x).
+
+        Args:
+            iterations (int): for approximating exp(i * x)
+        """
         return self._eix(iterations=iterations)
 
     def index_add(self, dim, index, tensor):
-        """Perform out-of-place index_add: Accumulate the elements of tensor into the
-        self tensor by adding to the indices in the order given in index. """
+        """Performs out-of-place index_add: Accumulate the elements of tensor into the
+        self tensor by adding to the indices in the order given in index.
+
+        Example: if `dim == 0` and `index[i] == j`,
+            then the ith row of tensor is added to the jth row of self
+
+        Args:
+            dim (int): dimension along which to index
+            index (LongTensor): indices of tensor to select from
+            tensor (MPCTensor or torch.Tensor): containing values to add
+        """
         return self.clone().index_add_(dim, index, tensor)
 
     def index_add_(self, dim, index, tensor):
-        """Perform in-place index_add: Accumulate the elements of tensor into the
-        self tensor by adding to the indices in the order given in index. """
+        """Performs in-place index_add: Accumulate the elements of tensor into the
+        self tensor by adding to the indices in the order given in index.
+
+        Example: if `dim == 0` and `index[i] == j`,
+            then the ith row of tensor is added to the jth row of self
+
+        Args:
+            dim (int): dimension along which to index
+            index (LongTensor): indices of tensor to select from
+            tensor (MPCTensor or torch.Tensor): containing values to add
+        """
         assert index.dim() == 1, "index needs to be a vector"
         public = isinstance(tensor, (int, float)) or torch.is_tensor(tensor)
         private = isinstance(tensor, MPCTensor)
@@ -725,19 +797,35 @@ class MPCTensor(CrypTensor):
 
     def scatter_add(self, dim, index, other):
         """Adds all values from the tensor other into self at the indices
-        specified in the index tensor in a similar fashion as scatter_(). For
-        each value in other, it is added to an index in self which is specified
-        by its index in other for dimension != dim and by the corresponding
-        value in index for dimension = dim.
+        specified in the index tensor. This an out-of-place version of
+        :meth:`scatter_`. For each value in other, it is added to an
+        index in self which is specified by its index in other
+        for `dimension != dim` and by the corresponding
+        value in index for `dimension = dim`.
+
+        Args:
+            dim (int): the axis along which to index
+            index (LongTensor): the indices of elements to scatter and add,
+                can be either empty or the same size of src.
+                When empty, the operation returns identity.
+            other (Tensor): the source elements to scatter and add
         """
         return self.clone().scatter_add_(dim, index, other)
 
     def scatter_add_(self, dim, index, other):
         """Adds all values from the tensor other into self at the indices
-        specified in the index tensor in a similar fashion as scatter_(). For
+        specified in the index tensor. For
         each value in other, it is added to an index in self which is specified
-        by its index in other for dimension != dim and by the corresponding
-        value in index for dimension = dim.
+        by its index in other for `dimension != dim` and by the corresponding
+        value in index for `dimension = dim`.
+
+
+        Args:
+            dim (int): the axis along which to index
+            index (LongTensor): the indices of elements to scatter and add,
+                can be either empty or the same size of src.
+                When empty, the operation returns identity.
+            other (Tensor): the source elements to scatter and add
         """
         public = isinstance(other, (int, float)) or torch.is_tensor(other)
         private = isinstance(other, CrypTensor)
@@ -818,11 +906,7 @@ class MPCTensor(CrypTensor):
         return self
 
     def scatter(self, dim, index, src):
-        """Writes all values from the tensor `src` into `self` at the indices
-        specified in the `index` tensor. For each value in `src`, its output index
-        is specified by its index in `src` for `dimension != dim` and by the
-        corresponding value in `index` for `dimension = dim`.
-        """
+        """Out-of-place version of :meth:`MPCTensor.scatter_`"""
         result = self.clone()
         return result.scatter_(dim, index, src)
 

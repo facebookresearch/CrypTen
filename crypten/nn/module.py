@@ -356,8 +356,24 @@ class Sub(Module):
 
 
 class Squeeze(Module):
-    """
-    Module that squeezes a tensor.
+    r"""
+    Returns a tensor with all the dimensions of :attr:`input` of size `1` removed.
+
+    For example, if `input` is of shape:
+    :math:`(A \times 1 \times B \times C \times 1 \times D)` then the `out` tensor
+    will be of shape: :math:`(A \times B \times C \times D)`.
+
+    When :attr:`dimension` is given, a squeeze operation is done only in the given
+    dimension. If `input` is of shape: :math:`(A \times 1 \times B)`,
+    ``squeeze(input, 0)`` leaves the tensor unchanged, but ``squeeze(input, 1)``
+    will squeeze the tensor to the shape :math:`(A \times B)`.
+
+    .. note:: The returned tensor shares the storage with the input tensor,
+            so changing the contents of one will change the contents of the other.
+
+    Args:
+        dimension (int, optional): if given, the input will be squeezed only in
+            this dimension
     """
 
     def __init__(self, dimension):
@@ -382,6 +398,16 @@ class Squeeze(Module):
 class Unsqueeze(Module):
     """
     Module that unsqueezes a tensor.
+    Returns a new tensor with a dimension of size one inserted at the
+    specified position.
+
+    The returned tensor shares the same underlying data with this tensor.
+    A :attr:`dimension` value within the range ``[-input.dim() - 1, input.dim() + 1)``
+    can be used. Negative :attr:`dimension` will correspond to :meth:`unsqueeze`
+    applied at :attr:`dimension` = ``dim + input.dim() + 1``.
+
+    Args:
+        dimension (int): the index at which to insert the singleton dimension
     """
 
     def __init__(self, dimension):
@@ -406,6 +432,9 @@ class Unsqueeze(Module):
 class Flatten(Module):
     """
     Module that flattens the input tensor into a 2D matrix.
+
+    Args:
+        axis (int, optional): must not be larger than dimension
     """
 
     def __init__(self, axis=1):
@@ -457,6 +486,9 @@ class Shape(Module):
 class Concat(Module):
     """
     Module that concatenates tensors along a dimension.
+
+    Args:
+        dim (int, optional): the dimension over which to concatenate
     """
 
     def __init__(self, dimension):
@@ -479,6 +511,20 @@ class Concat(Module):
 class Reshape(Module):
     """
     Module that reshapes tensors to new dimensions.
+    Returns a tensor with same data and number of elements as :attr:`self`,
+    but with the specified shape.
+
+    When possible, the returned tensor will be a view
+    of :attr:`self`. Otherwise, it will be a copy. Contiguous inputs and inputs
+    with compatible strides can be reshaped without copying, but you should not
+    depend on the copying vs. viewing behavior.
+
+    See :meth:`torch.Tensor.view` on when it is possible to return a view.
+    A single dimension may be -1, in which case it's inferred from the remaining
+    dimensions and the number of elements in :attr:`self`.
+
+    Args:
+        input (tuple of ints): the new shape
     """
 
     def forward(self, input):
@@ -496,8 +542,23 @@ class Reshape(Module):
 
 
 class Gather(Module):
-    """
+    r"""
     Module that gathers elements from tensor according to indices.
+    Gathers values along an axis specified by `dimension`.
+
+    For a 3-D tensor the output is specified by::
+        - out[i][j][k] = input[index[i][j][k]][j][k] # if dim == 0
+        - out[i][j][k] = input[i][index[i][j][k]][k] # if dim == 1
+        - out[i][j][k] = input[i][j][index[i][j][k]] # if dim == 2
+
+    If :attr:`self` is an n-dimensional tensor with size
+    :math:`(x_0, x_1..., x_{i-1}, x_i, x_{i+1}, ..., x_{n-1})`
+    and ``dimension = i``, then :attr:`index` must be an :math:`n`-dimensional tensor with
+    size :math:`(x_0, x_1, ..., x_{i-1}, y, x_{i+1}, ..., x_{n-1})` where :math:`y \geq 1`
+    and :attr:`out` will have the same size as :attr:`index`.
+
+    Args:
+        dimension (int): the axis along which to index
     """
 
     def __init__(self, dimension):
@@ -574,6 +635,19 @@ class ConstantPad3d(_ConstantPad):
 class Linear(Module):
     """
     Module that performs linear transformation.
+    Applies a linear transformation to the incoming data: :math:`y = xA^T + b`
+
+    Args:
+        in_features: size of each input sample
+        out_features: size of each output sample
+        bias: If set to ``False``, the layer will not learn an additive bias.
+            Default: ``True``
+
+    Shape:
+        - Input: :math:`(N, *, H_{in})` where :math:`*` means any number of
+          additional dimensions and :math:`H_{in} = \text{in\_features}`
+        - Output: :math:`(N, *, H_{out})` where all but the last dimension
+          are the same shape as the input and :math:`H_{out} = \text{out\_features}`.
     """
 
     def __init__(self, in_features, out_features, bias=True):
@@ -607,8 +681,82 @@ class Linear(Module):
 
 
 class Conv2d(Module):
-    """
+    r"""
     Module that performs 2D convolution.
+
+    Applies a 2D convolution over an input signal composed of several input
+    planes.
+
+    In the simplest case, the output value of the layer with input size
+    :math:`(N, C_{\text{in}}, H, W)` and output :math:`(N, C_{\text{out}}, H_{\text{out}}, W_{\text{out}})`
+    can be precisely described as:
+
+    .. math::
+        \text{out}(N_i, C_{\text{out}_j}) = \text{bias}(C_{\text{out}_j}) +
+        \sum_{k = 0}^{C_{\text{in}} - 1} \text{weight}(C_{\text{out}_j}, k) \star \text{input}(N_i, k)
+
+
+    where :math:`\star` is the valid 2D `cross-correlation`_ operator,
+    :math:`N` is a batch size, :math:`C` denotes a number of channels,
+    :math:`H` is a height of input planes in pixels, and :math:`W` is
+    width in pixels.
+
+    * :attr:`stride` controls the stride for the cross-correlation, a single
+      number or a tuple.
+
+    * :attr:`padding` controls the amount of implicit zero-paddings on both
+      sides for :attr:`padding` number of points for each dimension.
+
+    * :attr:`dilation` controls the spacing between the kernel points; also
+      known as the à trous algorithm. It is harder to describe, but this `link`_
+      has a nice visualization of what :attr:`dilation` does.
+
+    * :attr:`groups` controls the connections between inputs and outputs.
+      :attr:`in_channels` and :attr:`out_channels` must both be divisible by
+      :attr:`groups`. For example,
+
+        * At groups=1, all inputs are convolved to all outputs.
+        * At groups=2, the operation becomes equivalent to having two conv
+          layers side by side, each seeing half the input channels,
+          and producing half the output channels, and both subsequently
+          concatenated.
+        * At groups= :attr:`in_channels`, each input channel is convolved with
+          its own set of filters, of size:
+          :math:`\left\lfloor\frac{out\_channels}{in\_channels}\right\rfloor`.
+
+    The parameters :attr:`kernel_size`, :attr:`stride`, :attr:`padding`, :attr:`dilation` can either be:
+
+        - a single ``int`` -- in which case the same value is used for the height and width dimension
+        - a ``tuple`` of two ints -- in which case, the first `int` is used for the height dimension,
+          and the second `int` for the width dimension
+
+    Args:
+        in_channels (int): Number of channels in the input image
+        out_channels (int): Number of channels produced by the convolution
+        kernel_size (int or tuple): Size of the convolving kernel
+        stride (int or tuple, optional): Stride of the convolution. Default: 1
+        padding (int or tuple, optional): Zero-padding added to both sides of the input. Default: 0
+        padding_mode (string, optional). Accepted values `zeros` and `circular` Default: `zeros`
+        dilation (int or tuple, optional): Spacing between kernel elements. Default: 1
+        bias (bool, optional): If ``True``, adds a learnable bias to the output. Default: ``True``
+
+    Shape:
+        - Input: :math:`(N, C_{in}, H_{in}, W_{in})`
+        - Output: :math:`(N, C_{out}, H_{out}, W_{out})` where
+
+          .. math::
+              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[0] - \text{dilation}[0]
+                        \times (\text{kernel\_size}[0] - 1) - 1}{\text{stride}[0]} + 1\right\rfloor
+
+          .. math::
+              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[1] - \text{dilation}[1]
+                        \times (\text{kernel\_size}[1] - 1) - 1}{\text{stride}[1]} + 1\right\rfloor
+
+    .. _cross-correlation:
+        https://en.wikipedia.org/wiki/Cross-correlation
+
+    .. _link:
+        https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
     """
 
     def __init__(
@@ -689,8 +837,10 @@ class Conv2d(Module):
 
 
 class ReLU(Module):
-    """
-    Module that computes rectified linear unit (ReLU) activations.
+    r"""
+    Module that computes rectified linear unit (ReLU) activations element-wise.
+
+    :math:`\text{ReLU}(x)= \max(0, x)`
     """
 
     def forward(self, x):
@@ -704,6 +854,27 @@ class ReLU(Module):
 class _Pool2d(Module):
     """
     Module that performs 2D pooling.
+    Applies a 2D max or average pooling over an input signal composed of several input
+    planes.
+
+    If :attr:`padding` is non-zero, then the input is implicitly zero-padded on both sides
+    for :attr:`padding` number of points. :attr:`dilation` controls the spacing between the kernel points.
+    It is harder to describe, but this `link`_ has a nice visualization of what :attr:`dilation` does.
+
+    The parameters :attr:`kernel_size`, :attr:`stride`, :attr:`padding`, :attr:`dilation` can either be:
+
+        - a single ``int`` -- in which case the same value is used for the height and width dimension
+        - a ``tuple`` of two ints -- in which case, the first `int` is used for the height dimension,
+          and the second `int` for the width dimension
+
+    Args:
+        pool_type (str): specifies "average" or "max" pooling
+        kernel_size: the size of the window to take a max over
+        stride: the stride of the window. Default value is :attr:`kernel_size`
+        padding: implicit zero padding to be added on both sides
+
+    .. _link:
+        https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
     """
 
     def __init__(self, pool_type, kernel_size, stride=1, padding=0):
@@ -751,8 +922,44 @@ class _Pool2d(Module):
 
 
 class AvgPool2d(_Pool2d):
-    """
-    Module that performs 2D average pooling.
+    r"""
+    Module that Applies a 2D average pooling
+    over an input signal composed of several input planes.
+
+    In the simplest case, the output value of the layer with input size :math:`(N, C, H, W)`,
+    output :math:`(N, C, H_{out}, W_{out})` and :attr:`kernel_size` :math:`(kH, kW)`
+    can be precisely described as:
+
+    .. math::
+
+        out(N_i, C_j, h, w)  = \frac{1}{kH * kW} \sum_{m=0}^{kH-1} \sum_{n=0}^{kW-1}
+                               input(N_i, C_j, stride[0] \times h + m, stride[1] \times w + n)
+
+    If :attr:`padding` is non-zero, then the input is implicitly zero-padded on both sides
+    for :attr:`padding` number of points.
+
+    The parameters :attr:`kernel_size`, :attr:`stride`, :attr:`padding` can either be:
+
+        - a single ``int`` -- in which case the same value is used for the height and width dimension
+        - a ``tuple`` of two ints -- in which case, the first `int` is used for the height dimension,
+          and the second `int` for the width dimension
+
+    Args:
+        kernel_size: the size of the window
+        stride: the stride of the window. Default value is :attr:`kernel_size`
+        padding: implicit zero padding to be added on both sides
+
+    Shape:
+        - Input: :math:`(N, C, H_{in}, W_{in})`
+        - Output: :math:`(N, C, H_{out}, W_{out})`, where
+
+          .. math::
+              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{padding}[0] -
+                \text{kernel\_size}[0]}{\text{stride}[0]} + 1\right\rfloor
+
+          .. math::
+              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{padding}[1] -
+                \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
     """
 
     def __init__(self, kernel_size, stride=1, padding=0):
@@ -767,7 +974,7 @@ class AvgPool2d(_Pool2d):
 
 class MaxPool2d(_Pool2d):
     """
-    Module that performs 2D max pooling.
+    Module that performs 2D max pooling (see :meth:`AvgPool2d`)
     """
 
     def __init__(self, kernel_size, stride=1, padding=0):

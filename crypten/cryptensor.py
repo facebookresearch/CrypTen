@@ -45,11 +45,26 @@ class CrypTensor(object):
         raise NotImplementedError("shallow_copy is not implemented")
 
     def add_(self, tensor):
-        """Adds tensor to this tensor (in-place)."""
+        """Adds tensor to self (in-place) see :meth:`add`."""
         raise NotImplementedError("add_ is not implemented")
 
     def add(self, tensor):
-        """Adds tensor to this tensor."""
+        r"""Adds tensor to this :attr:`self`.
+
+        Args:
+            tensor: can be a torch tensor or a CrypTensor.
+
+        The shapes of :attr:`self` and :attr:`tensor` must be
+        `broadcastable`_.
+
+        For a scalar `tensor`,
+
+        .. math::
+            \text{{out_i}} = \text{{input_i}} + \text{{tensor}}
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("add is not implemented")
 
     def __add__(self, tensor):
@@ -63,11 +78,17 @@ class CrypTensor(object):
         return self.add_(tensor)
 
     def sub_(self, tensor):
-        """Subtracts tensor from this tensor (in-place)."""
+        """Subtracts tensor from `self` (in-place), see :meth:`sub`"""
         raise NotImplementedError("sub_ is not implemented")
 
     def sub(self, tensor):
-        """Subtracts tensor from this tensor."""
+        """Subtracts a scalar or tensor from :attr:`self` tensor.
+        The shape of :attr:`tensor` must be
+        `broadcastable`_ with the shape of :attr:`self`.
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("sub is not implemented")
 
     def __sub__(self, tensor):
@@ -83,11 +104,24 @@ class CrypTensor(object):
         return self.sub_(tensor)
 
     def mul_(self, tensor):
-        """Element-wise multiply with a tensor (in-place)."""
+        """Element-wise multiply with a tensor in-place, see :meth:`mul`."""
         raise NotImplementedError("mul_ is not implemented")
 
     def mul(self, tensor):
-        """Element-wise multiply with a tensor."""
+        r"""Element-wise multiply with a tensor.
+
+        .. math::
+            \text{out}_i = \text{tensor}_i \times \text{self}_i
+
+        Args:
+            tensor (Tensor or float): the tensor or value to multiply.
+
+        The shapes of :attr:`self` and :attr:`tensor` must be
+        `broadcastable`_.
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("mul is not implemented")
 
     def __mul__(self, tensor):
@@ -100,17 +134,32 @@ class CrypTensor(object):
         """Element-wise multiply with a tensor."""
         return self.mul_(tensor)
 
-    def div_(self, scalar):
-        """Element-wise divide by a tensor (in-place)."""
+    def div_(self, tensor):
+        """Element-wise in-place divide by a tensor (see :meth:`div`)."""
         raise NotImplementedError("div_ is not implemented")
 
-    def div(self, scalar):
-        """Element-wise divide by a tensor."""
+    def div(self, tensor):
+        r"""
+        Divides each element of the input :attr:`self` with the :attr:`tensor`
+        and returns a new resulting tensor.
+
+        .. math::
+            \text{out}_i = \frac{\text{input}_i}{\text{tensor}_i}
+
+        The shapes of :attr:`self` and :attr:`tensor` must be
+        `broadcastable`_.
+
+        Args:
+            tensor (Tensor or float): the tensor or value in the denominator.
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("div is not implemented")
 
-    def __div__(self, scalar):
+    def __div__(self, tensor):
         """Element-wise divide by a tensor."""
-        return self.div(scalar)
+        return self.div(tensor)
 
     def __truediv__(self, scalar):
         """Element-wise divide by a tensor."""
@@ -121,18 +170,51 @@ class CrypTensor(object):
         return self.div_(scalar)
 
     def neg(self):
-        """Negative value of a tensor"""
+        r"""
+        Returns a new tensor with the negative of the elements of :attr:`self`.
+
+        .. math::
+            \text{out} = -1 \times \text{input}
+        """
         raise NotImplementedError("neg is not implemented")
 
     def neg_(self):
-        """Negative value of a tensor (in-place)"""
+        """Negative value of a tensor (in-place), see :meth:`neg`"""
         raise NotImplementedError("neg_ is not implemented")
 
     def __neg__(self):
         return self.neg()
 
     def matmul(self, tensor):
-        """Perform matrix multiplication using some tensor"""
+        r"""Performs matrix multiplication of `self` with `tensor`
+
+        The behavior depends on the dimensionality of the tensors as follows:
+
+        - If both tensors are 1-dimensional, the dot product (scalar) is returned.
+        - If both arguments are 2-dimensional, the matrix-matrix product is returned.
+        - If the first argument is 1-dimensional and the second argument is
+          2-dimensional, a 1 is prepended to its dimension for the purpose of
+          the matrix multiply. After the matrix multiply, the
+          prepended dimension is removed.
+        - If the first argument is 2-dimensional and the second argument is 1-dimensional,
+          the matrix-vector product is returned.
+        - If both arguments are at least 1-dimensional and at least one argument
+          is N-dimensional (where N > 2), then a batched matrix multiply is returned.
+          If the first argument is 1-dimensional, a 1 is prepended to its dimension
+          for the purpose of the batched matrix multiply and removed after.
+          If the second argument is 1-dimensional, a 1 is appended to its dimension
+          for the purpose of the batched matrix multiple and removed after.
+          The non-matrix (i.e. batch) dimensions are broadcasted (and thus
+          must be `broadcastable`_).  For example, if :attr:`self` is a
+          :math:`(j \times 1 \times n \times m)` tensor and :attr:`tensor` is a :math:`(k \times m \times p)`
+          tensor, :attr:`out` will be an :math:`(j \times k \times n \times p)` tensor.
+
+        Arguments:
+            tensor (Tensor): the tensor to be multiplied
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("matmul is not implemented")
 
     def __matmul__(self, tensor):
@@ -145,7 +227,17 @@ class CrypTensor(object):
         return self.matmul(tensor)
 
     def eq(self, tensor):
-        """Element-wise equality"""
+        """Element-wise equality
+
+        The `tensor` argument can be a number or a tensor whose shape is
+        `broadcastable`_ with `self`.
+
+        Args:
+            tensor (Tensor or float): the tensor or value to compare.
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("eq is not implemented")
 
     def __eq__(self, tensor):
@@ -153,7 +245,20 @@ class CrypTensor(object):
         return self.eq(tensor)
 
     def ne(self, tensor):
-        """Element-wise inequality"""
+        """Element-wise inequality
+
+        The `tensor` argument can be a number or a tensor whose shape is
+        `broadcastable`_ with the `self`.
+
+        Args:
+            tensor (Tensor or float): the tensor or value to compare
+
+        Returns:
+            an encrypted boolean tensor containing a True at each location where comparison is true.
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("ne is not implemented")
 
     def __ne__(self, tensor):
@@ -161,7 +266,20 @@ class CrypTensor(object):
         return self.ne(tensor)
 
     def ge(self, tensor):
-        """Element-wise greater than or equal to"""
+        """Element-wise greater than or equal to
+
+        The `tensor` argument can be a number or a tensor whose shape is
+        `broadcastable`_ with `self`.
+
+        Args:
+            tensor (Tensor or float): the tensor or value to compare
+
+        Returns:
+            an encrypted``BoolTensor`` containing a True at each location where comparison is true
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("ge is not implemented")
 
     def __ge__(self, tensor):
@@ -169,7 +287,20 @@ class CrypTensor(object):
         return self.ge(tensor)
 
     def gt(self, tensor):
-        """Element-wise greater than"""
+        """Element-wise greater than
+
+        The `tensor` argument can be a number or a tensor whose shape is
+        `broadcastable`_ with `self`.
+
+        Args:
+            tensor (Tensor or float): the tensor or value to compare.
+
+        Returns:
+            an encrypted``BoolTensor`` containing a True at each location where comparison is true
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("gt is not implemented")
 
     def __gt__(self, tensor):
@@ -177,7 +308,20 @@ class CrypTensor(object):
         return self.gt(tensor)
 
     def le(self, tensor):
-        """Element-wise less than or equal to"""
+        """Element-wise less than or equal to
+
+        The `tensor` argument can be a number or a tensor whose shape is
+        `broadcastable`_ with `self`.
+
+        Args:
+            tensor (Tensor or float): the tensor or value to compare.
+
+        Returns:
+            an encrypted``BoolTensor`` containing a True at each location where comparison is true
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("le is not implemented")
 
     def __le__(self, tensor):
@@ -185,7 +329,20 @@ class CrypTensor(object):
         return self.le(tensor)
 
     def lt(self, tensor):
-        """Element-wise less than"""
+        """Element-wise less than
+
+        The `tensor` argument can be a number or a tensor whose shape is
+        `broadcastable`_ with `self`.
+
+        Args:
+            tensor (Tensor or float): the tensor or value to compare.
+
+        Returns:
+            an encrypted``BoolTensor`` containing a True at each location where comparison is true
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("lt is not implemented")
 
     def __lt__(self, tensor):
@@ -209,8 +366,12 @@ class CrypTensor(object):
     # Regular functions:
     def clone(self):
         """
-        Returns a deep copy of the `self` tensor.
-        The copy has the same size and ptype as `self`.
+        Returns a copy of the :attr:`self` tensor.
+        The copy has the same size and data type as :attr:`self`.
+
+        .. note::
+            This function is recorded in the computation graph. Gradients
+            propagating to the cloned tensor will propagate to the original tensor.
         """
         raise NotImplementedError("clone is not implemented")
 
@@ -238,17 +399,32 @@ class CrypTensor(object):
         raise NotImplementedError("index_select is not implemented")
 
     def view(self, *shape):
-        """
+        r"""
         Returns a new encrypted tensor with the same data as the `self` tensor
         but of a different shape.
 
         The returned tensor shares the same data and must have the same number
-        of elements, but may have a different size.
+        of elements, but may have a different size. For a tensor to be viewed, the new
+        view size must be compatible with its original size and stride, i.e., each new
+        view dimension must either be a subspace of an original dimension, or only span
+        across original dimensions :math:`d, d+1, \dots, d+k` that satisfy the following
+        contiguity-like condition that :math:`\forall i = 0, \dots, k-1`,
+
+        .. math::
+            \text{stride}[i] = \text{stride}[i+1] \times \text{size}[i+1]
+
+        Args:
+            shape (torch.Size or int...): the desired
         """
         raise NotImplementedError("view is not implemented")
 
     def flatten(self, start_dim=0, end_dim=-1):
-        """Flattens a contiguous range of dims in a tensor."""
+        """Flattens a contiguous range of dims in a tensor.
+
+        Args:
+            start_dim (int): the first dim to flatten. Default is 0.
+            end_dim (int): the last dim to flatten. Default is -1.
+        """
         raise NotImplementedError("flatten is not implemented")
 
     def t(self):
@@ -268,6 +444,10 @@ class CrypTensor(object):
         The resulting out tensor shares it’s underlying storage with the `self`
         tensor, so changing the content of one would change the content of the
         other.
+
+        Args:
+            dim0 (int): the first dimension to be transposed
+            dim1 (int): the second dimension to be transposed
         """
         raise NotImplementedError("t is not implemented")
 
@@ -281,6 +461,9 @@ class CrypTensor(object):
         A `dim` value within the range `[-self.dim() - 1, self.dim() + 1)`
         can be used. Negative `dim` will correspond to `unsqueeze()` applied at
         `dim = dim + self.dim() + 1`
+
+        Args:
+            dim (int): the index at which to insert the singleton dimension
         """
         raise NotImplementedError("unsqueeze is not implemented")
 
@@ -304,6 +487,10 @@ class CrypTensor(object):
         Repeats this tensor along the specified dimensions.
 
         Unlike expand(), this function copies the tensor’s data.
+
+        Args:
+            sizes (torch.Size or int...): The number of times to repeat this tensor along each
+                dimension
         """
         raise NotImplementedError("repeat is not implemented")
 
@@ -355,6 +542,11 @@ class CrypTensor(object):
         `(sizedim - size) / step + 1`.
 
         An additional dimension of size `size` is appended in the returned tensor.
+
+        Args:
+            dimension (int): dimension in which unfolding happens
+            size (int): the size of each slice that is unfolded
+            step (int): the step between each slice
         """
         raise NotImplementedError("unfold is not implemented")
 
@@ -369,6 +561,9 @@ class CrypTensor(object):
     def flip(self, input, dims):
         """
         Reverse the order of a n-D tensor along given axis in dims.
+
+        Args:
+            dims (a list or tuple): axis to flip on
         """
         raise NotImplementedError("flip is not implemented")
 
@@ -381,12 +576,25 @@ class CrypTensor(object):
     def sum(self, dim=None, keepdim=False):
         """
         Returns the sum of all elements in the `self` tensor.
+
+        If :attr:`dim` is a list of dimensions,
+        reduce over all of them.
         """
         raise NotImplementedError("sum is not implemented")
 
     def cumsum(self, dim):
         """
-        Returns the cumulative sum of elements of `self` in the dimension `dim`.
+        Returns the cumulative sum of elements of :attr:`self` in the dimension
+        :attr:`dim`.
+
+        For example, if :attr:`self` is a vector of size N, the result will also be
+        a vector of size N, with elements.
+
+        .. math::
+            y_i = x_1 + x_2 + x_3 + \dots + x_i
+
+        Args:
+            dim  (int): the dimension to do the operation over
         """
         raise NotImplementedError("cumsum is not implemented")
 
@@ -394,6 +602,9 @@ class CrypTensor(object):
         """
         Returns a tensor with the same data and number of elements as `self`,
         but with the specified shape.
+
+        Args:
+            shape (tuple of ints or int...): the desired shape
         """
         raise NotImplementedError("reshape is not implemented")
 
