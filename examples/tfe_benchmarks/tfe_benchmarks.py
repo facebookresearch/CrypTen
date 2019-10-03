@@ -40,6 +40,7 @@ def run_tfe_benchmarks(
     seed=None,
     skip_plaintext=False,
     save_checkpoint_dir="/tmp/tfe_benchmarks",
+    save_modelbest_dir="/tmp/tfe_benchmarks_best",
     context_manager=None,
     mnist_dir=None,
 ):
@@ -143,6 +144,7 @@ def run_tfe_benchmarks(
         return
 
     os.makedirs(save_checkpoint_dir, exist_ok=True)
+    os.makedirs(save_modelbest_dir, exist_ok=True)
 
     for epoch in range(start_epoch, epochs):
         adjust_learning_rate(optimizer, epoch, lr)
@@ -176,7 +178,7 @@ def run_tfe_benchmarks(
             },
             is_best,
             filename=os.path.join(save_checkpoint_dir, checkpoint_file),
-            model_best=os.path.join(save_checkpoint_dir, model_best_file),
+            model_best=os.path.join(save_modelbest_dir, model_best_file),
         )
     data_dir.cleanup()
     shutil.rmtree(save_checkpoint_dir)

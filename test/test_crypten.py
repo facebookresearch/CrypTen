@@ -126,7 +126,6 @@ class TestCrypten(MultiProcessTestCase):
     def test_save_load(self):
         """Test that crypten.save and crypten.load properly save and load tensors"""
         import tempfile
-        import os
 
         filename = tempfile.NamedTemporaryFile(delete=True).name
         for dimensions in range(1, 5):
@@ -138,10 +137,10 @@ class TestCrypten(MultiProcessTestCase):
             for src in range(crypten.communicator.get().get_world_size()):
                 crypten.save(tensor, filename, src=src)
                 result = crypten.load(filename, src=src)
-
                 reference_size = tuple([src + 1] * dimensions)
                 self.assertEqual(result.size(), reference_size)
-            
+                self.assertEqual(result.src, src)
+
     def test_save_load_module(self):
         """Test that crypten.save and crypten.load properly save and load modules"""
         import tempfile
@@ -158,12 +157,14 @@ class TestCrypten(MultiProcessTestCase):
                 crypten.save(test_model, filename, src=src)
 
                 dummy_model = model_type(200, 10)
+
                 result = crypten.load(filename, dummy_model=dummy_model, src=src)
                 if src == rank:
                     for param in result.parameters(recurse=True):
                         self.assertTrue(
                             param.eq(rank).all().item(), "Model load failed"
                         )
+                self.assertEqual(result.src, src)
 
                 failure_dummy_model = model_type(200, 11)
                 with self.assertRaises(

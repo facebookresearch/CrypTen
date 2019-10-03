@@ -51,6 +51,10 @@ class ArithmeticSharedTensor(CrypTensor):
         self.share = ArithmeticSharedTensor.PRZS(size).share
         if self.rank == src:
             assert tensor is not None, "Source must provide a data tensor"
+            if hasattr(tensor, "src"):
+                assert (
+                    tensor.src == src
+                ), "Source of data tensor must match source of encryption"
             self.share += tensor
 
     @property

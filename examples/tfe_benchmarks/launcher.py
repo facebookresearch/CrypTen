@@ -97,6 +97,13 @@ parser.add_argument(
     help="path to the dir to save checkpoint (default: /tmp/tfe_benchmarks)",
 )
 parser.add_argument(
+    "--save-modelbest-dir",
+    default="/tmp/tfe_benchmarks_best",
+    type=str,
+    metavar="SAVE",
+    help="path to the dir to save the best model (default: /tmp/tfe_benchmarks_best)",
+)
+parser.add_argument(
     "-e",
     "--evaluate",
     dest="evaluate",
@@ -151,6 +158,7 @@ def _run_experiment(args):
         args.seed,
         args.skip_plaintext,
         os.path.join(args.save_checkpoint_dir, os.environ.get("RANK", "")),
+        os.path.join(args.save_modelbest_dir, os.environ.get("RANK", "")),
         mnist_dir=args.mnist_dir,
     )
 
@@ -158,6 +166,7 @@ def _run_experiment(args):
 def main(run_experiment):
     args = parser.parse_args()
     os.makedirs(args.save_checkpoint_dir, exist_ok=True)
+    os.makedirs(args.save_modelbest_dir, exist_ok=True)
     if args.multiprocess:
         launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
         launcher.start()

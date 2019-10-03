@@ -261,8 +261,10 @@ def load(f, encrypted=False, dummy_model=None, src=0, **kwargs):
                 assert valid.item(), "Model architecture does not match loaded module"
             else:
                 raise TypeError("Unrecognized load type on src")
+        result = result.float()
+        result.src = src
 
-        return result.float()
+        return result
 
 
 def save(obj, f, src=0, **kwargs):

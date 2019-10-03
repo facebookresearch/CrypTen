@@ -724,6 +724,14 @@ class TestArithmetic(MultiProcessTestCase):
             with self.assertRaises(AssertionError):
                 ArithmeticSharedTensor(tensor, src=src)
 
+    def test_src_match_input_data(self):
+        """Tests incorrect src in ArithmeticSharedTensor fails as expected"""
+        tensor = get_random_test_tensor(is_float=True)
+        tensor.src = 0
+        for testing_src in [None, "abc", -2, self.world_size]:
+            with self.assertRaises(AssertionError):
+                ArithmeticSharedTensor(tensor, src=testing_src)
+
     def test_where(self):
         """Tests where() conditional element selection"""
         sizes = [(10,), (5, 10), (1, 5, 10)]
