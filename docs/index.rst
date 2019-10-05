@@ -9,13 +9,12 @@ train models using encrypted data. CrypTen currently supports
 `Secure multi-party computation
 <https://en.wikipedia.org/wiki/Secure_multi-party_computation>`_ as its encryption
 mechanism.
-    
+
 .. toctree::
     :hidden:
 
     self
-
-
+    aws
 
 Installation on Linux and Mac
 =============================
@@ -27,7 +26,7 @@ We recommend installing CrypTen in its own ``conda`` environment. Please install
 
     $ conda create -n crypten-env python=3.7
     $ conda activate crypten-env
-    $ conda install pytorch torchvision cpuonly -c pytorch-nightly 
+    $ conda install pytorch torchvision cpuonly -c pytorch-nightly
     $ git clone git@github.com:facebookresearch/CrypTen.git
     $ cd CrypTen; python3 setup.py install
 
@@ -81,16 +80,20 @@ Some MPC specific options are
 - ``--multiprocess`` Run in multiprocess mode on one machine, where each peer is a
   separate process
 
+Examples on AWS
+---------------
+
+CrypTen also provides a script ``aws_launcher`` to launch examples with
+encrypted data on multiple AWS instances. See :doc:`aws`.
 
 .. toctree::
     :maxdepth: 2
     :caption: Package Reference
-    
 
-    MPC <mpc>
-    NN <nn>
     CrypTensor <cryptensor>
+    MPC <mpc>
     Gradients <gradients>
+    NN <nn>
 
 Indices and tables
 ==================
