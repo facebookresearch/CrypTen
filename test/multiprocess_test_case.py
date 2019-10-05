@@ -20,22 +20,27 @@ import torch.distributed as dist
 from .benchmark_helper import BenchmarkHelper
 
 
-def get_random_test_tensor(max_value=6, size=(1, 5), is_float=False, ex_zero=False):
+def get_random_test_tensor(
+    max_value=6, min_value=None, size=(1, 5), is_float=False, ex_zero=False
+):
     """Generates random tensor for testing
 
     Args:
-        max_value (int): defines range for int tensor
+        max_value (int): defines maximum value for int tensor
+        min_value (int): defines minimum value for int tensor
         size (tuple): size of tensor
         is_float (bool): determines float or int tensor
         ex_zero (bool): excludes zero tensor
 
     Returns: torch.tensor
     """
+    if min_value is None:
+        min_value = -max_value
     if is_float:
-        tensor = (2 * torch.rand(torch.Size(size)) - 1) * max_value
+        tensor = torch.rand(torch.Size(size)) * (max_value - min_value) + min_value
     else:
         tensor = torch.randint(
-            -max_value, max_value, torch.Size(size), dtype=torch.int64
+            min_value, max_value, torch.Size(size), dtype=torch.int64
         )
     if ex_zero:
         # replace 0 with 1

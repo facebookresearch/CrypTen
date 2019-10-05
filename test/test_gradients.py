@@ -12,9 +12,11 @@ import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
+import torch
 import torch.nn.functional as F
 from crypten.autograd_cryptensor import AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
+from crypten.mpc import MPCTensor
 
 
 # Sizes for tensor operations
@@ -32,10 +34,7 @@ SIZES = [
     (3, 1, 1),
     (3, 3, 3),
     (1, 1, 1, 1),
-    (1, 1, 1, 3),
     (1, 1, 3, 1),
-    (1, 3, 1, 1),
-    (3, 1, 1, 1),
     (3, 3, 3, 3),
 ]
 
@@ -156,7 +155,9 @@ class TestGradients(MultiProcessTestCase):
                     tensor1 = get_random_test_tensor(size=size1, is_float=True)
                     if use_tensor:
                         for size2 in SIZES:
-                            tensor2 = get_random_test_tensor(size=size2, is_float=True)
+                            tensor2 = get_random_test_tensor(
+                                min_value=0.5, size=size2, is_float=True
+                            )  # do not divide by value very close to zero
                             self._check_forward_backward(func, tensor1, tensor2)
                             self._check_forward_backward(ofunc, tensor1, tensor2)
                             self._check_forward_backward(rfunc, tensor1, tensor2)
@@ -270,10 +271,10 @@ class TestGradients(MultiProcessTestCase):
                 for dim1 in range(tensor.dim()):
                     self._check_forward_backward("transpose", tensor, dim0, dim1)
 
-    def test_conv(self):
+    def test_conv2d(self):
         """Test convolution of encrypted tensor with public/private tensors."""
-        image_sizes = [(5, 5), (32, 15)]
-        nchannels = [1, 3, 5]
+        image_sizes = [(5, 5), (16, 7)]
+        nchannels = [1, 5]
         nbatches = [1, 3, 5]
 
         kernel_sizes = [(1, 1), (2, 2), (5, 5), (2, 3)]
@@ -284,10 +285,12 @@ class TestGradients(MultiProcessTestCase):
         for image_size, in_channels, batches in itertools.product(
             image_sizes, nchannels, nbatches
         ):
+
+            # sample input:
+            size = (batches, in_channels, *image_size)
+            image = get_random_test_tensor(size=size, is_float=True)
+
             for kernel_size, out_channels in itertools.product(kernel_sizes, nchannels):
-                # sample input:
-                size = (batches, in_channels, *image_size)
-                image = get_random_test_tensor(size=size, is_float=True)
 
                 # Sample kernel
                 kernel_size = (out_channels, in_channels, *kernel_size)
@@ -301,7 +304,7 @@ class TestGradients(MultiProcessTestCase):
 
     def test_pooling(self):
         """Test pooling functions on encrypted tensor"""
-        image_sizes = [(5, 5), (32, 15)]
+        image_sizes = [(5, 5), (16, 7)]
         nchannels = [1, 3, 5]
         nbatches = [1, 3, 5]
 
@@ -336,7 +339,9 @@ class TestGradients(MultiProcessTestCase):
     def test_pow(self):
         """Tests pow function"""
         for size in SIZES:
-            tensor = get_random_test_tensor(size=size, is_float=True)
+            tensor = get_random_test_tensor(
+                size=size, min_value=0.5, is_float=True
+            )  # prevent division by values close to zero
             for power in [-3, -2, -1, 0, 1, 2, 3]:
                 self._check_forward_backward("pow", tensor, power)
                 self._check_forward_backward("pow", tensor, float(power))
@@ -378,21 +383,18 @@ class TestGradients(MultiProcessTestCase):
                 for value in [0, 1, 10]:
                     self._check_forward_backward("pad", tensor, pad, value=value)
 
-    '''
+    @unittest.skip("clone not yet implemented")
     def test_clone(self):
         """Tests shallow_copy and clone of encrypted tensors."""
         sizes = [(5,), (1, 5), (5, 10, 15)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
             self._check_forward_backward("clone", tensor)
-    '''
 
-
-'''
     def test_var(self):
         """Tests computing variances of encrypted tensors."""
         tensor = get_random_test_tensor(size=(5, 10, 15), is_float=True)
-        encrypted = MPCTensor(tensor)
+        encrypted = crypten.cryptensor(tensor)
         self._check(encrypted.var(), tensor.var(), "var failed")
 
         for dim in [0, 1, 2]:
@@ -409,7 +411,7 @@ class TestGradients(MultiProcessTestCase):
         # Test when dimension!=None
         for dimension in range(0, 4):
             reference = torch.from_numpy(tensor.numpy().take(index, dimension))
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
             encrypted_out = encrypted_tensor.take(index, dimension)
             self._check(encrypted_out, reference, "take function failed: dimension set")
 
@@ -417,7 +419,7 @@ class TestGradients(MultiProcessTestCase):
         sizes = [(15,), (5, 10), (15, 10, 5)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
             take_indices = [[0], [10], [0, 5, 10]]
             for indices in take_indices:
                 indices = torch.tensor(indices)
@@ -431,7 +433,7 @@ class TestGradients(MultiProcessTestCase):
         """Test appoximate functions (exp, log, sqrt, reciprocal, pos_pow)"""
 
         def test_with_inputs(func, input):
-            encrypted_tensor = MPCTensor(input)
+            encrypted_tensor = crypten.cryptensor(input)
             reference = getattr(tensor, func)()
             with self.benchmark(niters=10, func=func) as bench:
                 for _ in bench.iters:
@@ -457,14 +459,14 @@ class TestGradients(MultiProcessTestCase):
             test_with_inputs(func, tensor)
 
         # Test pos_pow with several exponents
-        encrypted_tensor = MPCTensor(tensor)
+        encrypted_tensor = crypten.cryptensor(tensor)
 
         # Reduced the max_value so approximations have less absolute error
         tensor_exponent = get_random_test_tensor(
             max_value=2, size=tensor.size(), is_float=True
         )
         exponents = [-3, -2, -1, 0, 1, 2, 3, tensor_exponent]
-        exponents += [MPCTensor(tensor_exponent)]
+        exponents += [crypten.cryptensor(tensor_exponent)]
         for p in exponents:
             if isinstance(p, MPCTensor):
                 reference = tensor.pow(p.get_plain_text())
@@ -483,7 +485,7 @@ class TestGradients(MultiProcessTestCase):
                 tensor = get_random_test_tensor(size=(size, size), is_float=True)
                 reference = tensor[:, 0]
 
-                encrypted_tensor = MPCTensor(tensor)
+                encrypted_tensor = crypten.cryptensor(tensor)
                 encrypted_out = encrypted_tensor[:, 0]
                 self._check(encrypted_out, reference, "getitem failed")
 
@@ -496,7 +498,7 @@ class TestGradients(MultiProcessTestCase):
                 reference = tensor.clone()
                 reference[:, 0] = tensor2
 
-                encrypted_out = MPCTensor(tensor)
+                encrypted_out = crypten.cryptensor(tensor)
                 encrypted2 = tensor_type(tensor2)
                 encrypted_out[:, 0] = encrypted2
 
@@ -507,7 +509,7 @@ class TestGradients(MultiProcessTestCase):
                 reference = tensor.clone()
                 reference[0, :] = tensor2
 
-                encrypted_out = MPCTensor(tensor)
+                encrypted_out = crypten.cryptensor(tensor)
                 encrypted2 = tensor_type(tensor2)
                 encrypted_out[0, :] = encrypted2
 
@@ -527,7 +529,7 @@ class TestGradients(MultiProcessTestCase):
                 for tensor_type in [lambda x: x, MPCTensor]:
                     tensor1 = get_random_test_tensor(size=tensor_size1, is_float=True)
                     tensor2 = get_random_test_tensor(size=tensor_size2, is_float=True)
-                    encrypted = MPCTensor(tensor1)
+                    encrypted = crypten.cryptensor(tensor1)
                     encrypted2 = tensor_type(tensor2)
                     reference = getattr(tensor1, func)(dimension, index, tensor2)
                     encrypted_out = getattr(encrypted, func)(
@@ -572,7 +574,7 @@ class TestGradients(MultiProcessTestCase):
                         tensor2 = get_random_test_tensor(size=size, is_float=True)
                         index = get_random_test_tensor(size=size, is_float=False)
                         index = index.abs().clamp(0, 4)
-                        encrypted = MPCTensor(tensor1)
+                        encrypted = crypten.cryptensor(tensor1)
                         encrypted2 = tensor_type(tensor2)
                         reference = getattr(tensor1, func)(dim, index, tensor2)
                         encrypted_out = getattr(encrypted, func)(dim, index, encrypted2)
@@ -604,7 +606,7 @@ class TestGradients(MultiProcessTestCase):
         sizes = [(5,), (5, 10), (5, 10, 15)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
             indices = [[0], [0, 3], [0, 2, 4]]
 
             for dim in range(tensor.dim()):
@@ -623,7 +625,7 @@ class TestGradients(MultiProcessTestCase):
         sizes = [(5, 6), (5, 6, 7), (6, 7, 8, 9)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            encr_tensor = MPCTensor(tensor)
+            encr_tensor = crypten.cryptensor(tensor)
             for dim in range(len(size)):
                 for start in range(size[dim] - 2):
                     for length in range(1, size[dim] - start):
@@ -643,7 +645,7 @@ class TestGradients(MultiProcessTestCase):
 
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
 
             for dims in repeat_dims:
                 encrypted_tensor_repeated = encrypted_tensor.repeat(*dims)
@@ -674,7 +676,7 @@ class TestGradients(MultiProcessTestCase):
         sizes = [(100,), (4, 25), (2, 5, 10)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
             for dim in range(tensor.dim()):
                 self._check(
                     encrypted_tensor.flatten(start_dim=dim),
@@ -695,7 +697,7 @@ class TestGradients(MultiProcessTestCase):
         sizes = [(10, 1), (5, 2), (5, 10, 15)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
             roll_shifts = [1, 2, 3, (2, 1)]
             roll_dims = [0, 1, 0, (0, 1)]
 
@@ -713,7 +715,7 @@ class TestGradients(MultiProcessTestCase):
         tensor_sizes = [(8,), (15, 10, 5), (5, 10, 15, 20)]
         for tensor_size in tensor_sizes:
             tensor = get_random_test_tensor(size=tensor_size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
 
             for size, step in itertools.product(range(1, 4), range(1, 4)):
                 # check unfold along higher dimension if possible
@@ -730,7 +732,7 @@ class TestGradients(MultiProcessTestCase):
         from crypten.mpc.ptype import ptype as Ptype
 
         tensor = get_random_test_tensor(is_float=True)
-        encrypted_tensor = MPCTensor(tensor)
+        encrypted_tensor = crypten.cryptensor(tensor)
         self.assertEqual(encrypted_tensor.ptype, Ptype.arithmetic)
 
         binary_encrypted_tensor = encrypted_tensor.to(Ptype.binary)
@@ -755,7 +757,7 @@ class TestGradients(MultiProcessTestCase):
         sizes = [(8,), (5, 10), (15, 10, 5)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
 
             for dim in range(tensor.dim()):
                 self._check(
@@ -770,7 +772,7 @@ class TestGradients(MultiProcessTestCase):
 
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
 
             self._check(encrypted_tensor.trace(), tensor.trace(), "trace failed")
 
@@ -779,7 +781,7 @@ class TestGradients(MultiProcessTestCase):
         sizes = [(5,), (5, 10), (5, 10, 15)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor = MPCTensor(tensor)
+            encrypted_tensor = crypten.cryptensor(tensor)
 
             flip_dims = [(0,), (0, 1), (0, 1, 2)]
 
@@ -794,7 +796,7 @@ class TestGradients(MultiProcessTestCase):
     def test_control_flow_failure(self):
         """Tests that control flow fails as expected"""
         tensor = get_random_test_tensor(is_float=True)
-        encrypted_tensor = MPCTensor(tensor)
+        encrypted_tensor = crypten.cryptensor(tensor)
         with self.assertRaises(RuntimeError):
             if encrypted_tensor:
                 pass
@@ -815,14 +817,14 @@ class TestGradients(MultiProcessTestCase):
 
         for size, y_type in itertools.product(sizes, y_types):
             tensor1 = get_random_test_tensor(size=size, is_float=True)
-            encrypted_tensor1 = MPCTensor(tensor1)
+            encrypted_tensor1 = crypten.cryptensor(tensor1)
             tensor2 = get_random_test_tensor(size=size, is_float=True)
             encrypted_tensor2 = y_type(tensor2)
 
             condition_tensor = (
                 get_random_test_tensor(max_value=1, size=size, is_float=False) + 1
             )
-            condition_encrypted = MPCTensor(condition_tensor)
+            condition_encrypted = crypten.cryptensor(condition_tensor)
             condition_bool = condition_tensor.bool()
 
             reference_out = tensor1.where(condition_bool, tensor2)
@@ -868,7 +870,7 @@ class TestGradients(MultiProcessTestCase):
             dim = len(size)
             # set max_value to 1 to avoid numerical precision in var division
             tensor = get_random_test_tensor(size=size, max_value=1, is_float=True)
-            encrypted = MPCTensor(tensor)
+            encrypted = crypten.cryptensor(tensor)
 
             weight = get_random_test_tensor(size=[3], max_value=1, is_float=True)
             bias = get_random_test_tensor(size=[3], max_value=1, is_float=True)
@@ -910,7 +912,7 @@ class TestGradients(MultiProcessTestCase):
     @unittest.skip("Test not implemented")
     def test_gather_scatter(self):
         pass
-'''
+
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)
