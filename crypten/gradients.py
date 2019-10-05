@@ -1001,6 +1001,8 @@ class AutogradAvgPool2D(AutogradFunction):
 
         # create average pooling kernel:
         input_size, output, kernel_size, padding, stride = ctx.saved_tensors
+        assert stride[0] == stride[1], "stride must be same in all axes"
+        assert padding[0] == padding[1], "padding must be same in all axes"
         inchannels = input_size[1]
         ones = torch.ones(inchannels, inchannels, kernel_size, kernel_size)
 
@@ -1049,6 +1051,8 @@ class AutogradMaxPool2D(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         output_size, indices, kernel_size, padding, stride = ctx.saved_tensors
+        assert stride[0] == stride[1], "stride must be same in all axes"
+        assert padding[0] == padding[1], "padding must be same in all axes"
         return grad_output._max_pool2d_backward(
             indices,
             kernel_size,
@@ -1075,6 +1079,7 @@ class AutogradConv2D(AutogradFunction):
 
         # get input, kernel, and sizes:
         input, kernel, padding, stride = ctx.saved_tensors
+        assert stride == (1, 1), "stride different than 1 not currently supported"
         batch_size = input.size(0)
         out_channels, in_channels, kernel_size_y, kernel_size_x = kernel.size()
         assert input.size(1) == in_channels, "wrong number of input channels"
