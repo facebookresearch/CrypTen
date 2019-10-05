@@ -4,5 +4,5 @@ NN
 .. automodule:: crypten.nn.loss
     :members:
 
-.. automodule:: crypten.nn.module
+.. automodule:: crypten.nn
     :members:

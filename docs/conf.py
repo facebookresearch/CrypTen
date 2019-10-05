@@ -29,7 +29,7 @@ copyright = "2019, Facebook AI Research"
 author = "Facebook AI Research"
 
 # The full version, including alpha/beta/rc tags
-release = "0.01"
+release = "0.1"
 
 
 # -- General configuration ---------------------------------------------------
