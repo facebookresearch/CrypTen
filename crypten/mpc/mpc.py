@@ -558,7 +558,7 @@ class MPCTensor(CrypTensor):
     def reciprocal(self, method="NR", nr_iters=10, log_iters=1, all_pos=False):
         """
         Methods:
-            'NR' : Newton Raphson method computes the reciprocal using iterations
+            'NR' : `Newton-Raphson`_ method computes the reciprocal using iterations
                     of :math:`x_{i+1} = (2x_i - self * x_i^2)` and uses
                     :math:`3*exp(-(x-.5)) + 0.003` as an initial guess
 
@@ -573,6 +573,9 @@ class MPCTensor(CrypTensor):
             all_pos (bool): determines whether all elements
                        of the input are known to be positive, which optimizes
                        the step of computing the sign of the input.
+
+        .. _Newton-Raphson:
+            https://en.wikipedia.org/wiki/Newton%27s_method
         """
         if not all_pos:
             sgn = self.sign()

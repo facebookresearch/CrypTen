@@ -5,7 +5,7 @@ A ``CrypTensor`` is an encrypted ``torch`` tensor for secure computations.
 
 CrypTen currently only supports secure MPC protocols
 (though we intend to add support for other advanced encryption protocols).
-Using the :doc:`mpc` backend, a ``CrypTensor`` acts as ``torch`` tensor
+Using the :doc:`mpctensor` backend, a ``CrypTensor`` acts as ``torch`` tensor
 whose values are encrypted using the secure MPC protocol.
 
 To create a cryptensor,
@@ -21,7 +21,6 @@ To create a cryptensor,
 We can decrypt ``x_enc`` by calling ``x_enc.get_plain_text()``.
 
 CrypTensors provide various operations similar to a torch tensors.
-
 
 .. automodule:: crypten.cryptensor
     :members:

@@ -1,5 +1,5 @@
-Gradients
-=========
+AutogradCrypTensor
+==================
 
 ``AutogradCrypTensors`` allow CrypTensors to store gradients and thus enable backpropagation.
 Note CrypTen does not use the PyTorch optimizers.

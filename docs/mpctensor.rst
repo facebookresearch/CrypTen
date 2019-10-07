@@ -1,5 +1,5 @@
-MPC
-===
+MPCTensor
+=========
 
 An ``MPCTensor`` is a ``CrypTensor`` encrypted using the secure MPC protocol.
 In order to support the mathematical operations required by the ``MPCTensor``,

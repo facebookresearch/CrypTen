@@ -98,13 +98,13 @@ CrypTen also provides a script ``aws_launcher`` to launch examples with
 encrypted data on multiple AWS instances. See :doc:`aws`.
 
 .. toctree::
-    :maxdepth: 2
+    :maxdepth: 3
     :caption: Package Reference
 
-    CrypTensor <cryptensor>
-    MPC <mpc>
-    Gradients <gradients>
-    NN <nn>
+    crypten.CrypTensor <cryptensor>
+    crypten.MPCTensor <mpctensor>
+    crypten.AutogradCrypTensor <autogradcryptensor>
+    crypten.nn <nn>
 
 Indices and tables
 ==================
@@ -112,4 +112,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-

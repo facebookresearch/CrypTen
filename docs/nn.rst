@@ -1,5 +1,6 @@
-NN
+nn
 ==
+
 ``Crypten.nn`` provides modules and classes for defining and training neural networks similar to ``torch.nn``.
 
 In CrypTen, encrypting a PyTorch network is straightforward:
