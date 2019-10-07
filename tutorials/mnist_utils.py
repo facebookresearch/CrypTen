@@ -29,7 +29,7 @@ def _get_norm_mnist(dir, reduced=None, binary=False):
     mnist_test_norm = transforms.functional.normalize(
         mnist_test.data.float(), tensor_mean, tensor_std
     )
-    
+
     # change all nonzero labels to 1 if binary classification required
     if binary:
         mnist_train.targets[mnist_train.targets != 0] = 1
@@ -45,8 +45,9 @@ def _get_norm_mnist(dir, reduced=None, binary=False):
     return mnist_norm, mnist_labels
 
 
-def split_features(split=0.5, dir="/tmp", party1="alice", party2="bob", 
-                   reduced=None, binary=False):
+def split_features(
+    split=0.5, dir="/tmp", party1="alice", party2="bob", reduced=None, binary=False
+):
     """Splits features between Party 1 and Party 2"""
     mnist_norm, mnist_labels = _get_norm_mnist(dir, reduced, binary)
     mnist_train_norm, mnist_test_norm = mnist_norm
@@ -68,8 +69,9 @@ def split_features(split=0.5, dir="/tmp", party1="alice", party2="bob",
     torch.save(mnist_test_labels, os.path.join(dir, "test_labels.pth"))
 
 
-def split_observations(split=0.5, dir="/tmp", party1="alice", party2="bob", 
-                       reduced=None, binary=False):
+def split_observations(
+    split=0.5, dir="/tmp", party1="alice", party2="bob", reduced=None, binary=False
+):
     """Splits observations between Party 1 and Party 2"""
     mnist_norm, mnist_labels = _get_norm_mnist(dir, reduced, binary)
     mnist_train_norm, mnist_test_norm = mnist_norm
@@ -100,8 +102,9 @@ def split_observations(split=0.5, dir="/tmp", party1="alice", party2="bob",
     torch.save(party2_test_labels, os.path.join(dir, party2 + "_test_labels.pth"))
 
 
-def split_features_v_labels(dir="/tmp", party1="alice", party2="bob", 
-                            reduced=None, binary=False):
+def split_features_v_labels(
+    dir="/tmp", party1="alice", party2="bob", reduced=None, binary=False
+):
     """Gives Party 1 features and Party 2 labels"""
     mnist_norm, mnist_labels = _get_norm_mnist(dir, reduced, binary)
     mnist_train_norm, mnist_test_norm = mnist_norm
@@ -113,8 +116,9 @@ def split_features_v_labels(dir="/tmp", party1="alice", party2="bob",
     torch.save(mnist_test_labels, os.path.join(dir, party2 + "_test_labels.pth"))
 
 
-def split_train_v_test(dir="/tmp", party1="alice", party2="bob", 
-                       reduced=None, binary=False):
+def split_train_v_test(
+    dir="/tmp", party1="alice", party2="bob", reduced=None, binary=False
+):
     """Gives Party 1 training data and Party 2 the test data """
     mnist_norm, mnist_labels = _get_norm_mnist(dir, reduced, binary)
     mnist_train_norm, mnist_test_norm = mnist_norm
@@ -161,18 +165,18 @@ def main():
         )
     elif args.option == "features_v_labels":
         split_features_v_labels(
-            dir=args.dest, 
-            party1=args.name_party1, 
-            party2=args.name_party2, 
-            reduced=args.reduced, 
+            dir=args.dest,
+            party1=args.name_party1,
+            party2=args.name_party2,
+            reduced=args.reduced,
             binary=args.binary,
         )
     elif args.option == "train_v_test":
         split_train_v_test(
-            dir=args.dest, 
-            party1=args.name_party1, 
-            party2=args.name_party2, 
-            reduced=args.reduced, 
+            dir=args.dest,
+            party1=args.name_party1,
+            party2=args.name_party2,
+            reduced=args.reduced,
             binary=args.binary,
         )
     else:
