@@ -226,6 +226,225 @@ class CrypTensor(object):
         # Note: Matching PyTorch convention, which is not in-place here.
         return self.matmul(tensor)
 
+    def sqrt(self):
+        """
+        Computes the square root of the input.
+        """
+        raise NotImplementedError("sqrt is not implemented")
+
+    def square(self):
+        """
+        Computes the square of the input.
+        """
+        raise NotImplementedError("square is not implemented")
+
+    def norm(self, p="fro", dim=None, keepdim=False):
+        """
+        Computes the p-norm of the input tensor (or along a dimension)
+
+        Args:
+            p (str, int, or float): specifying type of p-norm
+            dim (int): optional dimension along which to compute p-norm
+            keepdim (bool): whether the output tensor has `dim` retained or not
+        """
+        raise NotImplementedError("norm is not implemented")
+
+    def mean(self, dim=None):
+        """Compute mean."""
+        raise NotImplementedError("mean is not implemented")
+
+    def var(self, dim=None):
+        """Compute variance."""
+        raise NotImplementedError("var is not implemented")
+
+    def relu(self):
+        """Compute a Rectified Linear function on the input tensor."""
+        raise NotImplementedError("relu is not implemented")
+
+    def argmax(self, dim=None, keepdim=False, one_hot=False):
+        """Returns the indices of the maximum value of all elements in the
+        `input` tensor.
+
+        If multiple values are equal to the maximum, ties will be broken
+        (randomly). Note that this deviates from PyTorch's implementation since
+        PyTorch does not break ties randomly, but rather returns the lowest
+        index of a maximal value.
+
+        If `keepdim` is `True`, the output tensor are of the same size as
+        `input` except in the dimension `dim` where they are of size 1.
+        Otherwise, `dim` is squeezed, resulting in the output tensors having 1
+        fewer dimension than `input`.
+
+        If `one_hot` is `True`, the output tensor will have the same size as the
+        input and contain elements of value `1` on argmax indices (with random
+        tiebreaking) and value `0` on other indices.
+        """
+        raise NotImplementedError("argmax is not implemented")
+
+    def argmin(self, dim=None, keepdim=False, one_hot=False):
+        """Returns the indices of the minimum value of all elements in the
+        `input` tensor.
+
+        If multiple values are equal to the minimum, ties will be broken
+        (randomly). Note that this deviates from PyTorch's implementation since
+        PyTorch does not break ties randomly, but rather returns the lowest
+        index of a minimal value.
+
+        If `keepdim` is `True`, the output tensor are of the same size as
+        `input` except in the dimension `dim` where they are of size 1.
+        Otherwise, `dim` is squeezed, resulting in the output tensors having 1
+        fewer dimension than `input`.
+
+        If `one_hot` is `True`, the output tensor will have the same size as the
+        input and contain elements of value `1` on argmin indices (with random
+        tiebreaking) and value `0` on other indices.
+        """
+        raise NotImplementedError("argmin is not implemented")
+
+    def max(self, dim=None, keepdim=False, one_hot=False):
+        """Returns the maximum value of all elements in the input tensor.
+
+        If `dim` is specified, returns a tuple `(values, indices)` where
+        `values` is the maximum value of each row of the `input` tensor in the
+        given dimension `dim`. And `indices` ther result of an argmax call with
+        the same keyword arguments (`dim`, `keepdim`, and `one_hot`)
+
+        If `keepdim` is `True`, the output tensors are of the same size as
+        `input` except in the dimension `dim` where they are of size 1.
+        Otherwise, `dim` is squeezed, resulting in the output tensors having 1
+        fewer dimension than `input`.
+        """
+        raise NotImplementedError("max is not implemented")
+
+    def min(self, dim=None, keepdim=False, one_hot=False):
+        """Returns the minimum value of all elements in the input tensor.
+
+        If `dim` is sepcified, returns a tuple `(values, indices)` where
+        `values` is the minimum value of each row of the `input` tensor in the
+        given dimension `dim`. And `indices` ther result of an argmin call with
+        the same keyword arguments (`dim`, `keepdim`, and `one_hot`)
+
+        If `keepdim` is `True`, the output tensors are of the same size as
+        `input` except in the dimension `dim` where they are of size 1.
+        Otherwise, `dim` is squeezed, resulting in the output tensors having 1
+        fewer dimension than `input`.
+        """
+        raise NotImplementedError("min is not implemented")
+
+    def batchnorm(
+        self,
+        ctx,
+        weight,
+        bias,
+        running_mean=None,
+        running_var=None,
+        training=False,
+        eps=1e-05,
+        momentum=0.1,
+    ):
+        """Batch normalization."""
+        raise NotImplementedError("batchnorm is not implemented")
+
+    def conv2d(self, *args, **kwargs):
+        """2D convolution."""
+        raise NotImplementedError("conv2d is not implemented")
+
+    def max_pool2d(self, kernel_size, padding=None, stride=None, return_indices=False):
+        """Applies a 2D max pooling over an input signal composed of several
+        input planes.
+
+        If `return_indices` is `True`, this will return the one-hot max indices
+        along with the outputs.
+
+        These indices will be returned as with dimensions equal to the
+        max_pool2d output dimensions plus the kernel dimensions. This is because
+        each returned index will be a one-hot kernel for each element of the
+        output that corresponds to the maximal block element of the corresponding
+        input block.
+
+        An max pool with output tensor of size (i, j, k, l) with kernel size k
+        and will return an index tensor of size (i, j, k, l, k, k)
+        [ 0,  1,  2,  3]                    [[0, 0], [0, 0]]
+        [ 4,  5,  6,  7]         ->         [[0, 1], [0, 1]]
+        [ 8,  9, 10, 11]         ->         [[0, 0], [0, 0]]
+        [12, 13, 14, 15]                    [[0, 1], [0, 1]]
+
+        Note: This deviates from PyTorch's implementation since PyTorch returns
+        the index values for each element rather than a one-hot kernel. This
+        deviation is useful for implementing _max_pool2d_backward later.
+        """
+        raise NotImplementedError("max_pool2d is not implemented")
+
+    def _max_pool2d_backward(
+        self, indices, kernel_size, padding=None, stride=None, output_size=None
+    ):
+        """Implements the backwards for a `max_pool2d` call where `self` is
+        the output gradients and `indices` is the 2nd result of a `max_pool2d`
+        call where `return_indices` is True.
+
+        The output of this function back-propagates the gradient (from `self`)
+        to be computed with respect to the input parameters of the `max_pool2d`
+        call.
+
+        `max_pool2d` can map several input sizes to the same output sizes. Hence,
+        the inversion process can get ambiguous. To accommodate this, you can
+        provide the needed output size as an additional argument `output_size`.
+        Otherwise, this will return a tensor the minimal size that will produce
+        the correct mapping.
+        """
+        raise NotImplementedError("_max_pool2d_backward is not implemented")
+
+    def where(self, condition, y):
+        """Selects elements from self or y based on condition
+
+        Args:
+            condition (torch.bool or MPCTensor): when True yield self,
+                otherwise yield y
+            y (torch.tensor or CrypTensor): values selected at indices
+                where condition is False.
+
+        Returns: CrypTensor or torch.tensor
+        """
+        raise NotImplementedError("where is not implemented")
+
+    def sigmoid(self, reciprocal_method="log"):
+        """Computes the sigmoid function on the input value
+                sigmoid(x) = (1 + exp(-x))^{-1}
+        """
+        raise NotImplementedError("sigmoid is not implemented")
+
+    def tanh(self, reciprocal_method="log"):
+        """Computes tanh from the sigmoid function:
+            tanh(x) = 2 * sigmoid(2 * x) - 1
+        """
+        raise NotImplementedError("tanh is not implemented")
+
+    def softmax(self, dim, **kwargs):
+        """Compute the softmax of a tensor's elements along a given dimension
+        """
+        raise NotImplementedError("softmax is not implemented")
+
+    def cos(self):
+        """Computes the cosine of the input."""
+        raise NotImplementedError("cos is not implemented")
+
+    def sin(self):
+        """Computes the sine of the input."""
+        raise NotImplementedError("sin is not implemented")
+
+    # Approximations:
+    def exp(self):
+        """Computes exponential function on the tensor."""
+        raise NotImplementedError("exp is not implemented")
+
+    def log(self):
+        """Computes the natural logarithm of the tensor."""
+        raise NotImplementedError("log is not implemented")
+
+    def reciprocal(self):
+        """Computes the reciprocal of the tensor."""
+        raise NotImplementedError("reciprocal is not implemented")
+
     def eq(self, tensor):
         """Element-wise equality
 
@@ -353,15 +572,71 @@ class CrypTensor(object):
         """Perform (weighted) inner product with plain or cipher text."""
         raise NotImplementedError("dot is not implemented")
 
+    def ger(self, tensor):
+        """Compute outer product."""
+        raise NotImplementedError("ger is not implemented")
+
     def index_add(self, dim, index, tensor):
-        """Perform out-of-place index_add: Accumulate the elements of tensor into
-        self tensor by adding to the indices in the order given in index. """
+        """Performs out-of-place index_add: Accumulate the elements of tensor into the
+        self tensor by adding to the indices in the order given in index.
+
+        Example: if `dim == 0` and `index[i] == j`,
+            then the ith row of tensor is added to the jth row of self
+
+        Args:
+            dim (int): dimension along which to index
+            index (LongTensor): indices of tensor to select from
+            tensor (MPCTensor or torch.Tensor): containing values to add
+        """
         raise NotImplementedError("index_add is not implemented")
 
     def index_add_(self, dim, index, tensor):
-        """Perform in-place index_add: Accumulate the elements of tensor into the
-        self tensor by adding to the indices in the order given in index. """
+        """Performs in-place index_add: Accumulate the elements of tensor into the
+        self tensor by adding to the indices in the order given in index.
+
+        Example: if `dim == 0` and `index[i] == j`,
+            then the ith row of tensor is added to the jth row of self
+
+        Args:
+            dim (int): dimension along which to index
+            index (LongTensor): indices of tensor to select from
+            tensor (MPCTensor or torch.Tensor): containing values to add
+        """
         raise NotImplementedError("index_add_ is not implemented")
+
+    def scatter_add(self, dim, index, other):
+        """Adds all values from the tensor other into self at the indices
+        specified in the index tensor. This an out-of-place version of
+        :meth:`scatter_`. For each value in other, it is added to an
+        index in self which is specified by its index in other
+        for `dimension != dim` and by the corresponding
+        value in index for `dimension = dim`.
+
+        Args:
+            dim (int): the axis along which to index
+            index (LongTensor): the indices of elements to scatter and add,
+                can be either empty or the same size of src.
+                When empty, the operation returns identity.
+            other (Tensor): the source elements to scatter and add
+        """
+        raise NotImplementedError("scatter_add is not implemented")
+
+    def scatter_add_(self, dim, index, other):
+        """Adds all values from the tensor other into self at the indices
+        specified in the index tensor. For
+        each value in other, it is added to an index in self which is specified
+        by its index in other for `dimension != dim` and by the corresponding
+        value in index for `dimension = dim`.
+
+
+        Args:
+            dim (int): the axis along which to index
+            index (LongTensor): the indices of elements to scatter and add,
+                can be either empty or the same size of src.
+                When empty, the operation returns identity.
+            other (Tensor): the source elements to scatter and add
+        """
+        raise NotImplementedError("scatter_add_ is not implemented")
 
     # Regular functions:
     def clone(self):
@@ -566,6 +841,10 @@ class CrypTensor(object):
             dims (a list or tuple): axis to flip on
         """
         raise NotImplementedError("flip is not implemented")
+
+    def pad(self, pad, mode="constant", value=0):
+        """Pads tensor with constant."""
+        raise NotImplementedError("pad is not implemented")
 
     def trace(self):
         """
