@@ -910,6 +910,20 @@ class MPCTensor(CrypTensor):
         result = self.clone()
         return result.scatter_(dim, index, src)
 
+    def unbind(self, dim=0):
+        shares = self.share.unbind(dim=dim)
+        results = tuple(MPCTensor(0, ptype=self.ptype) for _ in range(len(shares)))
+        for i in range(len(shares)):
+            results[i].share = shares[i]
+        return results
+
+    def split(self, split_size, dim=0):
+        shares = self.share.split(split_size, dim=dim)
+        results = tuple(MPCTensor(0, ptype=self.ptype) for _ in range(len(shares)))
+        for i in range(len(shares)):
+            results[i].share = shares[i]
+        return results
+
 
 OOP_UNARY_FUNCTIONS = {
     "avg_pool2d": Ptype.arithmetic,
@@ -1050,7 +1064,6 @@ REGULAR_FUNCTIONS = [
     "cumsum",
     "reshape",
     "gather",
-    "unbind",
 ]
 
 

@@ -13,14 +13,13 @@ import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 from test.multithread_test_case import MultiThreadTestCase
 
-import crypten
 import torch
 import torch.nn.functional as F
 from crypten.common.tensor_types import is_float_tensor
 from crypten.mpc import MPCTensor, ptype
 
 
-class TestMPC:
+class TestMPC(MultiProcessTestCase):
     """
         This class tests all functions of MPCTensor.
     """
@@ -44,6 +43,12 @@ class TestMPC:
             logging.info(msg)
             logging.info("Result = %s;\nreference = %s" % (tensor, reference))
         self.assertTrue(test_passed, msg=msg)
+
+    def _check_tuple(self, encrypted_tuple, reference, msg, tolerance=None):
+        self.assertTrue(isinstance(encrypted_tuple, tuple))
+        self.assertEqual(len(encrypted_tuple), len(reference))
+        for i in range(len(reference)):
+            self._check(encrypted_tuple[i], reference[i], msg, tolerance=tolerance)
 
     def test_repr(self):
         a = get_random_test_tensor(size=(1,))
@@ -1516,22 +1521,71 @@ class TestMPC:
                 f"batchnorm failed with train True and dim {dim}",
             )
 
+    def test_unbind(self):
+        """Tests unbind"""
+        sizes = [
+            (1,),
+            (5,),
+            (1, 1),
+            (1, 5),
+            (5, 5),
+            (1, 1, 1),
+            (5, 5, 5),
+            (1, 1, 1, 1),
+            (5, 5, 5, 5),
+        ]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            encrypted = MPCTensor(tensor)
+            for dim in range(tensor.dim()):
+                print(dim)
+                reference = tensor.unbind(dim)
+                encrypted_out = encrypted.unbind(dim)
+
+                self._check_tuple(encrypted_out, reference, "unbind failed")
+
+    def test_split(self):
+        """Tests split"""
+        sizes = [
+            (1,),
+            (5,),
+            (1, 1),
+            (1, 5),
+            (5, 5),
+            (1, 1, 1),
+            (5, 5, 5),
+            (1, 1, 1, 1),
+            (5, 5, 5, 5),
+        ]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            encrypted = MPCTensor(tensor)
+            for dim in range(tensor.dim()):
+                # Get random split
+                split = get_random_test_tensor(size=(), max_value=tensor.size(dim))
+                split = split.abs().clamp(0, tensor.size(dim) - 1)
+                split = split.item()
+
+                # Test int split
+                int_split = 1 if split == 0 else split
+                reference = tensor.split(int_split, dim=dim)
+                encrypted_out = encrypted.split(int_split, dim=dim)
+                self._check_tuple(encrypted_out, reference, "split failed")
+
+                # Test list split
+                split = [split, tensor.size(dim) - split]
+                reference = tensor.split(split, dim=dim)
+                encrypted_out = encrypted.split(split, dim=dim)
+                self._check_tuple(encrypted_out, reference, "split failed")
+
     # TODO: Write the following unit tests
     @unittest.skip("Test not implemented")
     def test_gather_scatter(self):
         pass
 
 
-class TestMPCThreads(TestMPC, MultiThreadTestCase):
-    pass
-
-
-class TestMPCProcess(TestMPC, MultiProcessTestCase):
-    pass
-
-
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)
 if __name__ == "__main__":
-    TestMPCProcess.benchmarks_enabled = True
+    TestMPC.benchmarks_enabled = True
     unittest.main()

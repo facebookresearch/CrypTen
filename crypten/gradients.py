@@ -133,7 +133,6 @@ class AutogradFlip(AutogradFunction):
         return grad_output.flip(dims)
 
 
-"""
 @register_function("clone")
 class AutogradClone(AutogradFunction):
     @staticmethod
@@ -143,7 +142,32 @@ class AutogradClone(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         return grad_output.clone()
-"""
+
+
+@register_function("cat")
+class AutogradCat(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input, dim=0):
+        ctx.save_multiple_for_backward((dim, [t.size(dim) for t in input]))
+        return crypten.cat(input, dim=dim)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        dim, split_sections = ctx.saved_tensors
+        return grad_output.split(split_sections, dim=dim)
+
+
+@register_function("stack")
+class AutogradStack(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input, dim=0):
+        ctx.save_for_backward(dim)
+        return crypten.stack(input, dim=dim)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        dim, = ctx.saved_tensors
+        return grad_output.unbind(dim=dim)
 
 
 @register_function("view")

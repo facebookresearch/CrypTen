@@ -255,6 +255,9 @@ class BinarySharedTensor(CrypTensor):
 
     def get_plain_text(self):
         """Decrypt the tensor"""
+        # Edge case where share becomes 0 sized (e.g. result of split)
+        if self.nelement() < 1:
+            return torch.empty(self.share.size())
         return self.encoder.decode(self.reveal())
 
     def where(self, condition, y):
@@ -344,6 +347,7 @@ REGULAR_FUNCTIONS = [
     "gather",
     "scatter",
     "take",
+    "split",
 ]
 
 

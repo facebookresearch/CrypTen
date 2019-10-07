@@ -304,8 +304,38 @@ def where(condition, input, other):
     return input * condition + other * (1 - condition)
 
 
+def cat(tensors, dim=0):
+    assert isinstance(tensors, list), "input to cat must be a list"
+    if len(tensors) == 1:
+        return tensors[0]
+
+    from .autograd_cryptensor import AutogradCrypTensor
+
+    if any(isinstance(t, AutogradCrypTensor) for t in tensors):
+        if not isinstance(tensors[0], AutogradCrypTensor):
+            tensors[0] = AutogradCrypTensor(tensors[0], requires_grad=False)
+        return tensors[0].cat(*tensors[1:], dim=dim)
+    else:
+        return get_default_backend().cat(tensors, dim=dim)
+
+
+def stack(tensors, dim=0):
+    assert isinstance(tensors, list), "input to stack must be a list"
+    if len(tensors) == 1:
+        return tensors[0].unsqueeze(dim)
+
+    from .autograd_cryptensor import AutogradCrypTensor
+
+    if any(isinstance(t, AutogradCrypTensor) for t in tensors):
+        if not isinstance(tensors[0], AutogradCrypTensor):
+            tensors[0] = AutogradCrypTensor(tensors[0], requires_grad=False)
+        return tensors[0].stack(*tensors[1:], dim=dim)
+    else:
+        return get_default_backend().stack(tensors, dim=dim)
+
+
 # Top level tensor functions
-__PASSTHROUGH_FUNCTIONS = ["bernoulli", "cat", "rand", "randperm", "stack"]
+__PASSTHROUGH_FUNCTIONS = ["bernoulli", "rand", "randperm"]
 
 
 def __add_top_level_function(func_name):

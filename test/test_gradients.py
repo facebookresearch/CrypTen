@@ -383,7 +383,6 @@ class TestGradients(MultiProcessTestCase):
                 for value in [0, 1, 10]:
                     self._check_forward_backward("pad", tensor, pad, value=value)
 
-    @unittest.skip("clone not yet implemented")
     def test_clone(self):
         """Tests shallow_copy and clone of encrypted tensors."""
         sizes = [(5,), (1, 5), (5, 10, 15)]
@@ -391,6 +390,48 @@ class TestGradients(MultiProcessTestCase):
             tensor = get_random_test_tensor(size=size, is_float=True)
             self._check_forward_backward("clone", tensor)
 
+    def test_cat_stack(self):
+        for func in ["cat", "stack"]:
+            for dimensions in range(1, 5):
+                size = [5] * dimensions
+                for num_tensors in range(1, 5):
+                    for dim in range(dimensions):
+                        tensors = [
+                            get_random_test_tensor(size=size, is_float=True)
+                            for _ in range(num_tensors)
+                        ]
+                        encrypted_tensors = [
+                            AutogradCrypTensor(crypten.cryptensor(t)) for t in tensors
+                        ]
+                        for i in range(len(tensors)):
+                            tensors[i].grad = None
+                            tensors[i].requires_grad = True
+                            encrypted_tensors[i].grad = None
+                            encrypted_tensors[i].requires_grad = True
+
+                        # Forward
+                        reference = getattr(torch, func)(tensors, dim=dim)
+                        encrypted_out = getattr(crypten, func)(
+                            encrypted_tensors, dim=dim
+                        )
+                        self._check(encrypted_out, reference, f"{func} forward failed")
+
+                        # Backward
+                        grad_output = get_random_test_tensor(
+                            size=reference.size(), is_float=True
+                        )
+                        encrypted_grad_output = crypten.cryptensor(grad_output)
+
+                        reference.backward(grad_output)
+                        encrypted_out.backward(encrypted_grad_output)
+                        for i in range(len(tensors)):
+                            self._check(
+                                encrypted_tensors[i].grad,
+                                tensors[i].grad,
+                                f"{func} backward failed",
+                            )
+
+    '''
     def test_var(self):
         """Tests computing variances of encrypted tensors."""
         tensor = get_random_test_tensor(size=(5, 10, 15), is_float=True)
@@ -912,6 +953,7 @@ class TestGradients(MultiProcessTestCase):
     @unittest.skip("Test not implemented")
     def test_gather_scatter(self):
         pass
+    '''
 
 
 # This code only runs when executing the file outside the test harness (e.g.

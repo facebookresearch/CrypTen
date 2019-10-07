@@ -789,6 +789,10 @@ class TestArithmetic(MultiProcessTestCase):
     def test_gather_scatter(self):
         pass
 
+    @unittest.skip("Test not implemented")
+    def test_split(self):
+        pass
+
 
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target test_mpc_benchmark)
