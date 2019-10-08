@@ -5,16 +5,16 @@
 --------------------------------------------------------------------------------
 
 CrypTen is a framework for Privacy Preserving Machine Learning built on PyTorch.
-Its goal is make secure computing techniques accessible to Machine Learning practitioners.
+Its goal is to make secure computing techniques accessible to Machine Learning practitioners.
 It currently implements [Secure Multiparty Computation](https://en.wikipedia.org/wiki/Secure_multi-party_computation)
 as its secure computing backend and offers three main benefits to ML researchers:
 
 1. It is machine learning first. The framework presents the protocols via a `CrypTensor`
-   object that looks and feels exactly like a PyTorch tensor. This allows the user to use
+   object that looks and feels exactly like a PyTorch `Tensor`. This allows the user to use
    automatic differentiation and neural network modules akin to those in PyTorch.
 
 2. CrypTen is library-based. It implements a tensor library just as PyTorch does.
-   This makes it easier for practitioners to debug, experiment, and explore ML models.
+   This makes it easier for practitioners to debug, experiment on, and explore ML models.
 
 3. The framework is built with real-world challenges in mind. CrypTen does not scale back or
    oversimplify the implementation of the secure protocols.
@@ -37,13 +37,14 @@ sum_xy = x_enc + y_enc # add encrypted tensors
 sum_xy_dec = sum_xy.get_plain_text() # decrypt sum
 ```
 
-It is currently not production ready and it's main use is as a research framework.
+It is currently not production ready and its main use is as a research framework.
 
 ## Installing CrypTen
-CrypTen currently runs on Linux and Mac. It also needs a PyTorch nightly build.
-Windows is not supported. We also do not have any GPU support currently
 
-Install Anacaconda 2019.07 or later and then do the following
+CrypTen currently runs on Linux and Mac. It also needs a PyTorch nightly build.
+Windows is not supported. We also do not currently support computation on GPUs.
+
+Install Anaconda 2019.07 or later and then do the following:
 
 _For Linux_
 ```
@@ -65,6 +66,7 @@ git clone https://github.com/facebookresearch/CrypTen.git
 cd CrypTen
 pip install -e .
 ```
+
 If you want to run the examples in the `examples` directory, you should also do the following
 ```
 pip install -r requirements.examples.txt
@@ -77,19 +79,20 @@ We provide examples covering a range of models in the `examples` directory
 1. The linear SVM example, `mpc_linear_svm`, generates random data and trains a
   SVM classifier on encrypted data.  On a single node, you can run it as follows
 2. The LeNet example, `mpc_cifar`, trains an adaptation of LeNet on CIFAR in
-  cleartext and encrypts the model and data for inference
+  cleartext and encrypts the model and data for inference.
 3. The TFE benchmark example, `tfe_benchmarks`, trains three different network
   architectures on MNIST in cleartext, and encrypts the trained model and data
-  for inference
+  for inference.
 4. The bandits example, `bandits`, trains a contextual bandits model on
-  encrypted data (MNIST)
-5. The imagenet example, `mpc_imagenet`, does inference on pretrained model from
+  encrypted data (MNIST).
+5. The imagenet example, `mpc_imagenet`, performs inference on pretrained
+  models from `torchvision`.
 
-For examples that train in the cleartext, we also provide pre-trained models in
-cleartext in `model` subdirectory of each example subdirectory.
+For examples that train in cleartext, we also provide pre-trained models in
+cleartext in the `model` subdirectory of each example subdirectory.
 
 You can check all example specific command line options by doing the following;
-shown here for `tfe_benchmarks`
+shown here for `tfe_benchmarks`:
 
 ```
     $ python3 examples/tfe_benchmarks/launcher.py --help
@@ -102,7 +105,7 @@ CrypTen works. These are presented as Jupyter notebooks so please install
 the following in your conda environment
 
 ```
-conda install jupyter
+conda install ipython jupyter
 pip install -r requirements.examples.txt
 ```
 
@@ -112,22 +115,22 @@ pip install -r requirements.examples.txt
 2. `Tutorial_1_Basics_of_CrypTen_Tensors.ipynb` - introduces `CrypTensor`, CrypTen's
    encrypted tensor object, and shows how to use it to do various operations on
    this object.
-3. `Tutorial_2_Inside_CrypTensors.ipynb` - delves deeper into `CrypTensor` to show
+3. `Tutorial_2_Inside_CrypTensors.ipynb` – delves deeper into `CrypTensor` to show
    the inner workings; specifically how `CrypTensor` uses `MPCTensor` for its 
    backend and the two different kind of _sharings_, arithmetic and binary, are
    used for two different kind of functions. It also shows CrypTen's
-   [MPI](https://en.wikipedia.org/wiki/Message_Passing_Interface) inspired
+   [MPI](https://en.wikipedia.org/wiki/Message_Passing_Interface)-inspired
    programming model.
 4. `Tutorial_3_Introduction_to_Access_Control.ipynb` - shows how to train a linear
    model using CrypTen and shows various scenarios of data labeling, feature
    aggregation, dataset augmentation and model hiding where this is applicable.
-5. `Tutorial_4_Classification_with_Encrypted_Neural_Networks.ipynb` - shows how
+5. `Tutorial_4_Classification_with_Encrypted_Neural_Networks.ipynb` – shows how
    CrypTen can load a pre-trained PyTorch model, encrypt it and then do inference
    on encrypted data.
-6. `Tutorial_5_Under_the_hood_of_Encrypted_Networks.ipynb` - looks how CrypTen
+6. `Tutorial_5_Under_the_hood_of_Encrypted_Networks.ipynb` - examines how CrypTen
    loads PyTorch models, how they are encrypted and how data moves through a multilayer
    network.
-7. `Tutorial_6_CrypTen_on_AWS_instances.ipynb` - shows to use `scrips/aws_launcher.py`
+7. `Tutorial_6_CrypTen_on_AWS_instances.ipynb` - shows how to use `scrips/aws_launcher.py`
    to launch our examples on AWS. It can also work with your code written in CrypTen.
 8. `Tutorial_7_Training_an_Encrypted_Neural_Network.ipynb` - introduces `AutogradCrypTensor`,
    a wrapper that adds automatic differentiation functionality to `CrypTensor`. This
