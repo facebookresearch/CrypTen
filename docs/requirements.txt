@@ -1,5 +1,5 @@
 onnx
-torch>=1.2.0+cpu
+torch==1.2.0+cpu
 tensorboard
 future
 sphinx
