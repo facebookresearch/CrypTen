@@ -19,7 +19,7 @@ The results are left on the AWS instances. Log messages will be printed on your 
 
 To launch the `mpc_linear_svm` example,
 
-.. code-block::
+.. code-block:: bash
 
     python3 [PATH_TO_CRYPTEN]/CrypTen/aws_launcher.py \
     --ssh_key_file [SSH_KEY_FILE] --instances=[AWS_INSTANCE1, AWS_INSTANCE2...] \
