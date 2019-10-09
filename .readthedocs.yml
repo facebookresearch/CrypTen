@@ -6,9 +6,6 @@ sphinx:
 build:
   image: latest
 
-formats:
-  - html
-
 python:
   version: 3.7
   install:
