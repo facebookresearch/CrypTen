@@ -1,0 +1,19 @@
+{
+  "scripts": {
+    "examples": "docusaurus-examples",
+    "start": "docusaurus-start",
+    "build": "docusaurus-build",
+    "publish-gh-pages": "docusaurus-publish",
+    "write-translations": "docusaurus-write-translations",
+    "version": "docusaurus-version",
+    "rename-version": "docusaurus-rename-version"
+  },
+  "devDependencies": {
+    "docusaurus": "^1.11.1"
+  },
+  "dependencies": {
+    "package.json": "^2.0.1"
+  },
+  "private": true,
+  "license": "MIT License"
+}

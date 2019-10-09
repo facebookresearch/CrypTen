@@ -1,0 +1,81 @@
+/**
+ * Copyright (c) 2017-present, Facebook, Inc.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+/* your custom css */
+
+@media only screen and (min-device-width: 360px) and (max-device-width: 736px) {
+}
+
+@media only screen and (min-width: 1024px) {
+}
+
+@media only screen and (max-width: 1023px) {
+}
+
+@media only screen and (min-width: 1400px) {
+}
+
+@media only screen and (min-width: 1500px) {
+}
+
+@media only screen and (min-width: 736px) {
+  .twoByGridBlock {
+    margin: 0px;
+  }
+}
+.sitemap {
+  padding-bottom: 0px;
+}
+
+
+.blockElement{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: justify;
+}
+
+h2 {
+  margin-top: 0em;
+}
+
+.imageAlignBottom .blockImage {
+  margin-bottom: 0px;
+}
+
+.ribbon {
+  position: fixed; top: 50px; right: 0px; border: 0; z-index: 10;
+}
+
+.darkBackground code  {
+  background-color: #f7f7f7;
+  color: black;
+}
+
+.darkBackground a {
+    color: lightsteelblue;
+}
+.fixedHeaderContainer header .headerTitleWithLogo {
+  font-size: 0pt;
+}
+
+#tutorials {
+  background-color: #808080;
+  color: #fff;
+}
+
+#tutorials a {
+  color: lightsteelblue;
+}
+
+#tutorials p {
+  margin-top: 0;
+}
+
+#try {
+  padding-bottom: 30px;
+}

@@ -1,0 +1,6 @@
+onnx
+torch>=1.2.0+cpu
+tensorboard
+future
+sphinx
+sphinx_rtd_theme
