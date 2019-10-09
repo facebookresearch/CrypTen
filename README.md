@@ -139,7 +139,7 @@ pip install -r requirements.examples.txt
    
 
 ## Documentation
-Our docs are coming to RTD soon!
+CrypTen is documented [here](https://crypten.readthedocs.io/en/latest/)
 
 ## Join the CrypTen community
 Please contact [us](mailto:ssengupta@fb.com) to join the CrypTen community on [Slack](https://cryptensor.slack.com)
