@@ -17,9 +17,9 @@ To create an ``AutogradCrypTensor``,
    # Create an AutogradCrypTensor from the CrypTensor
    x_enc_auto = AutogradCrypTensor(x_enc)
 
-For an example of how to carry out backpropagation
-using ``AutogradCrypTensor``, please see Tutorial 7 
-(i.e., tutorials/Tutorial_7_Training_an_Encrypted_Neural_Network.ipynb)
+For an example of backpropagation using ``AutogradCrypTensor``, please
+see `Tutorial 7
+<https://github.com/facebookresearch/CrypTen/blob/master/tutorials/Tutorial_7_Training_an_Encrypted_Neural_Network.ipynb>`_.
 
 .. autoclass:: crypten.autograd_cryptensor.AutogradCrypTensor 
    :members: backward, tensor    
