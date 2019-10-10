@@ -28,9 +28,8 @@ import random
 import examples.util
 import torch
 import visdom
-from examples.mnist_utils import process_mnist_files
 from examples.multiprocess_launcher import MultiProcessLauncher
-from examples.util import NoopContextManager
+from examples.util import NoopContextManager, process_mnist_files
 from torchvision.datasets.mnist import MNIST
 
 
