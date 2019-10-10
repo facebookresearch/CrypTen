@@ -22,29 +22,15 @@ Installation on Linux and Mac
 We recommend installing CrypTen in its own ``conda`` environment. Please install
 ``Anaconda Python 3.7`` before doing the following steps
 
-For Linux
+For Linux or Mac
 
 .. code-block:: bash
 
     $ conda create -n crypten-env python=3.7
     $ conda activate crypten-env
-    $ conda install pytorch torchvision cpuonly -c pytorch-nightly
-
-For Mac
-
-.. code-block:: bash
-
-    $ conda create -n crypten-env python=3.7
-    $ conda activate crypten-env
-    $ conda install pytorch torchvision -c pytorch-nightly
-
-For both
-
-.. code-block:: bash
-
+    $ conda install pytorch torchvision -c pytorch
     $ git clone git@github.com:facebookresearch/CrypTen.git
     $ cd CrypTen; pip install -e .
-
 
 To check if your installation is working, you can run the unit tests as follows
 
