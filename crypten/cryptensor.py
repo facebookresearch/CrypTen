@@ -362,9 +362,10 @@ class CrypTensor(object):
         output that corresponds to the maximal block element of the corresponding
         input block.
 
-        A max pool with output tensor of size :math:`(i, j, k, l)` with kernel size :math:`m`
-        and will return an index tensor of size :math:`(i, j, k, l, m, m)`.
-        
+        A max pool with output tensor of size :math:`(i, j, k, l)` with kernel
+        size :math:`m` and will return an index tensor of size
+        :math:`(i, j, k, l, m, m)`.
+
         [ 0,  1,  2,  3]                    [[0, 0], [0, 0]]
         [ 4,  5,  6,  7]         ->         [[0, 1], [0, 1]]
         [ 8,  9, 10, 11]         ->         [[0, 0], [0, 0]]
