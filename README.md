@@ -46,22 +46,11 @@ Windows is not supported. We also do not currently support computation on GPUs.
 
 Install Anaconda 2019.07 or later and then do the following:
 
-_For Linux_
+_For Linux or Mac_
 ```
 conda create -n crypten-env python=3.7
 conda activate crypten-env
-conda install pytorch torchvision cpuonly -c pytorch-nightly
-```
-
-_For Mac_
-```
-conda create -n crypten-env python=3.7
-conda activate crypten-env
-conda install pytorch torchvision -c pytorch-nightly
-```
-
-_For either platform_
-```
+conda install pytorch torchvision -c pytorch
 git clone https://github.com/facebookresearch/CrypTen.git
 cd CrypTen
 pip install -e .
@@ -116,7 +105,7 @@ pip install -r requirements.examples.txt
    encrypted tensor object, and shows how to use it to do various operations on
    this object.
 3. `Tutorial_2_Inside_CrypTensors.ipynb` – delves deeper into `CrypTensor` to show
-   the inner workings; specifically how `CrypTensor` uses `MPCTensor` for its 
+   the inner workings; specifically how `CrypTensor` uses `MPCTensor` for its
    backend and the two different kind of _sharings_, arithmetic and binary, are
    used for two different kind of functions. It also shows CrypTen's
    [MPI](https://en.wikipedia.org/wiki/Message_Passing_Interface)-inspired
@@ -136,7 +125,7 @@ pip install -r requirements.examples.txt
    a wrapper that adds automatic differentiation functionality to `CrypTensor`. This
    allows you to train neural networks in CrypTen. We expect to move this functionality
    into the `CrypTensor` object in a future release.
-   
+
 
 ## Documentation
 CrypTen is documented [here](https://crypten.readthedocs.io/en/latest/)
