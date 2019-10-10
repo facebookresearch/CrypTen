@@ -18,14 +18,21 @@ To create a cryptensor,
     # Encrypt x
     x_enc = crypten.cryptensor(x)
 
-We can decrypt ``x_enc`` by calling ``x_enc.get_plain_text()``.
+We can decrypt ``x_enc`` by calling ``x_enc.get_plain_text()``. 
 
-CrypTensors provide various operations similar to a torch tensors.
+Tensor Operations
+-----------------
+
+``CrypTensors`` provide various operations similar to ``torch`` tensors.
 
 .. automodule:: crypten.cryptensor
     :members:
 
-For loading and saving CrypTensors,
+File I/O Utilities
+------------------
 
-.. autofunction:: crypten.__init__.load
-.. autofunction:: crypten.__init__.save
+CrypTen provides utilities for loading ``CrypTensors`` from files and
+saving ``CrypTensors`` to files. 
+
+.. automodule:: crypten
+    :members: load, save

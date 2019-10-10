@@ -8,8 +8,9 @@ CrypTen implements two kinds of secret-sharing protocols defined by ``ptype``:
 * ``crypten.arithmetic`` for arithmetic secret-sharing
 * ``crypten.binary`` for binary secret-sharing
 
-Arithmetic secret sharing forms the basis for most of the mathematical operations implemented by ``MPCTensor``.
-Similarly, binary secret-sharing allows for the evaluation of logical expressions.
+Arithmetic secret sharing forms the basis for most of the mathematical
+operations implemented by ``MPCTensor``.  Similarly, binary
+secret-sharing allows for the evaluation of logical expressions.
 
 We can use the ``ptype`` attribute to create a ``CrypTensor`` with the appropriate
 secret-sharing protocol. For example:
@@ -24,6 +25,7 @@ secret-sharing protocol. For example:
   y_enc = crypten.cryptensor([1, 2, 1], ptype=crypten.binary)
   print("y_enc internal type:", y_enc.ptype)
 
+
 We also provide helpers to execute secure multi-party computations
 in separate processes (see :ref:`communicator`).
 
@@ -33,6 +35,13 @@ used in our implementation.
 .. _Damgard et al. 2012: https://eprint.iacr.org/2011/535.pdf
 .. _Beaver 1991: https://link.springer.com/chapter/10.1007/3-540-46766-1_34
 
+For examples illustrating arithmetic and binary secret-sharing in
+CrypTen, the ``ptype`` attribute, and the execution of secure
+multi-party computations, please see `Tutorial 2
+<https://github.com/facebookresearch/CrypTen/blob/master/tutorials/Tutorial_2_Inside_CrypTensors.ipynb>`_.
+
+Tensor Operations
+-----------------
 
 .. automodule:: crypten.mpc.mpc
     :members:

@@ -353,17 +353,18 @@ class CrypTensor(object):
         """Applies a 2D max pooling over an input signal composed of several
         input planes.
 
-        If `return_indices` is True, this will return the one-hot max indices
+        If ``return_indices`` is True, this will return the one-hot max indices
         along with the outputs.
 
         These indices will be returned as with dimensions equal to the
-        max_pool2d output dimensions plus the kernel dimensions. This is because
+        ``max_pool2d`` output dimensions plus the kernel dimensions. This is because
         each returned index will be a one-hot kernel for each element of the
         output that corresponds to the maximal block element of the corresponding
         input block.
 
-        An max pool with output tensor of size (i, j, k, l) with kernel size k
-        and will return an index tensor of size (i, j, k, l, k, k)
+        A max pool with output tensor of size :math:`(i, j, k, l)` with kernel size :math:`m`
+        and will return an index tensor of size :math:`(i, j, k, l, m, m)`.
+        
         [ 0,  1,  2,  3]                    [[0, 0], [0, 0]]
         [ 4,  5,  6,  7]         ->         [[0, 1], [0, 1]]
         [ 8,  9, 10, 11]         ->         [[0, 0], [0, 0]]
@@ -371,7 +372,7 @@ class CrypTensor(object):
 
         Note: This deviates from PyTorch's implementation since PyTorch returns
         the index values for each element rather than a one-hot kernel. This
-        deviation is useful for implementing _max_pool2d_backward later.
+        deviation is useful for implementing ``_max_pool2d_backward`` later.
         """
         raise NotImplementedError("max_pool2d is not implemented")
 
