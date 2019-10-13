@@ -21,7 +21,7 @@ as its secure computing backend and offers three main benefits to ML researchers
 
 Here is a bit of CrypTen code that encrypts and decrypts tensors and adds them
 
-```
+```python
 import torch
 import crypten
 
@@ -47,7 +47,7 @@ Windows is not supported. We also do not currently support computation on GPUs.
 Install Anaconda 2019.07 or later and then do the following:
 
 _For Linux or Mac_
-```
+```bash
 conda create -n crypten-env python=3.7
 conda activate crypten-env
 conda install pytorch torchvision -c pytorch
@@ -57,7 +57,7 @@ pip install -e .
 ```
 
 If you want to run the examples in the `examples` directory, you should also do the following
-```
+```bash
 pip install -r requirements.examples.txt
 ```
 
@@ -83,7 +83,7 @@ cleartext in the `model` subdirectory of each example subdirectory.
 You can check all example specific command line options by doing the following;
 shown here for `tfe_benchmarks`:
 
-```
+```bash
     $ python3 examples/tfe_benchmarks/launcher.py --help
 ```
 
@@ -93,7 +93,7 @@ We have a set of tutorials in the `tutorials` directory to show how
 CrypTen works. These are presented as Jupyter notebooks so please install
 the following in your conda environment
 
-```
+```bash
 conda install ipython jupyter
 pip install -r requirements.examples.txt
 ```
