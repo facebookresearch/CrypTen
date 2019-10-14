@@ -65,7 +65,7 @@ class HomeSplash extends React.Component {
           <ProjectTitle siteConfig={siteConfig} />
           <PromoSection>
             <Button href="https://github.com/facebookresearch/crypten">GitHub</Button>
-            <Button href="https://github.com/facebookresearch/crypten">Docs</Button>
+            <Button href="https://crypten.readthedocs.io/en/latest/">Docs</Button>
           </PromoSection>
           <PromoSection>
             <Button href="#try">Get Started</Button>
@@ -128,11 +128,14 @@ class Index extends React.Component {
         <Block  background="dark" id="try" layout="twoColumn">
           {[
             {
-              content: 'For more details see the '+
-              '[CrypTen Docs](https://github.com/facebookresearch/crypten).'+
-              '\n```bash\n\n\nconda create -n crypten python=3.7\t\n' +
+              content: 'Please see the '+
+              '[CrypTen Docs](https://github.com/facebookresearch/crypten#installing-crypten).'+
+              '\n```bash\n\nconda create -n crypten python=3.7\t\n' +
               'conda activate crypten\n' +
-              'pip install crypten\n\n\n```',
+              'conda install pytorch torchvision -c pytorch\n' +
+              '# clone\n' +
+              'git clone https://github.com/facebookresearch/CrypTen.git\n' +
+              'cd CrypTen; pip install -e .\n\n\n```',
               title: 'Installation Script',
             },
             {

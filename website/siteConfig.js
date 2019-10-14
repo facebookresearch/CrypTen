@@ -11,8 +11,8 @@
 const siteConfig = {
   title: 'CrypTen', // Title for your website.
   tagline: 'A research tool for secure machine learning in PyTorch',
-  url: 'https://crypten.ai', // Your website URL
-  baseUrl: '/', // Base URL for your project */
+  url: 'https://facebookresearch.github.io/CrypTen/', // Your website URL
+  baseUrl: '/CrypTen', // Base URL for your project */
 
   // Used for publishing and more
   projectName: 'crypten',
@@ -30,7 +30,7 @@ const siteConfig = {
       external: true
     },
     {
-     href: 'docs/index.html',
+     href: 'https://crypten.readthedocs.io/en/latest/',
      label: 'Docs',
      external: true
     },
