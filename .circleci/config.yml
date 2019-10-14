@@ -134,7 +134,11 @@ workflows:
   version: 2.1
   commit:
     jobs:
-      - rununittests
+      - rununittests:
+        filters:
+          branches:
+            ignore:
+              - gh-pages
   nightly:
     triggers:
       - schedule:
@@ -145,4 +149,3 @@ workflows:
                 - master
     jobs:
       - runnightlytests
-
