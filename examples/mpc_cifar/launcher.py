@@ -89,11 +89,17 @@ parser.add_argument(
     help="print frequency (default: 10)",
 )
 parser.add_argument(
-    "--resume",
+    "--model-location",
     default="",
     type=str,
     metavar="PATH",
     help="path to latest checkpoint (default: none)",
+)
+parser.add_argument(
+    "--resume",
+    default=False,
+    action="store_true",
+    help="Resume training from latest checkpoint",
 )
 parser.add_argument(
     "-e",
@@ -137,6 +143,7 @@ def _run_experiment(args):
         args.momentum,
         args.weight_decay,
         args.print_freq,
+        args.model_location,
         args.resume,
         args.evaluate,
         args.seed,

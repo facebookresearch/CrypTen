@@ -34,7 +34,8 @@ def run_mpc_cifar(
     momentum=0.9,
     weight_decay=1e-6,
     print_freq=10,
-    resume="",
+    model_location="",
+    resume=False,
     evaluate=True,
     seed=None,
     skip_plaintext=False,
@@ -57,20 +58,20 @@ def run_mpc_cifar(
     # optionally resume from a checkpoint
     best_prec1 = 0
     if resume:
-        if os.path.isfile(resume):
-            logging.info("=> loading checkpoint '{}'".format(resume))
-            checkpoint = torch.load(resume)
+        if os.path.isfile(model_location):
+            logging.info("=> loading checkpoint '{}'".format(model_location))
+            checkpoint = torch.load(model_location)
             start_epoch = checkpoint["epoch"]
             best_prec1 = checkpoint["best_prec1"]
             model.load_state_dict(checkpoint["state_dict"])
             optimizer.load_state_dict(checkpoint["optimizer"])
             logging.info(
                 "=> loaded checkpoint '{}' (epoch {})".format(
-                    resume, checkpoint["epoch"]
+                    model_location, checkpoint["epoch"]
                 )
             )
         else:
-            logging.info("=> no checkpoint found at '{}'".format(resume))
+            raise IOError("=> no checkpoint found at '{}'".format(model_location))
 
     # Data loading code
     def preprocess_data(context_manager, data_dirname):
@@ -242,13 +243,21 @@ def encrypt_data_tensor_with_src(input):
     """Encrypt data tensor for multi-party setting"""
     # get rank of current process
     rank = comm.get().get_rank()
+    # get world size 
+    world_size = comm.get().get_world_size()
 
-    # party 0 always gets the actual tensor; remaining parties get dummy model
-    if rank == 0:
+    if world_size > 1:
+        # party 1 gets the actual tensor; remaining parties get dummy tensor
+        src_id = 1
+    else:
+        # party 0 gets the actual tensor since world size is 1
+        src_id = 0
+
+    if rank == src_id:
         input_upd = input
     else:
         input_upd = torch.empty(input.size())
-    private_input = crypten.cryptensor(input_upd, src=0)
+    private_input = crypten.cryptensor(input_upd, src=src_id)
     return private_input
 
 
