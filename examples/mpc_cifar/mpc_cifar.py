@@ -11,7 +11,6 @@ import random
 import shutil
 import tempfile
 import time
-import warnings
 
 import crypten
 import crypten.communicator as comm
@@ -243,7 +242,7 @@ def encrypt_data_tensor_with_src(input):
     """Encrypt data tensor for multi-party setting"""
     # get rank of current process
     rank = comm.get().get_rank()
-    # get world size 
+    # get world size
     world_size = comm.get().get_world_size()
 
     if world_size > 1:
