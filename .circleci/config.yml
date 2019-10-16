@@ -1,5 +1,16 @@
 version: 2.1
 
+setup_venv: &setup_venv
+  name: Sets up the virtualenv
+  no_output_timeout: 5h
+  command: |
+    python3 -m venv ~/crypten-test
+    . ~/crypten-test/bin/activate
+    pip3 install --upgrade pip
+    pip3 install numpy
+    pip3 install --pre torch -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+    pip3 install onnx tensorboard future torchvision
+
 # -------------------------------------------------------------------------------------
 # Jobs
 # -------------------------------------------------------------------------------------
@@ -19,7 +30,6 @@ jobs:
             pip3 install --upgrade pip
             pip3 install numpy
             pip3 install --pre torch -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
-            # pip3 install torch==1.2.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
             pip3 install onnx tensorboard future
       - run:
           name: Unit tests
@@ -58,7 +68,6 @@ jobs:
           command: |
             . ~/crypten-test/bin/activate
             pip3 install --pre torchvision -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
-            # pip3 install torchvision
             PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network A --epochs 2
             PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network B --epochs 2
             PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network C --epochs 2
@@ -84,7 +93,8 @@ jobs:
             # These consistently break and need to be debugged
             # PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network B --multiprocess --evaluate --resume examples/tfe_benchmarks/models/tfe_network_b.pth.tar
             # PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network C --multiprocess --evaluate --resume examples/tfe_benchmarks/models/tfe_network_c.pth.tar
-  runnightlytests:
+
+  runcifartests0:
     docker:
       - image: circleci/python:3.7.4-buster
     resource_class: 2xlarge+
@@ -92,40 +102,87 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Sets up the virtualenv
-          command: |
-            python3 -m venv ~/crypten-test
-            . ~/crypten-test/bin/activate
-            pip3 install --upgrade pip
-            pip3 install numpy
-            pip3 install --pre torch -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
-            pip3 install onnx tensorboard future torchvision
+          <<: *setup_venv
       - run:
           name: CIFAR example
           command: |
             . ~/crypten-test/bin/activate
             PYTHONPATH=. python3 examples/mpc_cifar/launcher.py
+
+  runcifartests1:
+    docker:
+      - image: circleci/python:3.7.4-buster
+    resource_class: 2xlarge+
+    working_directory: ~/CrypTen
+    steps:
+      - checkout
+      - run:
+          <<: *setup_venv
       - run:
           name: CIFAR example
           command: |
             . ~/crypten-test/bin/activate
             PYTHONPATH=. python3 examples/mpc_cifar/launcher.py --multiprocess
+
+  runcifartests2:
+    docker:
+      - image: circleci/python:3.7.4-buster
+    resource_class: 2xlarge+
+    working_directory: ~/CrypTen
+    steps:
+      - checkout
+      - run:
+          <<: *setup_venv
       - run:
           name: CIFAR example
           command: |
             . ~/crypten-test/bin/activate
             PYTHONPATH=. python3 examples/mpc_cifar/launcher.py --epochs 2 --batch-size 8 --multiprocess --lr .01
+
+  runcifartests3:
+    docker:
+      - image: circleci/python:3.7.4-buster
+    resource_class: 2xlarge+
+    working_directory: ~/CrypTen
+    steps:
+      - checkout
+      - run:
+          <<: *setup_venv
       - run:
           name: CIFAR example
           command: |
             . ~/crypten-test/bin/activate
             PYTHONPATH=. python3 examples/mpc_cifar/launcher.py --epochs 2 --skip-plaintext --world_size 1
-            PYTHONPATH=. python3 examples/mpc_cifar/launcher.py --epochs 2 --skip-plaintext --world_size 4
+
+  runcifartests4:
+    docker:
+      - image: circleci/python:3.7.4-buster
+    resource_class: 2xlarge+
+    working_directory: ~/CrypTen
+    steps:
+      - checkout
+      - run:
+          <<: *setup_venv
       - run:
           name: CIFAR example
           command: |
             . ~/crypten-test/bin/activate
-            PYTHONPATH=. python3 examples/mpc_cifar/launcher.py --epochs 2 --batch-size 16 --multiprocess --evaluate
+            PYTHONPATH=. python3 examples/mpc_cifar/launcher.py --epochs 2 --skip-plaintext --world_size 4
+
+  runcifartests5:
+    docker:
+      - image: circleci/python:3.7.4-buster
+    resource_class: 2xlarge+
+    working_directory: ~/CrypTen
+    steps:
+      - checkout
+      - run:
+          <<: *setup_venv
+      - run:
+          name: CIFAR example
+          command: |
+            . ~/crypten-test/bin/activate
+            PYTHONPATH=. python3 examples/mpc_cifar/launcher.py --epochs 2 --batch-size 16 --multiprocess --evaluate --resume --model-location examples/mpc_cifar/model/cifar-model-checkpoint.pth.tar
 
 # -------------------------------------------------------------------------------------
 # Workflows
@@ -148,4 +205,9 @@ workflows:
               only:
                 - master
     jobs:
-      - runnightlytests
+      - runcifartests0
+      - runcifartests1
+      - runcifartests2
+      - runcifartests3
+      - runcifartests4
+      - runcifartests5
