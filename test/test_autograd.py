@@ -18,6 +18,7 @@ import crypten
 import crypten.gradients as gradients
 import torch
 import torch.nn.functional as F
+from crypten import cryptensor
 from crypten.autograd_cryptensor import AutogradContext, AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
 from crypten.gradients import AutogradFunction
@@ -525,6 +526,51 @@ class TestAutograd(MultiProcessTestCase):
             output.backward()
             encr_output.backward()
             self._check(encr_input.grad, input.grad, "backward failed")
+
+    def test_batchnorm(self):
+        """Tests batchnorm forward computation"""
+        sizes = [(2, 3, 10), (2, 3, 5, 10), (2, 3, 5, 10, 15)]
+
+        for size in sizes:
+            dim = len(size)
+            # set max_value to 1 to avoid numerical precision in var division
+            tensor = get_random_test_tensor(size=size, max_value=1, is_float=True)
+            encrypted = cryptensor(tensor)
+            weight = get_random_test_tensor(size=[3], max_value=1, is_float=True)
+            bias = get_random_test_tensor(size=[3], max_value=1, is_float=True)
+
+            # dimensions for mean and variance
+            dimensions = list(range(dim))
+            dimensions.pop(1)
+            running_mean = tensor.mean(dimensions)
+            running_var = tensor.var(dimensions)
+
+            reference = torch.nn.functional.batch_norm(
+                tensor, running_mean, running_var, weight=weight, bias=bias
+            )
+
+            # training false with given running mean and var
+            encrypted_out = encrypted.batchnorm(
+                None,
+                weight,
+                bias,
+                training=False,
+                running_mean=running_mean,
+                running_var=running_var,
+            )
+            self._check(
+                encrypted_out,
+                reference,
+                f"batchnorm failed with train False and dim {dim}",
+            )
+
+            # training true
+            encrypted_out = encrypted.batchnorm(None, weight, bias, training=True)
+            self._check(
+                encrypted_out,
+                reference,
+                f"batchnorm failed with train True and dim {dim}",
+            )
 
 
 # This code only runs when executing the file outside the test harness (e.g.
