@@ -1169,7 +1169,7 @@ class AutogradBatchNorm(AutogradFunction):
 
         # track batch statistics:
         if training:
-            var_dimensions = unsqueeze_dimensions.clone()
+            var_dimensions = unsqueeze_dimensions.copy()
             var_dimensions[4] = [0, 2, 3]
 
             var_dimensions = var_dimensions[input.dim()]
