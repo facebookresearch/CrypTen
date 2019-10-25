@@ -35,10 +35,10 @@ class MSELoss(_Loss):
     The loss can be described as:
 
     .. math::
-        \ell(x, y) = mean(L) = mean(\{l_1,\dots,l_N\}^\top), \quad 
+        \ell(x, y) = mean(L) = mean(\{l_1,\dots,l_N\}^\top), \quad
         l_n = (x_n - y_n)^2,
 
-    where :math:`N` is the batch size, :math:`x` and :math:`y` are tensors of 
+    where :math:`N` is the batch size, :math:`x` and :math:`y` are tensors of
     arbitrary shapes with a total of :math:`n` elements each.
 
     """
@@ -62,7 +62,7 @@ class L1Loss(_Loss):
         \ell(x, y) = mean(L) = mean(\{l_1,\dots,l_N\}^\top), \quad
         l_n = \left | x_n - y_n \right |,
 
-    where :math:`N` is the batch size, :math:`x` and :math:`y` are tensors of 
+    where :math:`N` is the batch size, :math:`x` and :math:`y` are tensors of
     arbitrary shapes with a total of :math:`n` elements each.
     """
 
@@ -77,7 +77,7 @@ class L1Loss(_Loss):
 class BCELoss(_Loss):
     r"""
     Creates a criterion that measures the Binary Cross Entropy
-    between the prediction :math:`x` and the target :math:`y`. 
+    between the prediction :math:`x` and the target :math:`y`.
 
     The loss can be described as:
 
@@ -85,9 +85,9 @@ class BCELoss(_Loss):
         \ell(x, y) = mean(L) = mean(\{l_1,\dots,l_N\}^\top), \quad
         l_n = - \left [ y_n \cdot \log x_n + (1 - y_n) \cdot \log (1 - x_n) \right ],
 
-    where :math:`N` is the batch size, :math:`x` and :math:`y` are tensors of 
+    where :math:`N` is the batch size, :math:`x` and :math:`y` are tensors of
     arbitrary shapes with a total of :math:`n` elements each.
-    
+
     This is used for measuring the error of a reconstruction in for example
     an auto-encoder. Note that the targets :math:`y` should be numbers
     between 0 and 1.
@@ -121,7 +121,8 @@ class CrossEntropyLoss(_Loss):
     The loss can be described as:
 
     .. math::
-        \text{loss}(x, class) = -\log \left( \frac{\exp(x[class])}{\sum_j \exp(x[j])} \right ) 
+        \text{loss}(x, class) = -\log \left(
+        \frac{\exp(x[class])}{\sum_j \exp(x[j])} \right )
         = -x[class] + \log \left (\sum_j \exp(x[j]) \right)
 
     The losses are averaged across observations for each batch
