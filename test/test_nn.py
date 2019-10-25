@@ -418,6 +418,9 @@ class TestNN(MultiProcessTestCase):
 
         # test forward() function of all simple losses:
         for loss_name in ["BCELoss", "L1Loss", "MSELoss"]:
+            enc_loss_object = getattr(torch.nn, loss_name)()
+            self.assertEqual(enc_loss_object.reduction, "mean", "Reduction used is not 'mean'")
+
             loss = getattr(torch.nn, loss_name)()(input, target)
             encrypted_loss = getattr(crypten.nn, loss_name)()(
                 encrypted_input, encrypted_target
@@ -437,6 +440,9 @@ class TestNN(MultiProcessTestCase):
         ).abs()
         encrypted_input = crypten.cryptensor(input)
         encrypted_target = crypten.cryptensor(onehot(target, num_targets=num_targets))
+        enc_loss_object = crypten.nn.CrossEntropyLoss()
+        self.assertEqual(enc_loss_object.reduction, "mean", "Reduction used is not 'mean'")
+
         loss = torch.nn.CrossEntropyLoss()(input, target)
         encrypted_loss = crypten.nn.CrossEntropyLoss()(
             encrypted_input, encrypted_target
