@@ -8,6 +8,7 @@
 import logging
 import random
 import unittest
+from collections import namedtuple
 from test.multiprocess_test_case import (
     MultiProcessTestCase,
     get_random_test_tensor,
@@ -18,7 +19,6 @@ import crypten
 import crypten.gradients as gradients
 import torch
 import torch.nn.functional as F
-from crypten import cryptensor
 from crypten.autograd_cryptensor import AutogradContext, AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
 from crypten.gradients import AutogradFunction
@@ -527,50 +527,79 @@ class TestAutograd(MultiProcessTestCase):
             encr_output.backward()
             self._check(encr_input.grad, input.grad, "backward failed")
 
+    def test_batchnorm_multiple(self):
+        for i in range(10):
+            self.test_batchnorm()
+            print(f"{i} batch norm passed")
+
     def test_batchnorm(self):
-        """Tests batchnorm forward computation"""
-        sizes = [(2, 3, 10), (2, 3, 5, 10), (2, 3, 5, 10, 15)]
+        """
+        Tests batchnorm forward and backward steps with training on / off.
+        """
+        # sizes for 1D, 2D, and 3D batchnorm
+        # batch_size (dim=0) > 100 to avoid flaky precision errors in inv_var
+        sizes = [(200, 5), (100, 8, 15), (300, 10, 3, 15)]
 
         for size in sizes:
-            dim = len(size)
-            # set max_value to 1 to avoid numerical precision in var division
-            tensor = get_random_test_tensor(size=size, max_value=1, is_float=True)
-            encrypted = cryptensor(tensor)
-            weight = get_random_test_tensor(size=[3], max_value=1, is_float=True)
-            bias = get_random_test_tensor(size=[3], max_value=1, is_float=True)
+            for is_trainning in (False, True):
+                tensor = get_random_test_tensor(size=size, is_float=True)
+                tensor.requires_grad = True
+                encrypted_input = AutogradCrypTensor(crypten.cryptensor(tensor))
 
-            # dimensions for mean and variance
-            dimensions = list(range(dim))
-            dimensions.pop(1)
-            running_mean = tensor.mean(dimensions)
-            running_var = tensor.var(dimensions)
+                C = size[1]
+                weight = get_random_test_tensor(size=[C], max_value=1, is_float=True)
+                bias = get_random_test_tensor(size=[C], max_value=1, is_float=True)
+                weight.requires_grad = True
+                bias.requires_grad = True
 
-            reference = torch.nn.functional.batch_norm(
-                tensor, running_mean, running_var, weight=weight, bias=bias
-            )
+                # dimensions for mean and variance
+                num_dim = len(size)
+                dimensions = list(range(num_dim))
+                # perform on C dimension for tensor of shape (N x C)
+                dimensions.pop(1)
 
-            # training false with given running mean and var
-            encrypted_out = encrypted.batchnorm(
-                None,
-                weight,
-                bias,
-                training=False,
-                running_mean=running_mean,
-                running_var=running_var,
-            )
-            self._check(
-                encrypted_out,
-                reference,
-                f"batchnorm failed with train False and dim {dim}",
-            )
+                running_mean = tensor.mean(dimensions).detach()
+                running_var = tensor.var(dimensions).detach()
 
-            # training true
-            encrypted_out = encrypted.batchnorm(None, weight, bias, training=True)
-            self._check(
-                encrypted_out,
-                reference,
-                f"batchnorm failed with train True and dim {dim}",
-            )
+                reference = torch.nn.functional.batch_norm(
+                    tensor, running_mean, running_var, weight=weight, bias=bias
+                )
+
+                ctx = AutogradContext()
+                batch_norm_fn = gradients.get_grad_fn("batchnorm")
+                encrypted_out = batch_norm_fn.forward(
+                    ctx,
+                    (encrypted_input, weight, bias),
+                    training=is_trainning,
+                    running_mean=running_mean,
+                    running_var=running_var,
+                )
+
+                # check forward
+                self._check(
+                    encrypted_out,
+                    reference,
+                    "batchnorm forward failed with trainning "
+                    f"{is_trainning} on {num_dim}-D",
+                )
+
+                # check backward (input, weight, and bias gradients)
+                reference.backward(reference)
+                encrypted_grad = batch_norm_fn.backward(ctx, encrypted_out)
+                TorchGrad = namedtuple("TorchGrad", ["name", "value"])
+                torch_gradients = [
+                    TorchGrad("input gradient", tensor.grad),
+                    TorchGrad("weight gradient", weight.grad),
+                    TorchGrad("bias gradient", bias.grad),
+                ]
+
+                for i, torch_gradient in enumerate(torch_gradients):
+                    self._check(
+                        encrypted_grad[i],
+                        torch_gradient.value,
+                        f"batchnorm backward {torch_gradient.name} failed"
+                        f"with training {is_trainning} on {num_dim}-D",
+                    )
 
 
 # This code only runs when executing the file outside the test harness (e.g.

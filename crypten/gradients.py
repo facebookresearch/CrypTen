@@ -1160,21 +1160,49 @@ class AutogradBatchNorm(AutogradFunction):
         eps=1e-05,
         momentum=0.1,
     ):
+        """
+        Computes forward step of batch norm by normalizing x
+            and returning weight * x_norm + bias.
 
-        # unpack inputs:
-        input, weight, bias = input
+        Running mean and var are computed over the `C` dimension for an input
+        of size `(N, C, +)`.
 
-        # determine dimensions over which means and variances are computed:
-        unsqueeze_dimensions = {3: [0, 2], 4: [1, 1], 5: [0, 2, 3, 4]}
+        Note: inv_var can introduce precision errors due to sqrt and division
+            particularly when the number of samples in a batch is small.
 
-        # track batch statistics:
+        Args:
+            ctx (autograd_cyptensor.AutogradContext): context which
+                stores parameters such as weight and bias for backward step.
+            input (tuple of torch.tensors or cryptensor):
+                containing (x, weight, bias) with shapes `(N, C, +)`, `C`, and `C`
+                in turn.
+            training (bool): if training is True, running mean and var are
+                updated with the momentum factor and stored in module. Forward
+                is performed using batch statistics. If training is False,
+                running statistics are used and therefore cannot be none.
+            running_mean (torch.tensor or cryptensor): with shape `C`
+            running_var (torch.tensor or cryptensor): with shape `C`
+            eps (float): specifies epsilon used for numerical precision in inv_var
+            momentum (float): moment factor used in updating running mean and var.
+
+        Returns: (weight * normalized input + bias) of shape `(N, C, +)`.
+        """
+        x, weight, bias = input
+
+        # determine dimensions over which means and variances are computed
+        # for an input of shape (N, C, +), stats are computed over the C dimension
+        stats_dimensions = list(range(x.dim()))
+        # remove C dimension
+        stats_dimensions.pop(1)
+        # shape for broadcasting stats with x
+        broadcast_shape = [1] * x.dim()
+        broadcast_shape[1] = x.shape[1]
+
         if training:
-            var_dimensions = unsqueeze_dimensions.copy()
-            var_dimensions[4] = [0, 2, 3]
+            # track batch statistics
+            mean = x.mean(dim=stats_dimensions)
+            variance = x.var(dim=stats_dimensions)
 
-            var_dimensions = var_dimensions[input.dim()]
-            mean = input.mean(var_dimensions)
-            variance = input.var(var_dimensions)
             if running_mean is not None and running_var is not None:
                 pass
                 # TODO: Add CrypTensor.set() method for this to work.
@@ -1183,35 +1211,65 @@ class AutogradBatchNorm(AutogradFunction):
                 # running_var.set(running_var.mul(1.0 - momentum)
                 #                            .add(variance.mul(momentum)))
         else:
+            if running_mean is None or running_var is None:
+                raise ValueError(
+                    "Must provide running_mean and running_var when training is False"
+                )
             mean = running_mean
             variance = running_var
 
-        # compute bias and gain:
-        inv_var = (variance + eps).pos_pow(-0.5)
-        alpha = inv_var * weight
-        beta = bias - mean * alpha
+        if torch.is_tensor(variance):
+            inv_var = 1 / torch.sqrt(variance + eps)
+        else:
+            inv_var = (variance + eps).pos_pow(-0.5)
 
-        # ensure dimensionality of bias and gain matches input dimensionality:
-        unsqueeze_dimensions = unsqueeze_dimensions[input.dim()]
-        for dimension in unsqueeze_dimensions:
-            inv_var = inv_var.unsqueeze(dimension)
-            alpha = alpha.unsqueeze(dimension)
-            beta = beta.unsqueeze(dimension)
+        # reshape shape (C) to broadcastable (1, C, 1, +)
+        mean = mean.reshape(broadcast_shape)
+        inv_var = inv_var.reshape(broadcast_shape)
+        weight = weight.reshape(broadcast_shape)
+        bias = bias.reshape(broadcast_shape)
 
-        # apply bias and gain:
-        ctx.save_multiple_for_backward((input, alpha, inv_var, alpha.size()))
-        return alpha * input + beta
+        x_norm = (x - mean) * inv_var
+
+        ctx.save_multiple_for_backward((x_norm, weight, inv_var))
+        return x_norm * weight + bias
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, alpha, inv_var, weight_size = ctx.saved_tensors
-        weight_grad = grad_output.mul(input).mul(inv_var)
+        """
+        Computes the gradient with respect to x, weight, and bias.
+
+        Statistics are assumed to be computed along dimension C
+        for an input of shape (N, C, ...). Note, partials with respect to
+        the input treat mean and variance as constants similar to torch.
+
+        Args:
+            ctx (autograd_cyptensor.AutogradContext): context containing
+                x_norm, weight, and inv_var. Note weight
+                and inv_var must be broadcastable with grad_output.
+            grad_output (cryptensor): batchnorm output of shape (N, C, +).
+
+        Returns:
+            x_grad (cryptensor): gradient with respect to x with shape (N, C, +).
+            weight_grad (cryptensor): gradient with respect to the weight of
+                with shape (C).
+            bias_grad (cryptensor): gradient with respect to bias of shape (C).
+        """
+        x_norm, weight, inv_var = ctx.saved_tensors
+        # determine dimensions over which means and variances are computed
+        # statistics are computed over C dimension for input shape: (N, C, +)
+        stats_dimensions = list(range(len(grad_output.shape)))
+        stats_dimensions.pop(1)
+
+        x_grad = grad_output * weight * inv_var
+
+        weight_grad = grad_output.mul(x_norm)
+        weight_grad = weight_grad.sum(dim=stats_dimensions)
+
         bias_grad = grad_output.clone()
-        return (
-            grad_output.mul(alpha),
-            _inverse_broadcast(weight_grad, weight_size).squeeze(),
-            _inverse_broadcast(bias_grad, weight_size).squeeze(),
-        )  # FIXME: Unit tests claim gradients are incorrect.
+        bias_grad = bias_grad.sum(dim=stats_dimensions)
+
+        return (x_grad, weight_grad, bias_grad)
 
 
 @register_function("binary_cross_entropy")
