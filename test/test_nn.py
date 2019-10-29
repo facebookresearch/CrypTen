@@ -419,7 +419,9 @@ class TestNN(MultiProcessTestCase):
         # test forward() function of all simple losses:
         for loss_name in ["BCELoss", "L1Loss", "MSELoss"]:
             enc_loss_object = getattr(torch.nn, loss_name)()
-            self.assertEqual(enc_loss_object.reduction, "mean", "Reduction used is not 'mean'")
+            self.assertEqual(
+                enc_loss_object.reduction, "mean", "Reduction used is not 'mean'"
+            )
 
             loss = getattr(torch.nn, loss_name)()(input, target)
             encrypted_loss = getattr(crypten.nn, loss_name)()(
@@ -441,7 +443,9 @@ class TestNN(MultiProcessTestCase):
         encrypted_input = crypten.cryptensor(input)
         encrypted_target = crypten.cryptensor(onehot(target, num_targets=num_targets))
         enc_loss_object = crypten.nn.CrossEntropyLoss()
-        self.assertEqual(enc_loss_object.reduction, "mean", "Reduction used is not 'mean'")
+        self.assertEqual(
+            enc_loss_object.reduction, "mean", "Reduction used is not 'mean'"
+        )
 
         loss = torch.nn.CrossEntropyLoss()(input, target)
         encrypted_loss = crypten.nn.CrossEntropyLoss()(
@@ -608,6 +612,62 @@ class TestNN(MultiProcessTestCase):
                 curr_loss.item() < orig_loss.item(),
                 "loss has not decreased after training",
             )
+
+    def test_batchnorm_module(self):
+        """Test module correctly sets and updates running stats"""
+        batchnorm_fn_and_size = (
+            ("BatchNorm1d", (500, 10, 3)),
+            ("BatchNorm2d", (600, 7, 4, 20)),
+            ("BatchNorm3d", (800, 5, 4, 8, 15)),
+        )
+        for batchnorm_fn, size in batchnorm_fn_and_size:
+            for is_trainning in (True, False):
+                tensor = get_random_test_tensor(size=size, is_float=True)
+                tensor.requires_grad = True
+                encrypted_input = AutogradCrypTensor(crypten.cryptensor(tensor))
+
+                C = size[1]
+                weight = get_random_test_tensor(size=[C], max_value=1, is_float=True)
+                bias = get_random_test_tensor(size=[C], max_value=1, is_float=True)
+                weight.requires_grad = True
+                bias.requires_grad = True
+
+                # dimensions for mean and variance
+                stats_dimensions = list(range(tensor.dim()))
+                # perform on C dimension for tensor of shape (N, C, +)
+                stats_dimensions.pop(1)
+
+                # check running stats initial
+                enc_model = getattr(crypten.nn.module, batchnorm_fn)(C).encrypt()
+                plain_model = getattr(torch.nn.modules, batchnorm_fn)(C)
+                stats = ["running_var", "running_mean"]
+                for stat in stats:
+                    self._check(
+                        enc_model._buffers[stat],
+                        plain_model._buffers[stat],
+                        f"{stat} initial module value incorrect",
+                    )
+
+                # set trainning mode
+                plain_model.training = is_trainning
+                enc_model.training = is_trainning
+
+                # check running_stats update
+                enc_model.forward(encrypted_input)
+                plain_model.forward(tensor)
+                for stat in stats:
+                    self._check(
+                        enc_model._buffers[stat],
+                        plain_model._buffers[stat],
+                        f"{stat} momentum update in module incorrect",
+                    )
+
+
+# This code only runs when executing the file outside the test harness (e.g.
+# via the buck target test_mpc_benchmark)
+if __name__ == "__main__":
+    TestNN.benchmarks_enabled = True
+    unittest.main()
 
 
 # This code only runs when executing the file outside the test harness (e.g.

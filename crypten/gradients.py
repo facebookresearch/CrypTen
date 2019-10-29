@@ -1204,12 +1204,8 @@ class AutogradBatchNorm(AutogradFunction):
             variance = x.var(dim=stats_dimensions)
 
             if running_mean is not None and running_var is not None:
-                pass
-                # TODO: Add CrypTensor.set() method for this to work.
-                # running_mean.set(running_mean.mul(1.0 - momentum)
-                #                              .add(mean.mul(momentum)))
-                # running_var.set(running_var.mul(1.0 - momentum)
-                #                            .add(variance.mul(momentum)))
+                running_var.set(running_var * (1.0 - momentum) + variance * momentum)
+                running_mean.set(running_mean * (1.0 - momentum) + mean * momentum)
         else:
             if running_mean is None or running_var is None:
                 raise ValueError(

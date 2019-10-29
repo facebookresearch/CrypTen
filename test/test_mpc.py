@@ -1475,52 +1475,6 @@ class TestMPC(MultiProcessTestCase):
                 "where failed against scalar y with private condition",
             )
 
-    def test_batchnorm(self):
-        """Tests batchnorm"""
-        sizes = [(2, 3, 10), (2, 3, 5, 10), (2, 3, 5, 10, 15)]
-
-        for size in sizes:
-            dim = len(size)
-            # set max_value to 1 to avoid numerical precision in var division
-            tensor = get_random_test_tensor(size=size, max_value=1, is_float=True)
-            encrypted = MPCTensor(tensor)
-
-            weight = get_random_test_tensor(size=[3], max_value=1, is_float=True)
-            bias = get_random_test_tensor(size=[3], max_value=1, is_float=True)
-
-            # dimensions for mean and variance
-            dimensions = list(range(dim))
-            dimensions.pop(1)
-            running_mean = tensor.mean(dimensions)
-            running_var = tensor.var(dimensions)
-
-            reference = torch.nn.functional.batch_norm(
-                tensor, running_mean, running_var, weight=weight, bias=bias
-            )
-
-            # training false with given running mean and var
-            encrypted_out = encrypted.batchnorm(
-                None,
-                weight,
-                bias,
-                training=False,
-                running_mean=running_mean,
-                running_var=running_var,
-            )
-            self._check(
-                encrypted_out,
-                reference,
-                f"batchnorm failed with train False and dim {dim}",
-            )
-
-            # training true
-            encrypted_out = encrypted.batchnorm(None, weight, bias, training=True)
-            self._check(
-                encrypted_out,
-                reference,
-                f"batchnorm failed with train True and dim {dim}",
-            )
-
     def test_unbind(self):
         """Tests unbind"""
         sizes = [
@@ -1577,6 +1531,31 @@ class TestMPC(MultiProcessTestCase):
                 reference = tensor.split(split, dim=dim)
                 encrypted_out = encrypted.split(split, dim=dim)
                 self._check_tuple(encrypted_out, reference, "split failed")
+
+    def test_set(self):
+        """Tests set correctly re-assigns encrypted shares"""
+        sizes = [(1, 5), (5, 10), (15, 10, 5)]
+        for size in sizes:
+            tensor1 = get_random_test_tensor(size=size, is_float=True)
+            encrypted1 = MPCTensor(tensor1)
+
+            tensor2 = get_random_test_tensor(size=size, is_float=True)
+            encrypted2 = MPCTensor(tensor2)
+
+            # check encrypted set
+            encrypted1.set(encrypted2)
+            self._check(
+                encrypted1, tensor2, f"set with encrypted other failed with size {size}"
+            )
+
+            # check plain text set
+            encrypted1 = MPCTensor(tensor1)
+            encrypted1.set(tensor2)
+            self._check(
+                encrypted1,
+                tensor2,
+                f"set with unencrypted other failed with size {size}",
+            )
 
     # TODO: Write the following unit tests
     @unittest.skip("Test not implemented")

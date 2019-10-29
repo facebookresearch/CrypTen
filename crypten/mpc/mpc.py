@@ -711,60 +711,6 @@ class MPCTensor(CrypTensor):
             raise TypeError("scatter_add second tensor of unsupported type")
         return self
 
-    @mode(Ptype.arithmetic)
-    def batchnorm(
-        self,
-        ctx,
-        weight,
-        bias,
-        running_mean=None,
-        running_var=None,
-        training=False,
-        eps=1e-05,
-        momentum=0.1,
-    ):
-        """Implements batchnorm forward"""
-        # determine dimensions over which means and variances are computed:
-        dimensions = []
-        if self.dim() == 3:  # 1D input
-            dimensions = [0, 2]
-        elif self.dim() == 4:  # 2D input
-            dimensions = [0, 2, 3]
-        elif self.dim() == 5:  # 3D input
-            dimensions = [0, 2, 3, 4]
-
-        # track batch statistics:
-        if training:
-            mean = self.mean(dimensions)
-            variance = self.var(dimensions)
-            if running_mean is not None and running_var is not None:
-                pass
-                # TODO: Add CrypTensor.set() method for this to work.
-                # running_mean.set(running_mean.mul(1.0 - momentum)
-                #                              .add(mean.mul(momentum)))
-                # running_var.set(running_var.mul(1.0 - momentum)
-                #                            .add(variance.mul(momentum)))
-        else:
-            mean = running_mean
-            variance = running_var
-
-        # compute bias and gain:
-        if isinstance(variance, MPCTensor):
-            inv_var = (variance + eps).pos_pow(0.5).pow(-1)
-        else:
-            inv_var = (variance + eps) ** (-0.5)
-        alpha = inv_var * weight
-        # enrypted must be first operand
-        beta = -mean * alpha + bias
-
-        # ensure dimensionality of bias and gain matches input dimensionality:
-        for dimension in dimensions:
-            inv_var = inv_var.unsqueeze(dimension)
-            alpha = alpha.unsqueeze(dimension)
-            beta = beta.unsqueeze(dimension)
-
-        return self * alpha + beta
-
     def scatter_(self, dim, index, src):
         """Writes all values from the tensor `src` into `self` at the indices
         specified in the `index` tensor. For each value in `src`, its output index
@@ -797,6 +743,20 @@ class MPCTensor(CrypTensor):
         for i in range(len(shares)):
             results[i].share = shares[i]
         return results
+
+    def set(self, enc_tensor):
+        """
+        Sets self encrypted to enc_tensor in place by setting
+        shares of self to those of enc_tensor.
+
+        Args:
+            enc_tensor (MPCTensor): with encrypted shares.
+        """
+        if torch.is_tensor(enc_tensor):
+            enc_tensor = MPCTensor(enc_tensor)
+        assert isinstance(enc_tensor, MPCTensor), "enc_tensor must be an MPCTensor"
+        self.share.set_(enc_tensor.share)
+        return self
 
 
 OOP_UNARY_FUNCTIONS = {

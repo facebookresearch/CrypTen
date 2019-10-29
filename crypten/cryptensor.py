@@ -930,3 +930,7 @@ class CrypTensor(object):
     @property
     def shape(self):
         return self.size()
+
+    def set(self, enc_tensor):
+        """Sets self encrypted to enc_tensor in place"""
+        raise NotImplementedError("set is not implemented")
