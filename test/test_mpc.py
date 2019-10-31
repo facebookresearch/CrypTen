@@ -1344,26 +1344,29 @@ class TestMPC(MultiProcessTestCase):
         """Tests Arithemetic/Binary SharedTensor type conversions."""
         from crypten.mpc.ptype import ptype as Ptype
 
-        tensor = get_random_test_tensor(is_float=True)
-        encrypted_tensor = MPCTensor(tensor)
-        self.assertEqual(encrypted_tensor.ptype, Ptype.arithmetic)
+        tensor_sizes = [(), (1,), (5,), (1, 1), (5, 5), (1, 1, 1), (5, 5, 5)]
 
-        binary_encrypted_tensor = encrypted_tensor.to(Ptype.binary)
-        self.assertEqual(binary_encrypted_tensor.ptype, Ptype.binary)
+        for size in tensor_sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            encrypted_tensor = MPCTensor(tensor)
+            self.assertEqual(encrypted_tensor.ptype, Ptype.arithmetic)
 
-        # check original encrypted_tensor was not modified after conversion
-        self._check(
-            encrypted_tensor,
-            tensor,
-            "encrypted_tensor was modified during conversion to BinarySharedTensor.",
-        )
+            binary_encrypted_tensor = encrypted_tensor.to(Ptype.binary)
+            self.assertEqual(binary_encrypted_tensor.ptype, Ptype.binary)
 
-        encrypted_from_binary = binary_encrypted_tensor.to(Ptype.arithmetic)
-        self._check(
-            encrypted_from_binary,
-            tensor,
-            "to failed from BinarySharedTensor to ArithmeticSharedTensor",
-        )
+            # check original encrypted_tensor was not modified after conversion
+            self._check(
+                encrypted_tensor,
+                tensor,
+                "encrypted_tensor was modified during conversion to BinarySharedTensor.",
+            )
+
+            encrypted_from_binary = binary_encrypted_tensor.to(Ptype.arithmetic)
+            self._check(
+                encrypted_from_binary,
+                tensor,
+                "to failed from BinarySharedTensor to ArithmeticSharedTensor",
+            )
 
     def test_cumsum(self):
         """Tests cumulative sum on encrypted tensors."""

@@ -31,17 +31,21 @@ def _B2A(binary_tensor, precision=None, bits=None):
     if bits is None:
         bits = torch.iinfo(torch.long).bits
 
-    arithmetic_tensor = 0
-    for i in range(bits):
+    if bits == 1:
         binary_bit = binary_tensor & 1
-        arithmetic_bit = beaver.B2A_single_bit(binary_bit)
-        # avoids long integer overflow since 2 ** 63 is out of range
-        # (aliases to -2 ** 63)
-        if i == 63:
-            arithmetic_tensor += arithmetic_bit * (-2 ** 63)
-        else:
-            arithmetic_tensor += arithmetic_bit * (2 ** i)
-        binary_tensor >>= 1
+        arithmetic_tensor = beaver.B2A_single_bit(binary_bit)
+    else:
+        binary_bits = BinarySharedTensor.stack(
+            [binary_tensor >> i for i in range(bits)]
+        )
+        binary_bits = binary_bits & 1
+        arithmetic_bits = beaver.B2A_single_bit(binary_bits)
+
+        multiplier = torch.cat([torch.LongTensor([1]) << i for i in range(bits)])
+        while multiplier.dim() < arithmetic_bits.dim():
+            multiplier = multiplier.unsqueeze(1)
+        arithmetic_tensor = arithmetic_bits.mul_(multiplier).sum(0)
+
     arithmetic_tensor.encoder = FixedPointEncoder(precision_bits=precision)
     scale = arithmetic_tensor.encoder._scale // binary_tensor.encoder._scale
     arithmetic_tensor *= scale
