@@ -508,7 +508,7 @@ class ArithmeticSharedTensor(CrypTensor):
         corresponding value in `index` for `dimension = dim`.
         """
         result = self.clone()
-        return result.scatter_(self, dim, index, src)
+        return result.scatter_(dim, index, src)
 
 
 REGULAR_FUNCTIONS = [

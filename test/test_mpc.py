@@ -1002,9 +1002,9 @@ class TestMPC(MultiProcessTestCase):
                             ),
                         )
 
-    def test_scatter_add(self):
-        """Test index_add function of encrypted tensor"""
-        funcs = ["scatter_add", "scatter_add_"]
+    def test_scatter(self):
+        """Test scatter/scatter_add function of encrypted tensor"""
+        funcs = ["scatter", "scatter_", "scatter_add", "scatter_add_"]
         sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
         for func in funcs:
             for size in sizes:
@@ -1025,7 +1025,7 @@ class TestMPC(MultiProcessTestCase):
                             "%s %s failed" % ("private" if private else "public", func),
                         )
                         if func.endswith("_"):
-                            # Check in-place index_add worked
+                            # Check in-place scatter/scatter_add worked
                             self._check(
                                 encrypted,
                                 reference,
@@ -1560,10 +1560,18 @@ class TestMPC(MultiProcessTestCase):
                 f"set with unencrypted other failed with size {size}",
             )
 
-    # TODO: Write the following unit tests
-    @unittest.skip("Test not implemented")
-    def test_gather_scatter(self):
-        pass
+    def test_gather(self):
+        """Test gather function of encrypted tensor"""
+        sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
+        for size in sizes:
+            for dim in range(len(size)):
+                tensor = get_random_test_tensor(size=size, is_float=True)
+                index = get_random_test_tensor(size=size, is_float=False)
+                index = index.abs().clamp(0, 4)
+                encrypted = MPCTensor(tensor)
+                reference = tensor.gather(dim, index)
+                encrypted_out = encrypted.gather(dim, index)
+                self._check(encrypted_out, reference, f"gather failed with size {size}")
 
 
 # This code only runs when executing the file outside the test harness (e.g.
