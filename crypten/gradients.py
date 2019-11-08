@@ -1103,7 +1103,6 @@ class AutogradConv2D(AutogradFunction):
 
         # get input, kernel, and sizes:
         input, kernel, padding, stride = ctx.saved_tensors
-        assert stride == (1, 1), "stride different than 1 not currently supported"
         batch_size = input.size(0)
         out_channels, in_channels, kernel_size_y, kernel_size_x = kernel.size()
         assert input.size(1) == in_channels, "wrong number of input channels"
@@ -1129,8 +1128,12 @@ class AutogradConv2D(AutogradFunction):
         input = input.view(
             1, input.size(0) * input.size(1), input.size(2), input.size(3)
         )
+        # dilation is set to stride based on PyTorch's conv2d_weight implementation
         grad_kernel = input.conv2d(
-            grad_output, padding=padding, stride=stride, groups=in_channels * batch_size
+            grad_output,
+            padding=padding,
+            dilation=stride,
+            groups=in_channels * batch_size,
         )
         grad_kernel = grad_kernel.view(
             batch_size,

@@ -279,9 +279,7 @@ class TestGradients(MultiProcessTestCase):
 
         kernel_sizes = [(1, 1), (2, 2), (5, 5), (2, 3)]
         paddings = [0, 1, (0, 1)]
-        # TODO: Fix conv2d backward with stride = 2
-        # strides = [1, 2, (1, 2)]
-        strides = [1]
+        strides = [1, 2, (1, 2)]
         for image_size, in_channels, batches in itertools.product(
             image_sizes, nchannels, nbatches
         ):
