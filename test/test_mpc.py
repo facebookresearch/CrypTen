@@ -1560,6 +1560,42 @@ class TestMPC(MultiProcessTestCase):
                 f"set with unencrypted other failed with size {size}",
             )
 
+    def test_polynomial(self):
+        """Tests polynomial function"""
+        sizes = [
+            (1,),
+            (5,),
+            (1, 1),
+            (1, 5),
+            (5, 5),
+            (1, 1, 1),
+            (5, 5, 5),
+            (1, 1, 1, 1),
+            (5, 5, 5, 5),
+        ]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            encrypted = MPCTensor(tensor)
+            for terms in range(1, 8):
+                coeffs = get_random_test_tensor(size=(terms,), is_float=True)
+
+                reference = torch.zeros(size=tensor.size())
+                for i, term in enumerate(coeffs.tolist()):
+                    reference += term * tensor.pow(i + 1)
+
+                # Test list coeffs
+                encrypted_out = encrypted.polynomial(coeffs.tolist())
+                self._check(encrypted_out, reference, "polynomial failed")
+
+                # Test plaintext tensor coeffs
+                encrypted_out = encrypted.polynomial(coeffs)
+                self._check(encrypted_out, reference, "polynomial failed")
+
+                # Test encrypted tensor coeffs
+                coeffs_enc = MPCTensor(coeffs)
+                encrypted_out = encrypted.polynomial(coeffs_enc)
+                self._check(encrypted_out, reference, "polynomial failed")
+
     def test_gather(self):
         """Test gather function of encrypted tensor"""
         sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
