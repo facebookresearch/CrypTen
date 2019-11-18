@@ -420,6 +420,41 @@ class MPCTensor(CrypTensor):
             result._tensor = self._tensor.pad(pad, mode=mode, value=value)
         return result
 
+    @mode(Ptype.arithmetic)
+    def polynomial(self, coeffs, func="mul"):
+        """Computes a polynomial function on a tensor with given coefficients,
+        `coeffs`, that can be a list of values or a 1-D tensor.
+
+        Coefficients should be ordered from the order 1 (linear) term first,
+        ending with the highest order term. (Constant is not included).
+        """
+        # Coefficient input type-checking
+        if isinstance(coeffs, list):
+            coeffs = torch.tensor(coeffs)
+        assert torch.is_tensor(coeffs) or crypten.is_encrypted_tensor(
+            coeffs
+        ), "Polynomial coefficients must be a list or tensor"
+        assert coeffs.dim() == 1, "Polynomial coefficients must be a 1-D tensor"
+
+        # Handle linear case
+        if coeffs.size(0) == 1:
+            return self.mul(coeffs)
+
+        # Compute terms of polynomial using exponentially growing tree
+        terms = crypten.mpc.stack([self, self.square()])
+        while terms.size(0) < coeffs.size(0):
+            highest_term = terms[-1:].expand(terms.size())
+            new_terms = getattr(terms, func)(highest_term)
+            terms = crypten.cat([terms, new_terms])
+
+        # Resize the coefficients for broadcast
+        terms = terms[: coeffs.size(0)]
+        for _ in range(terms.dim() - 1):
+            coeffs = coeffs.unsqueeze(1)
+
+        # Multiply terms by coefficients and sum
+        return terms.mul(coeffs).sum(0)
+
     # Approximations:
     def exp(self, iterations=8):
         """Approximates the exponential function using a limit approximation:
@@ -439,37 +474,33 @@ class MPCTensor(CrypTensor):
             result = result.square()
         return result
 
-    def log(self, iterations=2, exp_iterations=8):
-        """Approximates the natural logarithm using 6th order modified
-        Householder iterations.
+    def log(self, iterations=2, exp_iterations=8, order=8):
+        """Approximates the natural logarithm using 8th order modified
+        Householder iterations. This approximation is accurate within 2% relative
+        error on [0.0001, 250].
 
-        Iterations are computed by: :math:`h = 2 - x * exp(-y_n)`
+        Iterations are computed by: :math:`h = 1 - x * exp(-y_n)`
 
         .. math::
 
-            y_{n+1} = y_n - h * (1 + h / 2 + h^2 / 3 + h^3 / 6 + h^4 / 5 + h^5 / 7)
+            y_{n+1} = y_n - \sum_k^{order} \frac{h^k}{k}
 
         Args:
-            iterations (int): number of iterations for 6th order modified
-                Householder approximation.
+            iterations (int): number of Householder iterations for the approximation
             exp_iterations (int): number of iterations for limit approximation of exp
+            order (int): number of polynomial terms used (order of Householder approx)
         """
 
         # Initialization to a decent estimate (found by qualitative inspection):
-        #                ln(x) = x/40 - 8exp(-2x - .3) + 1.9
-        term1 = self / 40
-        term2 = 8 * (-2 * self - 0.3).exp()
-        y = term1 - term2 + 1.9
+        #                ln(x) = x/120 - 20exp(-2x - 1.0) + 3.0
+        term1 = self.div(120)
+        term2 = self.mul(2).add(1.0).neg().exp().mul(20)
+        y = term1 - term2 + 3.0
 
-        # 6th order Householder iterations
+        # 8th order Householder iterations
         for _ in range(iterations):
             h = 1 - self * (-y).exp(iterations=exp_iterations)
-            h2 = h.square()
-            h3 = h2 * h
-            h4 = h2.square()
-            h5 = h4 * h
-            y -= h * (1 + h.div(2) + h2.div_(3) + h3.div_(6) + h4.div_(5) + h5.div_(7))
-
+            y -= h.polynomial([1 / (i + 1) for i in range(order)])
         return y
 
     def reciprocal(self, method="NR", nr_iters=10, log_iters=1, all_pos=False):
