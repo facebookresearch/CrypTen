@@ -355,6 +355,63 @@ class Sub(Module):
         return Sub()
 
 
+class Div(Module):
+    """
+    Module that performs element-wise binary division (with broadcasting support)
+    """
+
+    def forward(self, input):
+        assert isinstance(input, (list, tuple)), "input must be list or tuple"
+        assert len(input) == 2, "input must contain two tensors"
+        assert input[0].dim() == input[1].dim(), "inputs must have identical sizes"
+        return input[0].div(input[1])
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Div()
+
+
+class Exp(Module):
+    """
+    Module that calculates the exponential of the given input tensor, element-wise.
+    """
+
+    def forward(self, input):
+        return input.exp()
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Exp()
+
+
+class ReduceSum(Module):
+    """
+    Module that computes the sum of the input tensor's element along the provided axes.
+    If `keepdim` is True, the output tensor is of the same size as input
+    except in the dimension(s) `dim` where it is of size 1.
+    Otherwise, `dim` is squeezed, resulting in the output tensor having 1
+    (or `len(dim)`) fewer dimension(s).
+    """
+
+    def __init__(self, dim, keepdim=False):
+        super().__init__()
+        self.dim = dim
+        self.keepdim = keepdim
+
+    def forward(self, input):
+        return input.sum(dim=self.dim, keepdim=self.keepdim)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        dim = attributes["axes"]
+        if "keepdims" not in attributes:
+            attributes["keepdims"] = 1
+        keepdim = True if attributes["keepdims"] == 1 else False
+        return ReduceSum(dim, keepdim)
+
+
 class Squeeze(Module):
     r"""
     Returns a tensor with all the dimensions of :attr:`input` of size `1` removed.
@@ -844,6 +901,44 @@ class ReLU(Module):
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         return ReLU()
+
+
+class Softmax(Module):
+    r"""Applies the Softmax function to an n-dimensional input Tensor
+    rescaling them so that the elements of the n-dimensional output Tensor
+    lie in the range [0,1] and sum to 1.
+
+    Softmax is defined as:
+
+    .. math::
+        \text{Softmax}(x_{i}) = \frac{\exp(x_i)}{\sum_j \exp(x_j)}
+
+    Shape:
+        - Input: :math:`(*)` where `*` means, any number of additional
+          dimensions
+        - Output: :math:`(*)`, same shape as the input
+
+    Returns:
+        a Tensor of the same dimension and shape as the input with
+        values in the range [0, 1]
+
+    Arguments:
+        dim (int): A dimension along which Softmax will be computed (so every slice
+            along dim will sum to 1).
+    """
+
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, input):
+        return input.softmax(self.dim)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        return Softmax(attributes["axis"])
 
 
 class _Pool2d(Module):

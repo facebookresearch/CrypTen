@@ -6,6 +6,8 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
+import torch.onnx.symbolic_helper as sym_help
+import torch.onnx.symbolic_registry as sym_registry
 from onnx import numpy_helper
 
 
@@ -34,3 +36,29 @@ def get_attribute_value(attr):
         return list(attr.floats)
     else:
         raise ValueError("Unknown attribute type for attribute %s." % attr.name)
+
+
+def update_onnx_symbolic_registry():
+    """
+    Updates the ONNX symbolic registry for operators that need a CrypTen-specific
+    implementation and custom operators.
+    """
+    for version_key, version_val in sym_registry._registry.items():
+        for function_key in version_val.keys():
+            if function_key == "softmax":
+                sym_registry._registry[version_key][function_key] = onnx_crypten_softmax
+
+
+@sym_help.parse_args("v", "i", "none")
+def onnx_crypten_softmax(g, input, dim, dtype=None):
+    """
+    This function converts PyTorch's Softmax module to a Softmax module in
+    the ONNX model. It overrides PyTorch's default conversion of Softmax module
+    to a sequence of Exp, ReduceSum and Div module, since this default
+    conversion can cause numerical overflow when applied to CrypTensors.
+    """
+    result = g.op("Softmax", input, axis_i=dim)
+    if dtype and dtype.node().kind() != "prim::Constant":
+        parsed_dtype = sym_help._get_const(dtype, "i", "dtype")
+        result = g.op("Cast", result, to_i=sym_help.scalar_type_to_onnx[parsed_dtype])
+    return result

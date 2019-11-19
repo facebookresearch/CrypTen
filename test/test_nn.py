@@ -108,13 +108,17 @@ class TestNN(MultiProcessTestCase):
 
         # input arguments for modules and input sizes:
         no_input_modules = ["Constant"]
-        binary_modules = ["Add", "Sub", "Concat"]
+        binary_modules = ["Add", "Div", "Sub", "Concat"]
+        ex_zero_modules = ["Div"]
         module_args = {
             "Add": (),
             "Concat": (0,),
             "Constant": (1.2,),
+            "Div": (),
+            "Exp": (),
             "Gather": (0,),
             "Reshape": (),
+            "ReduceSum": ([0], True),
             "Shape": (),
             "Sub": (),
             "Squeeze": (0,),
@@ -124,8 +128,15 @@ class TestNN(MultiProcessTestCase):
             "Add": lambda x: x[0] + x[1],
             "Concat": lambda x: torch.cat((x[0], x[1])),
             "Constant": lambda _: torch.tensor(module_args["Constant"][0]),
+            "Div": lambda x: torch.div(x[0], x[1]),
+            "Exp": lambda x: torch.exp(x),
             "Gather": lambda x: torch.from_numpy(
                 x[0].numpy().take(x[1], module_args["Gather"][0])
+            ),
+            "ReduceSum": lambda x: torch.sum(
+                x,
+                dim=module_args["ReduceSum"][0],
+                keepdim=(module_args["ReduceSum"][1] == 1),
             ),
             "Reshape": lambda x: x[0].reshape(x[1].tolist()),
             "Shape": lambda x: torch.tensor(x.size()).float(),
@@ -137,8 +148,11 @@ class TestNN(MultiProcessTestCase):
             "Add": (10, 12),
             "Concat": (2, 2),
             "Constant": (1,),
+            "Div": (10, 10, 10, 10),
+            "Exp": (10, 10, 10),
             "Gather": (4, 4, 4, 4),
             "Reshape": (1, 4),
+            "ReduceSum": (3, 3, 3),
             "Shape": (8, 3, 2),
             "Sub": (10, 12),
             "Squeeze": (1, 12, 6),
@@ -149,15 +163,20 @@ class TestNN(MultiProcessTestCase):
             "Reshape": torch.tensor([2, 2]),
         }
         module_attributes = {
+            # each attribute has two parameters: the name, and a bool indicating
+            # whether the value should be wrapped into a list when the module is created
             "Add": [],
-            "Concat": [("axis", int)],
-            "Constant": [("value", int)],
-            "Gather": [("axis", int)],
+            "Div": [],
+            "Exp": [],
+            "Concat": [("axis", False)],
+            "Constant": [("value", False)],
+            "Gather": [("axis", False)],
+            "ReduceSum": [("axes", False), ("keepdims", False)],
             "Reshape": [],
             "Shape": [],
             "Sub": [],
-            "Squeeze": [("axes", list)],
-            "Unsqueeze": [("axes", list)],
+            "Squeeze": [("axes", True)],
+            "Unsqueeze": [("axes", True)],
         }
         # loop over all modules:
         for module_name in module_args.keys():
@@ -169,15 +188,20 @@ class TestNN(MultiProcessTestCase):
 
             # generate inputs:
             inputs, encr_inputs = None, None
+            ex_zero_values = module_name in ex_zero_modules
             if module_name in binary_modules:
                 inputs = [
-                    get_random_test_tensor(size=input_sizes[module_name], is_float=True)
+                    get_random_test_tensor(
+                        size=input_sizes[module_name],
+                        is_float=True,
+                        ex_zero=ex_zero_values,
+                    )
                     for _ in range(2)
                 ]
                 encr_inputs = [crypten.cryptensor(input) for input in inputs]
             elif module_name not in no_input_modules:
                 inputs = get_random_test_tensor(
-                    size=input_sizes[module_name], is_float=True
+                    size=input_sizes[module_name], is_float=True, ex_zero=ex_zero_values
                 )
                 encr_inputs = crypten.cryptensor(inputs)
 
@@ -196,11 +220,16 @@ class TestNN(MultiProcessTestCase):
             # create attributes for static from_onnx function
             local_attr = {}
             for i, attr_tuple in enumerate(module_attributes[module_name]):
-                attr_name, attr_type = attr_tuple
-                if attr_type == list:
+                attr_name, wrap_attr_in_list = attr_tuple
+                if wrap_attr_in_list:
                     local_attr[attr_name] = [module_args[module_name][i]]
                 else:
                     local_attr[attr_name] = module_args[module_name][i]
+
+            # Update ReduceSum module attributes, since the module and from_onnx
+            # path are different
+            if module_name == "ReduceSum":
+                local_attr["keepdims"] = 1 if module_args["ReduceSum"][1] is True else 0
 
             # compare model outputs using the from_onnx static function
             module = getattr(crypten.nn, module_name).from_onnx(attributes=local_attr)
@@ -228,6 +257,7 @@ class TestNN(MultiProcessTestCase):
             "Linear": (400, 120),
             "MaxPool2d": (2,),
             "ReLU": (),
+            "Softmax": (0,),
         }
         input_sizes = {
             "AdaptiveAvgPool2d": (1, 3, 32, 32),
@@ -242,6 +272,7 @@ class TestNN(MultiProcessTestCase):
             "Linear": (1, 400),
             "MaxPool2d": (1, 2, 32, 32),
             "ReLU": (1, 3, 32, 32),
+            "Softmax": (5, 5, 5),
         }
 
         # loop over all modules:

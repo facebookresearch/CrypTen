@@ -24,6 +24,8 @@ from .module import (
     ConstantPad2d,
     ConstantPad3d,
     Conv2d,
+    Div,
+    Exp,
     Flatten,
     Gather,
     GlobalAveragePool,
@@ -31,10 +33,12 @@ from .module import (
     Linear,
     MaxPool2d,
     Module,
+    ReduceSum,
     ReLU,
     Reshape,
     Sequential,
     Shape,
+    Softmax,
     Squeeze,
     Sub,
     Unsqueeze,
@@ -42,7 +46,11 @@ from .module import (
     _ConstantPad,
     _Pool2d,
 )
-from .onnx_helper import get_attribute_value, get_parameter_name
+from .onnx_helper import (
+    get_attribute_value,
+    get_parameter_name,
+    update_onnx_symbolic_registry,
+)
 
 
 # expose contents of package:
@@ -63,6 +71,8 @@ __all__ = [
     "ConstantPad3d",
     "Conv2d",
     "CrossEntropyLoss",
+    "Div",
+    "Exp",
     "Flatten",
     "Gather",
     "GlobalAveragePool",
@@ -72,11 +82,13 @@ __all__ = [
     "Module",
     "_Pool2d",
     "ReLU",
+    "ReduceSum",
     "Reshape",
     "Sequential",
     "Shape",
-    "Sub",
+    "Softmax",
     "Squeeze",
+    "Sub",
     "Unsqueeze",
 ]
 
@@ -88,6 +100,8 @@ ONNX_TO_CRYPTEN = {
     "Concat": Concat,
     "Conv": Conv2d,
     "Constant": Constant,
+    "Div": Div,
+    "Exp": Exp,
     "Flatten": Flatten,
     "Gather": Gather,
     "Gemm": Linear,
@@ -95,10 +109,12 @@ ONNX_TO_CRYPTEN = {
     "MaxPool": MaxPool2d,
     "Pad": _ConstantPad,
     "Relu": ReLU,
+    "ReduceSum": ReduceSum,
     "Reshape": Reshape,
     "Shape": Shape,
-    "Sub": Sub,
+    "Softmax": Softmax,
     "Squeeze": Squeeze,
+    "Sub": Sub,
     "Unsqueeze": Unsqueeze,
 }
 
@@ -107,8 +123,24 @@ def from_pytorch(pytorch_model, dummy_input):
     """
     Static function that converts a PyTorch model into a CrypTen model.
     """
+    # Exporting model to ONNX graph:
+    # TODO: Currently export twice because the torch-to-ONNX symbolic registry
+    # only gets created on the first call.
 
-    # export model to ONX graph:
+    # export first time so symbolic registry is created
+    f = io.BytesIO()
+    torch.onnx.export(
+        pytorch_model,
+        dummy_input,
+        f,
+        export_params=True,
+        input_names=["input"],
+        output_names=["output"],
+    )
+    # update ONNX symbolic registry with CrypTen-specific functions
+    update_onnx_symbolic_registry()
+
+    # export again so the graph is created with CrypTen-specific registry
     f = io.BytesIO()
     torch.onnx.export(
         pytorch_model,
