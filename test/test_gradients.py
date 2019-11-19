@@ -16,7 +16,6 @@ import torch
 import torch.nn.functional as F
 from crypten.autograd_cryptensor import AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
-from crypten.mpc import MPCTensor
 
 
 # Sizes for tensor operations
@@ -304,16 +303,11 @@ class TestGradients(MultiProcessTestCase):
         """Test pooling functions on encrypted tensor"""
         image_sizes = [(5, 5), (16, 7)]
         nchannels = [1, 3, 5]
-        nbatches = [1, 3, 5]
+        nbatches = [1, 5]
 
-        kernel_sizes = [1, 2]
-        paddings = [0, 1]
-        strides = [1, 2]
-
-        # TODO: Fix the following cases:
-        #
-        # 1) kernel_sizes / paddings / strides with tuples of uneven size (e.g. (1, 2))
-        # 2) Correct avg_pool2d backward for cases listed in its backward TODO
+        kernel_sizes = [1, 2, (2, 3)]
+        paddings = [1, (0, 0)]
+        strides = [1, (2, 2)]
 
         funcs = ["avg_pool2d", "max_pool2d"]
         for image_size, channels, batches, kernel_size in itertools.product(
@@ -323,10 +317,6 @@ class TestGradients(MultiProcessTestCase):
             image = get_random_test_tensor(size=size, is_float=True)
 
             for padding, stride, func in itertools.product(paddings, strides, funcs):
-                # TODO: Correct avg_pool2d backward:
-                if size[1] > 1 and func == "avg_pool2d":
-                    continue
-
                 # Skip invalid padding sizes
                 if kernel_size == 1 and padding == 1:
                     continue

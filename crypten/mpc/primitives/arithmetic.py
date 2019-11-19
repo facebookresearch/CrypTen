@@ -401,9 +401,16 @@ class ArithmeticSharedTensor(CrypTensor):
         return self
 
     def avg_pool2d(self, kernel_size, *args, **kwargs):
-        """Perform an average pooling on each 2D matrix of the given tensor"""
+        """Perform an average pooling on each 2D matrix of the given tensor
+
+        Args:
+            kernel_size (int or tuple): pooling kernel size.
+        """
         z = self.sum_pool2d(kernel_size, *args, **kwargs)
-        pool_size = kernel_size * kernel_size
+        if isinstance(kernel_size, (int, float)):
+            pool_size = kernel_size ** 2
+        else:
+            pool_size = kernel_size[0] * kernel_size[1]
         return z / pool_size
 
     def sum_pool2d(self, *args, **kwargs):

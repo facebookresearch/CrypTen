@@ -1008,37 +1008,56 @@ class AutogradAvgPool2D(AutogradFunction):
             stride = (stride, stride)
         if isinstance(padding, (int, float)):
             padding = (padding, padding)
+        if isinstance(kernel_size, (int, float)):
+            kernel_size = (kernel_size, kernel_size)
 
         # perform average pooling:
         output = input.avg_pool2d(kernel_size, padding=padding, stride=stride)
 
         # store information for backward pass:
         ctx.save_multiple_for_backward(
-            (input.size(), output, kernel_size, padding, stride)
+            (input.shape, output, kernel_size, padding, stride)
         )
         return output
 
     @staticmethod
     def backward(ctx, grad_output):
-        # TODO: Fix this backward. This seems to be correct when `grad_output`
-        # is all ones or when inchannels == 1, but is incorrect otherwise.
-
-        # create average pooling kernel:
-        input_size, output, kernel_size, padding, stride = ctx.saved_tensors
+        """Computes the gradient with respect to the input"""
+        input_shape, output, kernel_size, padding, stride = ctx.saved_tensors
         assert stride[0] == stride[1], "stride must be same in all axes"
         assert padding[0] == padding[1], "padding must be same in all axes"
-        inchannels = input_size[1]
-        ones = torch.ones(inchannels, inchannels, kernel_size, kernel_size)
 
-        # compute gradient with respect to input:
-        output_padding = torch.nn.grad._grad_input_padding(
-            grad_output, input_size, stride, padding, (kernel_size, kernel_size)
+        in_channels = input_shape[1]
+        # compute as d conv2d / d input with kernel as average filter
+        kernel = torch.ones(in_channels, 1, kernel_size[0], kernel_size[1]) / (
+            kernel_size[0] * kernel_size[1]
         )
-        return grad_output.conv_transpose2d(
-            grad_output.new(ones.div_(float(kernel_size ** 2))),
+
+        grad_input_padding = torch.nn.grad._grad_input_padding(
+            grad_output, input_shape, stride, padding, kernel_size
+        )
+
+        # set groups=in_channels so input gradient is computed per channel
+        if isinstance(grad_output, crypten.CrypTensor):
+            return grad_output.conv_transpose2d(
+                kernel,
+                bias=None,
+                stride=stride,
+                padding=padding,
+                output_padding=grad_input_padding,
+                groups=in_channels,
+                dilation=1,
+            )
+
+        return torch.conv_transpose2d(
+            grad_output,
+            kernel,
+            bias=None,
             stride=stride,
             padding=padding,
-            output_padding=output_padding,
+            output_padding=grad_input_padding,
+            groups=in_channels,
+            dilation=1,
         )
 
 
