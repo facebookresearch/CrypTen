@@ -9,6 +9,7 @@ import io
 
 import onnx
 import torch
+import torch.onnx.utils
 from onnx import numpy_helper
 
 from .loss import BCELoss, CrossEntropyLoss, L1Loss, MSELoss
@@ -24,7 +25,8 @@ from .module import (
     ConstantPad2d,
     ConstantPad3d,
     Conv2d,
-    Div,
+    Dropout,
+    Dropout_,
     Exp,
     Flatten,
     Gather,
@@ -47,6 +49,9 @@ from .module import (
     _Pool2d,
 )
 from .onnx_helper import (
+    _run_symbolic_function_with_in_place,
+    _trace_and_get_graph_from_model_with_inplace,
+    _trace_with_inplace,
     get_attribute_value,
     get_parameter_name,
     update_onnx_symbolic_registry,
@@ -71,7 +76,8 @@ __all__ = [
     "ConstantPad3d",
     "Conv2d",
     "CrossEntropyLoss",
-    "Div",
+    "Dropout",
+    "Dropout_",
     "Exp",
     "Flatten",
     "Gather",
@@ -100,7 +106,8 @@ ONNX_TO_CRYPTEN = {
     "Concat": Concat,
     "Conv": Conv2d,
     "Constant": Constant,
-    "Div": Div,
+    "Dropout": Dropout,
+    "Dropout_": Dropout_,
     "Exp": Exp,
     "Flatten": Flatten,
     "Gather": Gather,
@@ -126,6 +133,12 @@ def from_pytorch(pytorch_model, dummy_input):
     # Exporting model to ONNX graph:
     # TODO: Currently export twice because the torch-to-ONNX symbolic registry
     # only gets created on the first call.
+
+    torch.onnx.utils._trace = _trace_with_inplace
+    torch.onnx.utils._trace_and_get_graph_from_model = (
+        _trace_and_get_graph_from_model_with_inplace
+    )
+    torch.onnx.utils._run_symbolic_function = _run_symbolic_function_with_in_place
 
     # export first time so symbolic registry is created
     f = io.BytesIO()

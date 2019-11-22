@@ -142,8 +142,27 @@ class MPCTensor(CrypTensor):
         self._tensor.share = value
 
     def bernoulli(self):
-        """Draws a random tensor from {0, 1} with probability 0.5"""
+        """Returns a tensor with elements in {0, 1}. The i-th element of the
+        output will be 1 with probability according to the i-th value of the
+        input tensor."""
         return self > crypten.mpc.rand(self.size())
+
+    def dropout(self, p=0.5, training=True, inplace=False):
+        """Randomly zeroes some of the elements of the input tensor with
+        probability :attr:`p`."""
+        assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
+        if training is False:
+            if inplace:
+                return self
+            else:
+                return self.clone()
+        rand_tensor = crypten.mpc.rand(self.size())
+        dropout_tensor = rand_tensor > p
+        if inplace:
+            result_tensor = self.mul_(dropout_tensor).div_(1 - p)
+        else:
+            result_tensor = self.mul(dropout_tensor).div_(1 - p)
+        return result_tensor
 
     # Comparators
     @mode(Ptype.binary)

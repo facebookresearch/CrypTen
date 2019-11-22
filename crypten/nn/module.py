@@ -355,22 +355,6 @@ class Sub(Module):
         return Sub()
 
 
-class Div(Module):
-    """
-    Module that performs element-wise binary division (with broadcasting support)
-    """
-
-    def forward(self, input):
-        assert isinstance(input, (list, tuple)), "input must be list or tuple"
-        assert len(input) == 2, "input must contain two tensors"
-        assert input[0].dim() == input[1].dim(), "inputs must have identical sizes"
-        return input[0].div(input[1])
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        return Div()
-
-
 class Exp(Module):
     """
     Module that calculates the exponential of the given input tensor, element-wise.
@@ -596,6 +580,67 @@ class Reshape(Module):
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         return Reshape()
+
+
+class _DropoutBase(Module):
+    r"""
+    Module that performs dropout in training mode
+    """
+
+    def __init__(self, p=0.5, inplace=False):
+        super().__init__()
+        self.p = p
+        self.inplace = inplace
+
+    def forward(self, input):
+        if self.training:
+            result = input.dropout(p=self.p, inplace=self.inplace)
+            return result
+        return input
+
+
+class Dropout(_DropoutBase):
+    r"""During training, randomly zeroes some of the elements of the input
+    tensor with probability :attr:`p` using samples from a Bernoulli
+    distribution. Furthermore, the outputs are scaled by a factor of
+    :math:`\frac{1}{1-p}` during training. This means that during evaluation
+    the module simply computes an identity function.
+
+    Args:
+        p: probability of an element to be zeroed. Default: 0.5
+
+    Shape:
+        - Input: :math:`(*)`. Input can be of any shape
+        - Output: :math:`(*)`. Output is of the same shape as input
+    """
+
+    def __init__(self, p=0.5):
+        super().__init__()
+        self.p = p
+        self.inplace = False
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        return Dropout(attributes["ratio"])
+
+
+class Dropout_(_DropoutBase):
+    r"""
+    Module for performing in-place Dropout during training
+    """
+
+    def __init__(self, p=0.5):
+        super().__init__()
+        self.p = p
+        self.inplace = True
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        return Dropout_(attributes["ratio"])
 
 
 class Gather(Module):

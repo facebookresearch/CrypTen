@@ -413,6 +413,25 @@ class AutogradReLU(AutogradFunction):
         return grad_output.mul(mask)
 
 
+@register_function("dropout")
+class AutogradDropout(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input, p=0.5, inplace=False):
+        rand_tensor = crypten.mpc.rand(input.size())
+        boolean_mask = rand_tensor > p
+        if inplace:
+            result = input.mul_(boolean_mask).div_(1 - p)
+        else:
+            result = input.mul(boolean_mask).div(1 - p)
+        ctx.save_multiple_for_backward([boolean_mask, p])
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        boolean_mask, p = ctx.saved_tensors
+        return grad_output.mul(boolean_mask.div(1 - p))
+
+
 @register_function("tanh")
 class AutogradTanh(AutogradFunction):
     @staticmethod
