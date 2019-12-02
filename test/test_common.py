@@ -26,10 +26,6 @@ class TestCommon(unittest.TestCase):
     Test cases for common functionality.
     """
 
-    def setUp(self):
-        super().setUp()
-        crypten.init()
-
     def _check(self, tensor, reference, msg):
         test_passed = (tensor == reference).all().item() == 1
         self.assertTrue(test_passed, msg=msg)
@@ -50,6 +46,9 @@ class TestCommon(unittest.TestCase):
             )
 
         # Make sure encoding a subclass of CrypTensor is a no-op
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        crypten.init()
+
         tensor = get_test_tensor(float=True)
         encrypted_tensor = crypten.cryptensor(tensor)
         encrypted_tensor = fpe.encode(encrypted_tensor)

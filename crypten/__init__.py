@@ -17,8 +17,11 @@ from .mpc import ptype
 
 
 def init():
-    comm._init(use_threads=False)
-    _setup_przs()
+    comm._init(use_threads=False, init_ttp=crypten.mpc.ttp_required())
+    if comm.get().get_rank() < comm.get().get_world_size():
+        _setup_przs()
+        if crypten.mpc.ttp_required():
+            crypten.mpc.provider.ttp_provider.TTPClient._init()
 
 
 def init_thread(rank, world_size):
@@ -28,6 +31,10 @@ def init_thread(rank, world_size):
 
 def uninit():
     return comm.uninit()
+
+
+def is_initialized():
+    return comm.is_initialized()
 
 
 # the different private type attributes of an mpc encrypted tensor
@@ -190,6 +197,9 @@ def load(f, encrypted=False, dummy_model=None, src=0, **kwargs):
         assert (
             src >= 0 and src < comm.get().get_world_size()
         ), "Load failed: src must be in [0, world_size)"
+
+        # TODO: Use send_obj and recv_obj to send modules without requiring a
+        # dummy_model
 
         # source party
         if comm.get().get_rank() == src:

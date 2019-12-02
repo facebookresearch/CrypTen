@@ -73,8 +73,8 @@ def get_random_linear(in_channels, out_channels):
         # Broadcast this tensor to the world so that the generated random tensor
         # is in sync in all distributed processes. See T45688819 for more
         # information.
-        dist.broadcast(linear.weight, 0)
-        dist.broadcast(linear.bias, 0)
+        comm.get().broadcast(linear.weight, 0)
+        comm.get().broadcast(linear.bias, 0)
 
     return linear
 
@@ -139,6 +139,8 @@ class MultiProcessTestCase(unittest.TestCase):
             self.processes = [
                 self._spawn_process(rank) for rank in range(int(self.world_size))
             ]
+            if crypten.mpc.ttp_required():
+                self.processes += [self._spawn_ttp()]
 
     def tearDown(self):
         super(MultiProcessTestCase, self).tearDown()
@@ -154,6 +156,21 @@ class MultiProcessTestCase(unittest.TestCase):
     def _current_test_name(self):
         # self.id() == e.g. '__main__.TestDistributed.TestAdditive.test_get_rank'
         return self.id().split(".")[-1]
+
+    def _spawn_ttp(self):
+        communicator_args = {
+            "WORLD_SIZE": self.world_size,
+            "RANK": self.world_size,
+            "RENDEZVOUS": "file://%s" % self.file,
+            "BAXKEND": "gloo",
+        }
+        for key, val in communicator_args.items():
+            os.environ[key] = str(val)
+        process = self.mp_context.Process(
+            target=crypten.mpc.provider.TTPServer, name="TTP", args=()
+        )
+        process.start()
+        return process
 
     def _spawn_process(self, rank):
         name = "process " + str(rank)
@@ -185,11 +202,11 @@ class MultiProcessTestCase(unittest.TestCase):
             os.environ[key] = str(val)
 
         crypten.init()
-
         self.setUp()
 
         # We're retrieving a corresponding test and executing it.
         getattr(self, test_name)()
+        crypten.uninit()
         sys.exit(0)
 
     def _join_processes(self, fn):

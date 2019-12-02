@@ -6,7 +6,8 @@
 # LICENSE file in the root directory of this source tree.
 
 from .homomorphic_provider import HomomorphicProvider
-from .ttp_provider import TrustedThirdParty
+from .tfp_provider import TrustedFirstParty
+from .ttp_provider import TrustedThirdParty, TTPServer
 
 
-__all__ = ["TrustedThirdParty", "HomomorphicProvider"]
+__all__ = ["TrustedFirstParty", "TrustedThirdParty", "TTPServer", "HomomorphicProvider"]

@@ -38,7 +38,7 @@ SIZES = [
 ]
 
 
-class TestGradients(MultiProcessTestCase):
+class TestGradients(object):
     """
         This class tests all functions of AutogradCrypTensor.
     """
@@ -139,11 +139,11 @@ class TestGradients(MultiProcessTestCase):
 
     def test_arithmetic(self):
         """Tests arithmetic functions with broadcasting."""
-        arithmetic_functions = ["add", "sub", "mul", "div"]
+        arithmetic_functions = ["add", "sub", "mul"]
         for func in arithmetic_functions:
+
             # Test on operator
-            ofunc = "truediv" if func == "div" else func
-            ofunc = "__" + ofunc + "__"
+            ofunc = "__" + func + "__"
 
             # Test both left functions and right functions
             rfunc = ofunc[:2] + "r" + ofunc[2:]
@@ -154,9 +154,7 @@ class TestGradients(MultiProcessTestCase):
                     tensor1 = get_random_test_tensor(size=size1, is_float=True)
                     if use_tensor:
                         for size2 in SIZES:
-                            tensor2 = get_random_test_tensor(
-                                min_value=0.5, size=size2, is_float=True
-                            )  # do not divide by value very close to zero
+                            tensor2 = get_random_test_tensor(size=size2, is_float=True)
                             self._check_forward_backward(func, tensor1, tensor2)
                             self._check_forward_backward(ofunc, tensor1, tensor2)
                             self._check_forward_backward(rfunc, tensor1, tensor2)
@@ -165,6 +163,18 @@ class TestGradients(MultiProcessTestCase):
                         self._check_forward_backward(func, tensor1, scalar)
                         self._check_forward_backward(ofunc, tensor1, scalar)
                         self._check_forward_backward(rfunc, tensor1, scalar)
+
+    def test_div(self):
+        funcs = ["div", "__truediv__", "__rtruediv__"]
+        for func in funcs:
+            for size1 in SIZES:
+                tensor1 = get_random_test_tensor(size=size1, is_float=True)
+                for size2 in SIZES:
+                    tensor2 = get_random_test_tensor(
+                        min_value=0.5, size=size2, is_float=True
+                    )  # do not divide by value very close to zero
+                    self._check_forward_backward(func, tensor1, tensor2)
+                self._check_forward_backward(func, tensor1, 2.0)
 
     def test_reductions(self):
         """Tests reductions on tensors of various sizes."""
@@ -996,6 +1006,29 @@ class TestGradients(MultiProcessTestCase):
     def test_gather_scatter(self):
         pass
     '''
+
+
+# Run all unit tests with both TFP and TTP providers
+class TestTFP(MultiProcessTestCase, TestGradients):
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        super(TestTFP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        super(TestTFP, self).tearDown()
+
+
+class TestTTP(MultiProcessTestCase, TestGradients):
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
+        super(TestTTP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        super(TestTTP, self).tearDown()
 
 
 # This code only runs when executing the file outside the test harness (e.g.

@@ -25,42 +25,43 @@ class DistributedCommunicator(Communicator):
     BYTES_PER_ELEMENT = 8
     __instance = None
 
-    def __init__(self):
+    def __init__(self, init_ttp=False):
         # no need to do anything if we already initialized the communicator:
         if not dist.is_initialized():
             # get configuration variables from environmens:
-            state = {}
             for key in ["distributed_backend", "rendezvous", "world_size", "rank"]:
-                key = key.upper()
-                if key not in os.environ:
+                if key.upper() not in os.environ:
                     raise ValueError("Environment variable %s must be set." % key)
-                state[key.lower()] = os.environ[key]
+                setattr(self, key.lower(), os.environ[key.upper()])
 
             # make sure world size and rank are integers; comms stats are reset:
-            state["world_size"] = int(state["world_size"])
-            state["rank"] = int(state["rank"])
+            self.world_size = int(self.world_size)
+            self.rank = int(self.rank)
             self.reset_communication_stats()
 
             # logging:
             logging.info("==================")
-            logging.info("DistributedCommunicator with rank %d" % state["rank"])
+            logging.info("DistributedCommunicator with rank %d" % self.rank)
             logging.info("==================")
 
             # initialize process group:
+            total_ws = self.world_size + 1 if init_ttp else self.world_size
             dist.init_process_group(
-                backend=state["distributed_backend"],
-                init_method=state["rendezvous"],
-                world_size=state["world_size"],
-                rank=state["rank"],
+                backend=self.distributed_backend,
+                init_method=self.rendezvous,
+                world_size=total_ws,
+                rank=self.rank,
             )
-            logging.info("World size = %d" % dist.get_world_size())
+            self.ttp_group = dist.new_group([i for i in range(total_ws)])
+            self.main_group = dist.new_group([i for i in range(self.world_size)])
+            logging.info("World size = %d" % self.world_size)
 
     @classmethod
     def is_initialized(cls):
         return dist.is_initialized()
 
     @classmethod
-    def initialize(cls, rank, world_size):
+    def initialize(cls, rank, world_size, init_ttp=False):
         import os
 
         if os.name == "nt":
@@ -80,7 +81,7 @@ class DistributedCommunicator(Communicator):
             if key not in os.environ:
                 os.environ[key] = str(val)
 
-        cls.instance = DistributedCommunicator()
+        cls.instance = DistributedCommunicator(init_ttp=init_ttp)
 
     @classmethod
     def get(cls):
@@ -89,90 +90,91 @@ class DistributedCommunicator(Communicator):
     @classmethod
     def shutdown(cls):
         dist.destroy_process_group()
+        cls.instance = None
 
     @_logging
     def send(self, tensor, dst):
         """Sends the specified tensor to the destination dst."""
         assert dist.is_initialized(), "initialize the communicator first"
-        dist.send(tensor, dst)
+        dist.send(tensor, dst, group=self.main_group)
 
     @_logging
     def recv(self, tensor, src=None):
         """Receives a tensor from an (optional) source src."""
         assert dist.is_initialized(), "initialize the communicator first"
         result = tensor.clone()
-        dist.recv(result, src=src)
+        dist.recv(result, src=src, group=self.main_group)
         return result
 
     @_logging
     def isend(self, tensor, dst):
         """Sends the specified tensor to the destination dst."""
         assert dist.is_initialized(), "initialize the communicator first"
-        return dist.isend(tensor, dst)
+        return dist.isend(tensor, dst, group=self.main_group)
 
     @_logging
     def irecv(self, tensor, src=None):
         """Receives a tensor from an (optional) source src."""
         assert dist.is_initialized(), "initialize the communicator first"
-        return dist.irecv(tensor, src=src)
+        return dist.irecv(tensor, src=src, group=self.main_group)
 
     @_logging
-    def scatter(self, scatter_list, src, size=None, async_op=False):
+    def scatter(self, scatter_list, src, size=None):
         """Scatters a list of tensors to all parties."""
         assert dist.is_initialized(), "initialize the communicator first"
         if src != self.get_rank():
             if size is None:
                 size = scatter_list[self.get_rank()].size()
             tensor = torch.empty(size=size, dtype=torch.long)
-            dist.scatter(tensor, [], src, async_op=async_op)
+            dist.scatter(tensor, [], src, group=self.main_group)
         else:
             tensor = scatter_list[self.get_rank()]
-            dist.scatter(tensor, [t for t in scatter_list], src, async_op=async_op)
+            dist.scatter(tensor, [t for t in scatter_list], src, group=self.main_group)
         return tensor
 
     @_logging
-    def reduce(self, tensor, dst, op=ReduceOp.SUM, async_op=False):
+    def reduce(self, tensor, dst, op=ReduceOp.SUM):
         """Reduces the tensor data across all parties."""
         assert dist.is_initialized(), "initialize the communicator first"
         result = tensor.clone()
-        dist.reduce(result, dst, op=op, async_op=async_op)
+        dist.reduce(result, dst, op=op, group=self.main_group)
         return result
 
     @_logging
-    def all_reduce(self, tensor, op=ReduceOp.SUM, async_op=False):
+    def all_reduce(self, tensor, op=ReduceOp.SUM):
         """Reduces the tensor data across all parties; all get the final result."""
         assert dist.is_initialized(), "initialize the communicator first"
         result = tensor.clone()
-        dist.all_reduce(result, op=op, async_op=async_op)
+        dist.all_reduce(result, op=op, group=self.main_group)
         return result
 
     @_logging
-    def gather(self, tensor, dst, async_op=False):
+    def gather(self, tensor, dst):
         """Gathers a list of tensors in a single party."""
         assert dist.is_initialized(), "initialize the communicator first"
         if self.get_rank() == dst:
             result = []
             for _ in range(self.get_world_size()):
                 result.append(torch.empty(size=tensor.size(), dtype=torch.long))
-            dist.gather(tensor, result, dst, async_op=async_op)
+            dist.gather(tensor, result, dst, group=self.main_group)
             return result
-        dist.gather(tensor, [], dst, async_op=async_op)
+        dist.gather(tensor, [], dst, group=self.main_group)
 
     @_logging
-    def all_gather(self, tensor, async_op=False):
+    def all_gather(self, tensor):
         """Gathers tensors from all parties in a list."""
         assert dist.is_initialized(), "initialize the communicator first"
         result = []
         for _ in range(self.get_world_size()):
             result.append(torch.empty(size=tensor.size(), dtype=torch.long))
-        dist.all_gather(result, tensor, async_op=async_op)
+        dist.all_gather(result, tensor, group=self.main_group)
         return result
 
     @_logging
-    def broadcast(self, tensor, src, async_op=False):
+    def broadcast(self, tensor, src):
         """Broadcasts the tensor to all parties."""
         assert dist.is_initialized(), "initialize the communicator first"
-        dist.broadcast(tensor, src, async_op=async_op)
+        dist.broadcast(tensor, src, group=self.main_group)
         return tensor
 
     @_logging
@@ -183,17 +185,21 @@ class DistributedCommunicator(Communicator):
         function.
         """
         assert dist.is_initialized(), "initialize the communicator first"
-        dist.barrier()
+        dist.barrier(group=self.main_group)
 
     def get_world_size(self):
         """Returns the size of the world."""
         assert dist.is_initialized(), "initialize the communicator first"
-        return dist.get_world_size()
+        return self.world_size
 
     def get_rank(self):
         """Returns the rank of the current process."""
         assert dist.is_initialized(), "initialize the communicator first"
         return dist.get_rank()
+
+    def get_ttp_rank(self):
+        """Returns the rank of the Trusted Third Party"""
+        return self.get_world_size()
 
     def get_distributed_backend(self):
         """Returns name of torch.distributed backend used."""

@@ -7,6 +7,8 @@
 
 
 class HomomorphicProvider:
+    NAME = "HE"
+
     @staticmethod
     def generate_additive_triple(size0, size1, op, *args, **kwargs):
         """Generate multiplicative triples of given sizes"""

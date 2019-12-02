@@ -21,7 +21,7 @@ from crypten.autograd_cryptensor import AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
 
 
-class TestNN(MultiProcessTestCase):
+class TestNN(object):
     """
         This class tests the crypten.nn package.
     """
@@ -768,6 +768,29 @@ class TestNN(MultiProcessTestCase):
                         plain_model._buffers[stat],
                         f"{stat} momentum update in module incorrect",
                     )
+
+
+# Run all unit tests with both TFP and TTP providers
+class TestTFP(MultiProcessTestCase, TestNN):
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        super(TestTFP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        super(TestTFP, self).tearDown()
+
+
+class TestTTP(MultiProcessTestCase, TestNN):
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
+        super(TestTTP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        super(TestTTP, self).tearDown()
 
 
 # This code only runs when executing the file outside the test harness (e.g.

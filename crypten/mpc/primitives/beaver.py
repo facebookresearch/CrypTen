@@ -89,7 +89,7 @@ def wraps(x):
     can make the assumption that [eta_xr] = 0 with high probability.
     """
     provider = crypten.mpc.get_default_provider()
-    r, theta_r = provider.wrap_rng(x.size(), comm.get().get_world_size())
+    r, theta_r = provider.wrap_rng(x.size())
     beta_xr = theta_r.clone()
     beta_xr._tensor = count_wraps([x._tensor, r._tensor])
 
@@ -116,7 +116,7 @@ def AND(x, y):
     from .binary import BinarySharedTensor
 
     provider = crypten.mpc.get_default_provider()
-    a, b, c = provider.generate_xor_triple(x.size())
+    a, b, c = provider.generate_binary_triple(x.size())
 
     # Stack to vectorize reveal
     eps_del = BinarySharedTensor.stack([x ^ a, y ^ b]).reveal()

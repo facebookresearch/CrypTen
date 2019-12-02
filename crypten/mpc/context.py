@@ -17,7 +17,6 @@ from crypten.communicator import DistributedCommunicator
 
 
 def _launch(func, rank, world_size, rendezvous_file, queue, func_args, func_kwargs):
-
     communicator_args = {
         "WORLD_SIZE": world_size,
         "RANK": rank,
@@ -28,8 +27,9 @@ def _launch(func, rank, world_size, rendezvous_file, queue, func_args, func_kwar
         os.environ[key] = str(val)
 
     crypten.init()
-
     return_value = func(*func_args, **func_kwargs)
+    crypten.uninit()
+
     queue.put((rank, return_value))
 
 
@@ -53,6 +53,23 @@ def run_multiprocess(world_size):
                 )
                 for rank in range(world_size)
             ]
+
+            # Initialize TTP process
+            if crypten.mpc.ttp_required():
+                processes += [
+                    multiprocessing.Process(
+                        target=_launch,
+                        args=(
+                            crypten.mpc.provider.TTPServer,
+                            world_size,
+                            world_size,
+                            rendezvous_file,
+                            queue,
+                            (),
+                            {},
+                        ),
+                    )
+                ]
 
             # This process will be forked and we need to re-initialize the
             # communicator in the children. If the parent process happened to
