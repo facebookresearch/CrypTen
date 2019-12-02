@@ -21,7 +21,7 @@ def get():
     return cls.get()
 
 
-def _init(use_threads, rank=0, world_size=1):
+def _init(use_threads, rank=0, world_size=1, init_ttp=False):
     global __tls, __use_threads
     __use_threads = use_threads
     cls = InProcessCommunicator if __use_threads else DistributedCommunicator
@@ -29,7 +29,7 @@ def _init(use_threads, rank=0, world_size=1):
     if cls.is_initialized():
         return
 
-    cls.initialize(rank, world_size)
+    cls.initialize(rank, world_size, init_ttp=init_ttp)
 
 
 def uninit():

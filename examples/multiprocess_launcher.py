@@ -31,12 +31,26 @@ class MultiProcessLauncher:
             process = multiprocessing.Process(
                 target=self.__class__._run_process,
                 name=process_name,
-                args=(rank, env, run_process_fn, fn_args),
+                args=(rank, world_size, env, run_process_fn, fn_args),
             )
             self.processes.append(process)
 
+        if crypten.mpc.ttp_required():
+            ttp_process = multiprocessing.Process(
+                target=self.__class__._run_process,
+                name="TTP",
+                args=(
+                    world_size,
+                    world_size,
+                    env,
+                    crypten.mpc.provider.TTPServer,
+                    None,
+                ),
+            )
+            self.processes.append(ttp_process)
+
     @classmethod
-    def _run_process(cls, rank, env, run_process_fn, fn_args):
+    def _run_process(cls, rank, world_size, env, run_process_fn, fn_args):
         for env_key, env_value in env.items():
             os.environ[env_key] = env_value
         os.environ["RANK"] = str(rank)
@@ -44,7 +58,10 @@ class MultiProcessLauncher:
         logging.getLogger().setLevel(logging.INFO)
         crypten.init()
         logging.getLogger().setLevel(orig_logging_level)
-        run_process_fn(fn_args)
+        if fn_args is None:
+            run_process_fn()
+        else:
+            run_process_fn(fn_args)
 
     def start(self):
         for process in self.processes:

@@ -128,6 +128,7 @@ class TestCrypten(MultiProcessTestCase):
         """Test that crypten.save and crypten.load properly save and load tensors"""
         import tempfile
 
+        comm = crypten.communicator
         filename = tempfile.NamedTemporaryFile(delete=True).name
         for dimensions in range(1, 5):
             # Create tensors with different sizes on each rank
@@ -135,30 +136,32 @@ class TestCrypten(MultiProcessTestCase):
             size = tuple(size)
             tensor = torch.randn(size=size)
 
-            for src in range(crypten.communicator.get().get_world_size()):
+            for src in range(comm.get().get_world_size()):
                 crypten.save(tensor, filename, src=src)
                 encrypted_load = crypten.load(filename, src=src)
+
                 reference_size = tuple([src + 1] * dimensions)
                 self.assertEqual(encrypted_load.size(), reference_size)
 
                 size_out = [src + 1] * dimensions
                 reference = tensor if self.rank == src else torch.empty(size=size_out)
-                dist.broadcast(reference, src=src)
+                comm.get().broadcast(reference, src=src)
                 self._check(encrypted_load, reference, "crypten.load() failed")
 
     def test_save_load_module(self):
         """Test that crypten.save and crypten.load properly save and load modules"""
         import tempfile
 
+        comm = crypten.communicator
         for model_type in [TestModule, NestedTestModule]:
             # Create models with different parameter values on each rank
-            rank = crypten.communicator.get().get_rank()
+            rank = comm.get().get_rank()
 
             test_model = model_type(200, 10)
             test_model.set_all_parameters(rank)
 
             filename = tempfile.NamedTemporaryFile(delete=True).name
-            for src in range(crypten.communicator.get().get_world_size()):
+            for src in range(comm.get().get_world_size()):
                 crypten.save(test_model, filename, src=src)
 
                 dummy_model = model_type(200, 10)

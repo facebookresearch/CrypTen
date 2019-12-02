@@ -56,6 +56,9 @@ class TestContext(unittest.TestCase):
         self.assertEqual(ones, [1] * 10)
 
     def test_in_first(self):
+        # TODO: Make this work with TTP provider
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+
         # This will cause the parent process to init with world-size 1
         crypten.init()
         self.assertEqual(comm.get().get_world_size(), 1)

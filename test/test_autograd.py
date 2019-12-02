@@ -24,7 +24,7 @@ from crypten.common.tensor_types import is_float_tensor
 from crypten.gradients import AutogradFunction
 
 
-class TestAutograd(MultiProcessTestCase):
+class TestAutograd(object):
     """
     This class tests all autograd-related functionality.
     """
@@ -601,6 +601,29 @@ class TestAutograd(MultiProcessTestCase):
                         f"with training {is_trainning} on {tensor.dim()}-D",
                         tolerance=tolerance,
                     )
+
+
+# Run all unit tests with both TFP and TTP providers
+class TestTFP(MultiProcessTestCase, TestAutograd):
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        super(TestTFP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        super(TestTFP, self).tearDown()
+
+
+class TestTTP(MultiProcessTestCase, TestAutograd):
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
+        super(TestTTP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        super(TestTTP, self).tearDown()
 
 
 # This code only runs when executing the file outside the test harness (e.g.

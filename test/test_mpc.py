@@ -13,13 +13,14 @@ import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 from test.multithread_test_case import MultiThreadTestCase
 
+import crypten
 import torch
 import torch.nn.functional as F
 from crypten.common.tensor_types import is_float_tensor
 from crypten.mpc import MPCTensor, ptype
 
 
-class TestMPC(MultiProcessTestCase):
+class TestMPC(object):
     """
         This class tests all functions of MPCTensor.
     """
@@ -1496,7 +1497,6 @@ class TestMPC(MultiProcessTestCase):
             tensor = get_random_test_tensor(size=size, is_float=True)
             encrypted = MPCTensor(tensor)
             for dim in range(tensor.dim()):
-                print(dim)
                 reference = tensor.unbind(dim)
                 encrypted_out = encrypted.unbind(dim)
 
@@ -1695,6 +1695,29 @@ class TestMPC(MultiProcessTestCase):
         dropout_tensor = dropout_encr_tensor.get_plain_text()
         frac_zero = float((dropout_tensor == 0).sum()) / dropout_tensor.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.4, rel_tol=1e-2, abs_tol=1e-2))
+
+
+# Run all unit tests with both TFP and TTP providers
+class TestTFP(MultiProcessTestCase, TestMPC):
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        super(TestTFP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        super(TestTFP, self).tearDown()
+
+
+class TestTTP(MultiProcessTestCase, TestMPC):
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
+        super(TestTTP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        super(TestTTP, self).tearDown()
 
 
 # This code only runs when executing the file outside the test harness (e.g.

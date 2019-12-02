@@ -5,6 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
+
 import torch
 from crypten.mpc import primitives  # noqa: F401
 from crypten.mpc import provider  # noqa: F40
@@ -67,7 +69,7 @@ def rand(*sizes):
     trusted third party.
     """
     rand = MPCTensor(None)
-    rand._tensor = provider.TrustedThirdParty.rand(*sizes)
+    rand._tensor = __default_provider.rand(*sizes)
     rand.ptype = ptype.arithmetic
     return rand
 
@@ -87,23 +89,36 @@ def randperm(size):
         where `n` is the length of each row (size[-1])
     """
     result = MPCTensor(None)
-    result._tensor = provider.TrustedThirdParty.randperm(size)
+    result._tensor = __default_provider.randperm(size)
     result.ptype = ptype.arithmetic
     return result
 
 
 # Set provider
-__SUPPORTRED_PROVIDERS = [provider.TrustedThirdParty, provider.HomomorphicProvider]
-__default_provider = __SUPPORTRED_PROVIDERS[0]
+__SUPPORTED_PROVIDERS = {
+    "TFP": provider.TrustedFirstParty,
+    "TTP": provider.TrustedThirdParty,
+    "HE": provider.HomomorphicProvider,
+}
+__default_provider = __SUPPORTED_PROVIDERS[
+    os.environ.get("CRYPTEN_PROVIDER_NAME", "TFP")
+]
 
 
 def set_default_provider(new_default_provider):
     global __default_provider
-    assert new_default_provider in __SUPPORTRED_PROVIDERS, (
-        "Provider %s is not supported" % new_default_provider
-    )
+    assert_msg = "Provider %s is not supported" % new_default_provider
+    if isinstance(new_default_provider, str):
+        assert new_default_provider in __SUPPORTED_PROVIDERS.keys(), assert_msg
+    else:
+        assert new_default_provider in __SUPPORTED_PROVIDERS.values(), assert_msg
     __default_provider = new_default_provider
+    os.environ["CRYPTEN_PROVIDER_NAME"] = new_default_provider.NAME
 
 
 def get_default_provider():
     return __default_provider
+
+
+def ttp_required():
+    return __default_provider == provider.TrustedThirdParty
