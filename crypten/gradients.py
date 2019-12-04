@@ -238,7 +238,12 @@ class AutogradNarrow(AutogradFunction):
 class AutogradTake(AutogradFunction):
     @staticmethod
     def forward(ctx, input):
-        input, index, dimension = input
+        # support input without dimension to match PyTorch
+        if len(input) == 2:
+            input, index = input
+            dimension = None
+        else:
+            input, index, dimension = input
         ctx.save_multiple_for_backward((input.size(), index, dimension))
         return input.take(index, dimension)
 
@@ -937,7 +942,7 @@ class AutogradVariance(AutogradFunction):
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
         mean = input.mean() if dim is None else input.mean(dim=dim, keepdim=keepdim)
-        return (input - mean).mul_(2.0).mul_(grad_output).div_(nelement)
+        return (input - mean).mul(2.0).mul(grad_output).div(nelement)
 
 
 @register_function("min")
