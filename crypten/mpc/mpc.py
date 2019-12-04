@@ -164,6 +164,69 @@ class MPCTensor(CrypTensor):
             result_tensor = self.mul(dropout_tensor).div_(1 - p)
         return result_tensor
 
+    def dropout2d(self, p=0.5, training=True, inplace=False):
+        r"""
+        Randomly zero out entire channels (a channel is a 2D feature map,
+        e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
+        batched input is a 2D tensor :math:`\text{input}[i, j]`) of the input tensor).
+        Each channel will be zeroed out independently on every forward call with
+        probability :attr:`p` using samples from a Bernoulli distribution.
+        Args:
+            p: probability of a channel to be zeroed. Default: 0.5
+            training: apply dropout if is ``True``. Default: ``True``
+            inplace: If set to ``True``, will do this operation in-place.
+                Default: ``False``
+        """
+        assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
+        return self._feature_dropout(p, training, inplace)
+
+    def dropout3d(self, p=0.5, training=True, inplace=False):
+        r"""
+        Randomly zero out entire channels (a channel is a 3D feature map,
+        e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
+        batched input is a 3D tensor :math:`\text{input}[i, j]`) of the input tensor).
+        Each channel will be zeroed out independently on every forward call with
+        probability :attr:`p` using samples from a Bernoulli distribution.
+        Args:
+            p: probability of a channel to be zeroed. Default: 0.5
+            training: apply dropout if is ``True``. Default: ``True``
+            inplace: If set to ``True``, will do this operation in-place.
+                Default: ``False``
+        """
+        # This is 100% the same code as dropout2d. We duplicate this code so that
+        # stack traces are not confusing.
+        assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
+        return self._feature_dropout(p, training, inplace)
+
+    def _feature_dropout(self, p=0.5, training=True, inplace=False):
+        """Randomly zeros out entire channels in the input tensor with probability
+        :attr:`p`. (a channel is a nD feature map, e.g., the :math:`j`-th channel
+        of the :math:`i`-th sample in the batched input is a nD tensor
+        :math:`\text{input}[i, j]`)."""
+        assert self.dim() >= 2, "feature dropout requires dimension to be at least 2"
+        assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
+        if training is False:
+            if inplace:
+                return self
+            else:
+                return self.clone()
+        # take first 2 dimensions
+        feature_dropout_size = self.size()[0:2]
+        # create dropout tensor over the first two dimensions
+        rand_tensor = crypten.mpc.rand(feature_dropout_size)
+        feature_dropout_tensor = rand_tensor > p
+        # Broadcast to remaining dimensions
+        for i in range(2, self.dim()):
+            feature_dropout_tensor = feature_dropout_tensor.unsqueeze(i)
+        feature_dropout_tensor.share, self.share = torch.broadcast_tensors(
+            feature_dropout_tensor.share, self.share
+        )
+        if inplace:
+            result_tensor = self.mul_(feature_dropout_tensor).div_(1 - p)
+        else:
+            result_tensor = self.mul(feature_dropout_tensor).div_(1 - p)
+        return result_tensor
+
     # Comparators
     @mode(Ptype.binary)
     def _ltz(self):

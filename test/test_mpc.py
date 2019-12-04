@@ -1649,44 +1649,64 @@ class TestMPC(object):
                 )
             )
 
-        for prob in all_prob_values:
-            for size in [(5, 10), (5, 10, 15), (5, 10, 15, 20)]:
-                for inplace in [False, True]:
-                    for training in [False, True]:
-                        tensor = get_random_test_tensor(
-                            size=size, ex_zero=True, is_float=True
-                        )
-                        encr_tensor = MPCTensor(tensor)
-                        dropout_encr_tensor = encr_tensor.dropout(
-                            prob, inplace=inplace, training=training
-                        )
-                        if training:
-                            # Check the scaling for non-zero elements
-                            dropout_tensor = dropout_encr_tensor.get_plain_text()
-                            scaled_tensor = tensor / (1 - prob)
-                            reference = dropout_tensor.where(
-                                dropout_tensor == 0, scaled_tensor
+        for dropout_fn in ["dropout", "dropout2d", "dropout3d", "_feature_dropout"]:
+            for prob in all_prob_values:
+                for size in [(5, 10), (5, 10, 15), (5, 10, 15, 20)]:
+                    for inplace in [False, True]:
+                        for training in [False, True]:
+                            tensor = get_random_test_tensor(
+                                size=size, ex_zero=True, min_value=1.0, is_float=True
                             )
-                        else:
-                            reference = tensor
-                        self._check(
-                            dropout_encr_tensor,
-                            reference,
-                            f"dropout failed with size {size} and probability {prob}",
-                        )
-                        if inplace:
+                            encr_tensor = MPCTensor(tensor)
+                            dropout_encr_tensor = getattr(encr_tensor, dropout_fn)(
+                                prob, inplace=inplace, training=training
+                            )
+                            if training:
+                                # Check the scaling for non-zero elements
+                                dropout_tensor = dropout_encr_tensor.get_plain_text()
+                                scaled_tensor = tensor / (1 - prob)
+                                reference = dropout_tensor.where(
+                                    dropout_tensor == 0, scaled_tensor
+                                )
+                            else:
+                                reference = tensor
                             self._check(
-                                encr_tensor,
+                                dropout_encr_tensor,
                                 reference,
-                                f"in-place dropout failed with size {size} and "
-                                f"probability {prob}",
+                                f"dropout failed with size {size} and probability "
+                                f"{prob}",
                             )
-                        else:
-                            self._check(
-                                encr_tensor,
-                                tensor,
-                                f"out-of-place dropout modifies input",
-                            )
+                            if inplace:
+                                self._check(
+                                    encr_tensor,
+                                    reference,
+                                    f"in-place dropout failed with size {size} and "
+                                    f"probability {prob}",
+                                )
+                            else:
+                                self._check(
+                                    encr_tensor,
+                                    tensor,
+                                    f"out-of-place dropout modifies input",
+                                )
+                            # Check that channels that are zeroed are all zeros
+                            if dropout_fn in [
+                                "dropout2d",
+                                "dropout3d",
+                                "feature_dropout",
+                            ]:
+                                dropout_encr_flat = dropout_encr_tensor.flatten(
+                                    start_dim=0, end_dim=1
+                                )
+                                dropout_flat = dropout_encr_flat.get_plain_text()
+                                for i in range(0, dropout_flat.size(0)):
+                                    all_zeros = (dropout_flat[i] == 0).all()
+                                    all_nonzeros = (dropout_flat[i] != 0).all()
+                                    self.assertTrue(
+                                        all_zeros or all_nonzeros,
+                                        f"{dropout_fn} failed for size {size} with "
+                                        f"training {training} and inplace {inplace}",
+                                    )
 
         # Check the expected number of zero elements
         # For speed, restrict test to single p = 0.4

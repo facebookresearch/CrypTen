@@ -398,6 +398,41 @@ class CrypTensor(object):
         """
         raise NotImplementedError("_max_pool2d_backward is not implemented")
 
+    def dropout(self, p=0.5, training=True, inplace=False):
+        """Randomly zeroes some of the elements of the input tensor with
+        probability :attr:`p`."""
+        raise NotImplementedError("dropout is not implemented")
+
+    def dropout2d(self, p=0.5, training=True, inplace=False):
+        r"""
+        Randomly zero out entire channels (a channel is a 2D feature map,
+        e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
+        batched input is a 2D tensor :math:`\text{input}[i, j]`) of the input tensor).
+        Each channel will be zeroed out independently on every forward call with
+        probability :attr:`p` using samples from a Bernoulli distribution.
+        Args:
+            p: probability of a channel to be zeroed. Default: 0.5
+            training: apply dropout if is ``True``. Default: ``True``
+            inplace: If set to ``True``, will do this operation in-place.
+                Default: ``False``
+        """
+        raise NotImplementedError("dropout2d is not implemented")
+
+    def dropout3d(self, p=0.5, training=True, inplace=False):
+        r"""
+        Randomly zero out entire channels (a channel is a 3D feature map,
+        e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
+        batched input is a 3D tensor :math:`\text{input}[i, j]`) of the input tensor).
+        Each channel will be zeroed out independently on every forward call with
+        probability :attr:`p` using samples from a Bernoulli distribution.
+        Args:
+            p: probability of a channel to be zeroed. Default: 0.5
+            training: apply dropout if is ``True``. Default: ``True``
+            inplace: If set to ``True``, will do this operation in-place.
+                Default: ``False``
+        """
+        raise NotImplementedError("dropout3d is not implemented")
+
     def where(self, condition, y):
         """Selects elements from self or y based on condition
 

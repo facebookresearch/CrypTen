@@ -422,7 +422,7 @@ class AutogradDropout(AutogradFunction):
         if inplace:
             result = input.mul_(boolean_mask).div_(1 - p)
         else:
-            result = input.mul(boolean_mask).div(1 - p)
+            result = input.mul(boolean_mask).div_(1 - p)
         ctx.save_multiple_for_backward([boolean_mask, p])
         return result
 
@@ -430,6 +430,41 @@ class AutogradDropout(AutogradFunction):
     def backward(ctx, grad_output):
         boolean_mask, p = ctx.saved_tensors
         return grad_output.mul(boolean_mask.div(1 - p))
+
+
+@register_function("_feature_dropout")
+class AutogradFeatureDropout(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input, p=0.5, inplace=False):
+        feature_dropout_size = input.size()[0:2]
+        rand_tensor = crypten.mpc.rand(feature_dropout_size)
+        boolean_mask = rand_tensor > p
+        for i in range(2, input.dim()):
+            boolean_mask = boolean_mask.unsqueeze(i)
+        boolean_mask.share, tensor = torch.broadcast_tensors(
+            boolean_mask.share, input.share
+        )
+        if inplace:
+            result = input.mul_(boolean_mask).div_(1 - p)
+        else:
+            result = input.mul(boolean_mask).div_(1 - p)
+        ctx.save_multiple_for_backward([boolean_mask, p])
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        boolean_mask, p = ctx.saved_tensors
+        return grad_output.mul(boolean_mask.div(1 - p))
+
+
+@register_function("dropout2d")
+class AutogradDropout2d(AutogradFeatureDropout):
+    pass
+
+
+@register_function("dropout3d")
+class AutogradDropout3d(AutogradFeatureDropout):
+    pass
 
 
 @register_function("tanh")

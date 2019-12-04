@@ -434,54 +434,57 @@ class TestGradients(object):
         # Create a separate test for dropout since it cannot use the
         # regular forward function
         all_prob_values = [x * 0.2 for x in range(0, 5)]
-        for prob in all_prob_values:
-            for size in [(5, 10), (5, 10, 15), (5, 10, 15, 20)]:
-                for use_zeros in [False, True]:
-                    tensor = get_random_test_tensor(
-                        size=size, ex_zero=True, is_float=True
-                    )
-                    if use_zeros:
-                        # turn the first row to all zeros
-                        index = [1] + [
-                            slice(0, tensor.size(i)) for i in range(1, tensor.dim())
-                        ]
-                        tensor[index] = 0.0
+        for dropout_fn in ["dropout", "_feature_dropout", "dropout2d", "dropout3d"]:
+            for prob in all_prob_values:
+                for size in [(5, 10), (5, 10, 15), (5, 10, 15, 20)]:
+                    for use_zeros in [False, True]:
+                        tensor = get_random_test_tensor(
+                            size=size, ex_zero=True, min_value=1.0, is_float=True
+                        )
+                        if use_zeros:
+                            # turn the first row to all zeros
+                            index = [1] + [
+                                slice(0, tensor.size(i)) for i in range(1, tensor.dim())
+                            ]
+                            tensor[index] = 0.0
 
-                    encr_tensor = AutogradCrypTensor(
-                        crypten.cryptensor(tensor), requires_grad=True
+                        encr_tensor = AutogradCrypTensor(
+                            crypten.cryptensor(tensor), requires_grad=True
+                        )
+                        encr_tensor_out = getattr(encr_tensor, dropout_fn)(p=prob)
+                        dropout_tensor = encr_tensor_out.get_plain_text()
+                        # Check the scaling for non-zero elements
+                        scaled_tensor = tensor / (1 - prob)
+                        reference = dropout_tensor.where(
+                            dropout_tensor == 0, scaled_tensor
+                        )
+                        self._check(
+                            encr_tensor_out,
+                            reference,
+                            "dropout failed with size {}, use_zeros {}, and "
+                            "probability {}".format(size, use_zeros, prob),
+                        )
+
+                    # Check backward pass
+                    grad_output = get_random_test_tensor(
+                        max_value=2, size=reference.size(), is_float=True
                     )
-                    encr_tensor_out = encr_tensor.dropout(p=prob)
-                    dropout_tensor = encr_tensor_out.get_plain_text()
-                    # Check the scaling for non-zero elements
-                    scaled_tensor = tensor / (1 - prob)
-                    reference = dropout_tensor.where(dropout_tensor == 0, scaled_tensor)
+                    grad_output_encr = crypten.cryptensor(grad_output)
+
+                    # Do not check backward if pytorch backward fails
+                    try:
+                        reference.backward(grad_output)
+                    except RuntimeError:
+                        logging.info("skipped")
+                        continue
+                    encr_tensor_out.backward(grad_output_encr)
+
                     self._check(
-                        encr_tensor_out,
-                        reference,
-                        "dropout failed with size {}, use_zeros {}, and probability "
-                        "{}".format(size, use_zeros, prob),
+                        encr_tensor.grad,
+                        input.grad,
+                        "dropout failed in backward with size {}, use_zeros {} and "
+                        "probability {}".format(size, use_zeros, prob),
                     )
-
-                # Check backward pass
-                grad_output = get_random_test_tensor(
-                    max_value=2, size=reference.size(), is_float=True
-                )
-                grad_output_encr = crypten.cryptensor(grad_output)
-
-                # Do not check backward if pytorch backward fails
-                try:
-                    reference.backward(grad_output)
-                except RuntimeError:
-                    logging.info("skipped")
-                    continue
-                encr_tensor_out.backward(grad_output_encr)
-
-                self._check(
-                    encr_tensor.grad,
-                    input.grad,
-                    "dropout failed in backward with size {}, use_zeros {} and "
-                    "probability {}".format(size, use_zeros, prob),
-                )
 
     '''
     def test_var(self):

@@ -41,7 +41,7 @@ def get_attribute_value(attr):
         raise ValueError("Unknown attribute type for attribute %s." % attr.name)
 
 
-def update_onnx_symbolic_registry():
+def _update_onnx_symbolic_registry():
     """
     Updates the ONNX symbolic registry for operators that need a CrypTen-specific
     implementation and custom operators.
@@ -49,17 +49,29 @@ def update_onnx_symbolic_registry():
     for version_key, version_val in sym_registry._registry.items():
         for function_key in version_val.keys():
             if function_key == "softmax":
-                sym_registry._registry[version_key][function_key] = onnx_crypten_softmax
+                sym_registry._registry[version_key][
+                    function_key
+                ] = _onnx_crypten_softmax
             if function_key == "dropout":
-                sym_registry._registry[version_key][function_key] = onnx_crypten_dropout
+                sym_registry._registry[version_key][
+                    function_key
+                ] = _onnx_crypten_dropout
             if function_key == "dropout_":
                 sym_registry._registry[version_key][
                     function_key
-                ] = onnx_crypten_dropout_
+                ] = _onnx_crypten_dropout_
+            if function_key == "feature_dropout":
+                sym_registry._registry[version_key][
+                    function_key
+                ] = _onnx_crypten_feature_dropout
+            if function_key == "feature_dropout_":
+                sym_registry._registry[version_key][
+                    function_key
+                ] = _onnx_crypten_feature_dropout_
 
 
 @sym_help.parse_args("v", "i", "none")
-def onnx_crypten_softmax(g, input, dim, dtype=None):
+def _onnx_crypten_softmax(g, input, dim, dtype=None):
     """
     This function converts PyTorch's Softmax module to a Softmax module in
     the ONNX model. It overrides PyTorch's default conversion of Softmax module
@@ -74,7 +86,7 @@ def onnx_crypten_softmax(g, input, dim, dtype=None):
 
 
 @sym_help.parse_args("v", "f", "i")
-def onnx_crypten_dropout(g, input, p, train):
+def _onnx_crypten_dropout(g, input, p, train):
     """
     This function converts PyTorch's Dropout module to a Dropout module in the ONNX
     model. It overrides PyTorch's default implementation to ignore the Dropout module
@@ -89,13 +101,43 @@ def onnx_crypten_dropout(g, input, p, train):
 
 
 @sym_help.parse_args("v", "f", "i")
-def onnx_crypten_dropout_(g, input, p, train):
+def _onnx_crypten_dropout_(g, input, p, train):
     """
     This function converts PyTorch's in-place Dropout module to an in-place Dropout
     module in the ONNX model. The operator created is identical to the out-of-place
     Dropout module above, but uses the in-place version of the name.
     """
-    r, _ = g.op("Dropout_", input, ratio_f=p, outputs=2)
+    r, _ = g.op("_Dropout_", input, ratio_f=p, outputs=2)
+    return r
+
+
+@sym_help.parse_args("v", "f", "i")
+def _onnx_crypten_feature_dropout(g, input, p, train):
+    """
+    This function converts PyTorch's DropoutNd module to a DropoutNd module in the ONNX
+    model. It overrides PyTorch's default implementation to ignore the DropoutNd module
+    during the conversion. PyTorch assumes that ONNX models are only used for
+    inference and therefore DropoutNd modules are not required in the ONNX model.
+    However, CrypTen needs to convert ONNX models to trainable
+    CrypTen models, and so the DropoutNd module needs to be included in the
+    CrypTen-specific conversion.
+    """
+    r, _ = g.op("DropoutNd", input, ratio_f=p, outputs=2)
+    return r
+
+
+@sym_help.parse_args("v", "f", "i")
+def _onnx_crypten_feature_dropout_(g, input, p, train):
+    """
+    This function converts PyTorch's DropoutNd module to a DropoutNd module in the ONNX
+    model. It overrides PyTorch's default implementation to ignore the DropoutNd module
+    during the conversion. PyTorch assumes that ONNX models are only used for
+    inference and therefore DropoutNd modules are not required in the ONNX model.
+    However, CrypTen needs to convert ONNX models to trainable
+    CrypTen models, and so the DropoutNd module needs to be included in the
+    CrypTen-specific conversion.
+    """
+    r, _ = g.op("_DropoutNd_", input, ratio_f=p, outputs=2)
     return r
 
 
@@ -166,8 +208,9 @@ def _run_symbolic_function_with_in_place(
 
         ns_op_name = n.kind()
         ns, op_name = ns_op_name.split("::")
-        if n.kind().endswith("_") and op_name != "dropout_":
-            op_name = op_name[:-1]
+        if n.kind().endswith("_"):
+            if op_name not in ["dropout_", "feature_dropout_"]:
+                op_name = op_name[:-1]
 
         if ns == "onnx":
             # Use the original node directly

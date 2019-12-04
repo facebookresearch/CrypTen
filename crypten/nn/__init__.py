@@ -26,7 +26,9 @@ from .module import (
     ConstantPad3d,
     Conv2d,
     Dropout,
-    Dropout_,
+    Dropout2d,
+    Dropout3d,
+    DropoutNd,
     Exp,
     Flatten,
     Gather,
@@ -46,15 +48,19 @@ from .module import (
     Unsqueeze,
     _BatchNorm,
     _ConstantPad,
+    _Dropout2d_,
+    _Dropout3d_,
+    _Dropout_,
+    _DropoutNd_,
     _Pool2d,
 )
 from .onnx_helper import (
     _run_symbolic_function_with_in_place,
     _trace_and_get_graph_from_model_with_inplace,
     _trace_with_inplace,
+    _update_onnx_symbolic_registry,
     get_attribute_value,
     get_parameter_name,
-    update_onnx_symbolic_registry,
 )
 
 
@@ -77,7 +83,9 @@ __all__ = [
     "Conv2d",
     "CrossEntropyLoss",
     "Dropout",
-    "Dropout_",
+    "Dropout2d",
+    "Dropout3d",
+    "DropoutNd",
     "Exp",
     "Flatten",
     "Gather",
@@ -107,7 +115,13 @@ ONNX_TO_CRYPTEN = {
     "Conv": Conv2d,
     "Constant": Constant,
     "Dropout": Dropout,
-    "Dropout_": Dropout_,
+    "_Dropout_": _Dropout_,
+    "Dropout2d": Dropout2d,
+    "_Dropout2d_": _Dropout2d_,
+    "Dropout3d": Dropout3d,
+    "_Dropout3d_": _Dropout3d_,
+    "DropoutNd": DropoutNd,
+    "_DropoutNd_": _DropoutNd_,
     "Exp": Exp,
     "Flatten": Flatten,
     "Gather": Gather,
@@ -146,12 +160,13 @@ def from_pytorch(pytorch_model, dummy_input):
         pytorch_model,
         dummy_input,
         f,
+        do_constant_folding=False,
         export_params=True,
         input_names=["input"],
         output_names=["output"],
     )
     # update ONNX symbolic registry with CrypTen-specific functions
-    update_onnx_symbolic_registry()
+    _update_onnx_symbolic_registry()
 
     # export again so the graph is created with CrypTen-specific registry
     f = io.BytesIO()
@@ -159,6 +174,7 @@ def from_pytorch(pytorch_model, dummy_input):
         pytorch_model,
         dummy_input,
         f,
+        do_constant_folding=False,
         export_params=True,
         input_names=["input"],
         output_names=["output"],
