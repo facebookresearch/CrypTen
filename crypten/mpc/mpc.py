@@ -11,6 +11,7 @@ from crypten.common.util import pool_reshape
 
 from ..autograd_cryptensor import AutogradCrypTensor
 from ..cryptensor import CrypTensor
+from .primitives import beaver
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
 
@@ -229,11 +230,15 @@ class MPCTensor(CrypTensor):
 
     # Comparators
     @mode(Ptype.binary)
-    def _ltz(self):
+    def _ltz(self, scale=True):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
         shift = torch.iinfo(torch.long).bits - 1
         result = (self >> shift).to(Ptype.arithmetic, bits=1)
-        return result * result._tensor.encoder._scale
+        if scale:
+            return result * result._tensor.encoder._scale
+        else:
+            result._tensor.encoder._scale = 1
+            return result
 
     @mode(Ptype.arithmetic)
     def ge(self, y):
@@ -266,19 +271,19 @@ class MPCTensor(CrypTensor):
         return 1 - self.eq(y)
 
     @mode(Ptype.arithmetic)
-    def sign(self):
+    def sign(self, scale=True):
         """Computes the sign value of a tensor (0 is considered positive)"""
-        return 2 * (self >= 0) - 1
+        return 1 - 2 * self._ltz(scale=scale)
 
     @mode(Ptype.arithmetic)
     def abs(self):
         """Computes the absolute value of a tensor"""
-        return self * self.sign()
+        return self * self.sign(scale=False)
 
     @mode(Ptype.arithmetic)
     def relu(self):
         """Compute a Rectified Linear function on the input tensor."""
-        return self * (self > 0)
+        return self * (1 - self._ltz(scale=False))
 
     # max / min-related functions
     def _argmax_helper(self):
@@ -456,20 +461,22 @@ class MPCTensor(CrypTensor):
 
     # Logistic Functions
     @mode(Ptype.arithmetic)
-    def sigmoid(self, reciprocal_method="log"):
+    def sigmoid(self, reciprocal_method="NR"):
         """Computes the sigmoid function on the input value
                 sigmoid(x) = (1 + exp(-x))^{-1}
 
         For numerical stability, we compute this by:
                 sigmoid(x) = (sigmoid(|x|) - 0.5) * sign(x) + 0.5
         """
-        sign = self.sign()
+        sign = self.sign(scale=False)
         x = self * sign
-        result = (1 + (-x).exp()).reciprocal(method=reciprocal_method, log_iters=2)
+        result = (1 + (-x).exp()).reciprocal(
+            method=reciprocal_method, all_pos=True, log_iters=2
+        )
         return (result - 0.5) * sign + 0.5
 
     @mode(Ptype.arithmetic)
-    def tanh(self, reciprocal_method="log"):
+    def tanh(self, reciprocal_method="NR"):
         """Computes tanh from the sigmoid function:
             tanh(x) = 2 * sigmoid(2 * x) - 1
         """
@@ -490,8 +497,8 @@ class MPCTensor(CrypTensor):
         maximum_value = self.max(dim, keepdim=True)[0]
         logits = self - maximum_value
         numerator = logits.exp()
-        denominator = numerator.sum(dim, keepdim=True)
-        return numerator / denominator
+        inv_denominator = numerator.sum(dim, keepdim=True).reciprocal(all_pos=True)
+        return numerator * inv_denominator
 
     @mode(Ptype.arithmetic)
     def pad(self, pad, mode="constant", value=0):
@@ -608,11 +615,12 @@ class MPCTensor(CrypTensor):
             https://en.wikipedia.org/wiki/Newton%27s_method
         """
         if not all_pos:
-            sgn = self.sign()
+            sgn = self.sign(scale=False)
             abs = sgn * self
-            return sgn * abs.reciprocal(
+            rec = abs.reciprocal(
                 method=method, nr_iters=nr_iters, log_iters=log_iters, all_pos=True
             )
+            return sgn * rec
 
         if method == "NR":
             # Initialization to a decent estimate (found by qualitative inspection):
