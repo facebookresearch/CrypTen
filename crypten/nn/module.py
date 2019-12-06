@@ -5,6 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from collections import OrderedDict
+
 import crypten
 import torch.nn
 from crypten.autograd_cryptensor import AutogradCrypTensor
@@ -16,9 +18,9 @@ class Module:
     """
 
     def __init__(self):
-        self._parameters = {}
-        self._buffers = {}
-        self._modules = {}
+        self._parameters = OrderedDict()
+        self._buffers = OrderedDict()
+        self._modules = OrderedDict()
         self.encrypted = False
         self.train()
 
@@ -158,9 +160,9 @@ class Module:
 
     def _apply(self, fn):
         """Applies a function recursively on all modules."""
-        fn(self)
         for module in self.modules():
             module._apply(fn)
+        fn(self)
         return self
 
     def encrypt(self, mode=True, src=0):
@@ -203,6 +205,57 @@ class Module:
     def decrypt(self):
         """Decrypts model."""
         return self.encrypt(mode=False)
+
+    def __getattr__(self, name):
+        """Redefine __getattr__ so that any parameters, modules or buffers
+           inside the Module object can be accessed as attributes
+        """
+        if "_parameters" in self.__dict__:
+            parameters = self.__dict__["_parameters"]
+            if name in parameters:
+                return parameters[name]
+        if "_modules" in self.__dict__:
+            modules = self.__dict__["_modules"]
+            if name in modules:
+                return modules[name]
+        if "_buffers" in self.__dict__:
+            buffers = self.__dict__["_buffers"]
+            if name in buffers:
+                return buffers[name]
+        raise AttributeError(
+            "'{}' object has no attribute '{}'".format(type(self).__name__, name)
+        )
+
+    def __setattr__(self, name, value):
+        """Redefine __setattr__ so that any submodules created
+           inside the Module object are registered with _modules
+           OrderedDict.
+        """
+
+        def remove_from(*dicts):
+            for d in dicts:
+                if name in d:
+                    del d[name]
+
+        modules = self.__dict__.get("_modules")
+        if isinstance(value, Module):
+            if modules is None:
+                raise AttributeError(
+                    "cannot assign module before Module.__init__() call"
+                )
+            remove_from(self.__dict__, self._parameters, self._buffers)
+            modules[name] = value
+        elif modules is not None and name in modules:
+            if value is not None:
+                raise TypeError(
+                    "cannot assign '{}' as child module '{}' "
+                    "(torch.nn.Module or None expected)".format(
+                        torch.typename(value), name
+                    )
+                )
+            modules[name] = value
+        else:
+            object.__setattr__(self, name, value)
 
 
 class Container(Module):

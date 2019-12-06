@@ -268,7 +268,6 @@ class TestNN(object):
         }
         # loop over all modules:
         for module_name in module_args.keys():
-
             # create encrypted CrypTen module:
             encr_module = getattr(crypten.nn, module_name)(*module_args[module_name])
             encr_module.encrypt()
@@ -578,6 +577,35 @@ class TestNN(object):
         )
         self._check(encrypted_loss, loss, "cross-entropy loss failed")
 
+    def test_getattr_setattr(self):
+        """Tests the __getattr__ and __setattr__ functions"""
+
+        tensor1 = get_random_test_tensor(size=(3, 3), is_float=True)
+        tensor2 = get_random_test_tensor(size=(3, 3), is_float=True)
+
+        class ExampleNet(crypten.nn.Module):
+            def __init__(self):
+                super(ExampleNet, self).__init__()
+                self.fc1 = crypten.nn.Linear(20, 1)
+                sample_buffer = tensor1
+                self.register_buffer("sample_buffer", sample_buffer)
+                sample_param = tensor2
+                self.register_parameter("sample_param", sample_param)
+
+            def forward(self, x):
+                out = self.fc1(x)
+                return out
+
+        model = ExampleNet()
+        model.encrypt()
+
+        self.assertTrue("fc1" in model._modules.keys(), "modules __setattr__ failed")
+        self._check(model.sample_buffer, tensor1, "buffer __getattr__ failed")
+        self._check(model.sample_param, tensor2, "parameter __getattr__ failed")
+        self.assertTrue(
+            isinstance(model.fc1, crypten.nn.Linear), "modules __getattr__ failed"
+        )
+
     def test_training(self):
         """
         Tests training of simple model in crypten.nn.
@@ -633,6 +661,96 @@ class TestNN(object):
                 )
                 model.update_parameters(learning_rate)
                 self._check_reference_parameters("", reference, model)
+
+    def test_custom_module_training(self):
+        """Tests training CrypTen models created directly using the crypten.nn.Module"""
+
+        class ExampleNet(crypten.nn.Module):
+            def __init__(self):
+                super(ExampleNet, self).__init__()
+                self.fc1 = crypten.nn.Linear(20, 5)
+                self.fc2 = crypten.nn.Linear(5, 2)
+
+            def forward(self, x):
+                out = self.fc1(x)
+                out = self.fc2(out)
+                return out
+
+        model = ExampleNet()
+
+        batch_size = 5
+        x_orig = get_random_test_tensor(size=(batch_size, 20), is_float=True)
+        y_orig = (
+            get_random_test_tensor(size=(batch_size, 1), is_float=True).gt(0).long()
+        )
+        y_one_hot = onehot(y_orig, num_targets=2)
+
+        # encrypt training sample:
+        x_train = AutogradCrypTensor(crypten.cryptensor(x_orig))
+        y_train = crypten.cryptensor(y_one_hot)
+
+        for loss_name in ["BCELoss", "CrossEntropyLoss", "MSELoss"]:
+            # create loss function
+            loss = getattr(crypten.nn, loss_name)()
+
+            # create encrypted model
+            model.train()
+            model.encrypt()
+
+            num_epochs = 3
+            learning_rate = 0.001
+
+            for i in range(num_epochs):
+                output = model(x_train)
+                if loss_name == "MSELoss":
+                    output_norm = output
+                else:
+                    output_norm = output.softmax(1)
+                loss_value = loss(output_norm, y_train)
+
+                # set gradients to "zero"
+                model.zero_grad()
+                for param in model.parameters():
+                    self.assertIsNone(param.grad, "zero_grad did not reset gradients")
+
+                # perform backward pass:
+                loss_value.backward()
+                for param in model.parameters():
+                    if param.requires_grad:
+                        self.assertIsNotNone(
+                            param.grad, "required parameter gradient not created"
+                        )
+
+                # update parameters
+                orig_parameters, upd_parameters = {}, {}
+                orig_parameters = self._compute_reference_parameters(
+                    "", orig_parameters, model, 0
+                )
+                model.update_parameters(learning_rate)
+                upd_parameters = self._compute_reference_parameters(
+                    "", upd_parameters, model, learning_rate
+                )
+
+                parameter_changed = False
+                for name, value in orig_parameters.items():
+                    if param.requires_grad and param.grad is not None:
+                        unchanged = torch.allclose(upd_parameters[name], value)
+                        if unchanged is False:
+                            parameter_changed = True
+                        self.assertTrue(
+                            parameter_changed, "no parameter changed in training step"
+                        )
+
+                # record initial and current loss
+                if i == 0:
+                    orig_loss = loss_value.get_plain_text()
+                curr_loss = loss_value.get_plain_text()
+
+            # check that the loss has decreased after training
+            self.assertTrue(
+                curr_loss.item() < orig_loss.item(),
+                "loss has not decreased after training",
+            )
 
     def test_from_pytorch_training(self):
         """Tests the from_pytorch code path for training CrypTen models"""
