@@ -11,7 +11,6 @@ from crypten.common.util import pool_reshape
 
 from ..autograd_cryptensor import AutogradCrypTensor
 from ..cryptensor import CrypTensor
-from .primitives import beaver
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
 

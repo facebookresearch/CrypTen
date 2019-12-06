@@ -231,13 +231,21 @@ class ArithmeticSharedTensor(CrypTensor):
         else:
             raise TypeError("Cannot %s %s with %s" % (op, type(y), type(self)))
 
+        # Scale by encoder scale if necessary
         if not additive_func:
-            if self.encoder.scale > 1 and (public or y.encoder.scale > 1):
-                return result.div_(result.encoder.scale)
-            elif self.encoder.scale > 1 or public:
-                result.encoder = self.encoder
-            else:
-                result.encoder = y.encoder
+            if public:  # scale by self.encoder.scale
+                if self.encoder.scale > 1:
+                    return result.div_(result.encoder.scale)
+                else:
+                    result.encoder = self.encoder
+            else:  # scale by larger of self.encoder.scale and y.encoder.scale
+                if self.encoder.scale > 1 and y.encoder.scale > 1:
+                    return result.div_(result.encoder.scale)
+                elif self.encoder.scale > 1:
+                    result.encoder = self.encoder
+                else:
+                    result.encoder = y.encoder
+
         return result
 
     def add(self, y):
