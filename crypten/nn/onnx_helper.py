@@ -52,6 +52,10 @@ def _update_onnx_symbolic_registry():
                 sym_registry._registry[version_key][
                     function_key
                 ] = _onnx_crypten_softmax
+            if function_key == "log_softmax":
+                sym_registry._registry[version_key][
+                    function_key
+                ] = _onnx_crypten_logsoftmax
             if function_key == "dropout":
                 sym_registry._registry[version_key][
                     function_key
@@ -79,6 +83,20 @@ def _onnx_crypten_softmax(g, input, dim, dtype=None):
     conversion can cause numerical overflow when applied to CrypTensors.
     """
     result = g.op("Softmax", input, axis_i=dim)
+    if dtype and dtype.node().kind() != "prim::Constant":
+        parsed_dtype = sym_help._get_const(dtype, "i", "dtype")
+        result = g.op("Cast", result, to_i=sym_help.scalar_type_to_onnx[parsed_dtype])
+    return result
+
+
+@sym_help.parse_args("v", "i", "none")
+def _onnx_crypten_logsoftmax(g, input, dim, dtype=None):
+    """
+    This function converts PyTorch's LogSoftmax module to a LogSoftmax module in
+    the ONNX model. It overrides PyTorch's default conversion of LogSoftmax module
+    to avoid potentially creating Transpose operators.
+    """
+    result = g.op("LogSoftmax", input, axis_i=dim)
     if dtype and dtype.node().kind() != "prim::Constant":
         parsed_dtype = sym_help._get_const(dtype, "i", "dtype")
         result = g.op("Cast", result, to_i=sym_help.scalar_type_to_onnx[parsed_dtype])

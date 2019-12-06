@@ -463,6 +463,12 @@ class CrypTensor(object):
         """
         raise NotImplementedError("softmax is not implemented")
 
+    def log_softmax(self, dim, **kwargs):
+        """Applies a softmax of a tensor's elements along a given dimension,
+           followed by a logarithm.
+        """
+        raise NotImplementedError("log_softmax is not implemented")
+
     def cos(self):
         """Computes the cosine of the input."""
         raise NotImplementedError("cos is not implemented")

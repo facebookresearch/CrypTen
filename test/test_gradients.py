@@ -276,6 +276,7 @@ class TestGradients(object):
             self._check_forward_backward("unsqueeze", tensor, tensor.dim())
 
     def test_softmax(self):
+        """Test softmax"""
         for size in SIZES:
             tensor = get_random_test_tensor(size=size, is_float=True)
 
@@ -283,6 +284,16 @@ class TestGradients(object):
             dims = 1 if tensor.dim() == 0 else tensor.dim()
             for dim in range(dims):
                 self._check_forward_backward("softmax", tensor, dim)
+
+    def test_log_softmax(self):
+        """Test log_softmax"""
+        for size in SIZES:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+
+            # Check dim 0 if tensor is 0-dimensional
+            dims = 1 if tensor.dim() == 0 else tensor.dim()
+            for dim in range(dims):
+                self._check_forward_backward("log_softmax", tensor, dim)
 
     def test_transpose(self):
         for size in SIZES:

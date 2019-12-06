@@ -346,6 +346,7 @@ class TestNN(object):
             "MaxPool2d": (2,),
             "ReLU": (),
             "Softmax": (0,),
+            "LogSoftmax": (0,),
         }
         input_sizes = {
             "AdaptiveAvgPool2d": (1, 3, 32, 32),
@@ -361,6 +362,7 @@ class TestNN(object):
             "MaxPool2d": (1, 2, 32, 32),
             "ReLU": (1, 3, 32, 32),
             "Softmax": (5, 5, 5),
+            "LogSoftmax": (5, 5, 5),
         }
 
         # loop over all modules:

@@ -501,6 +501,27 @@ class MPCTensor(CrypTensor):
         return numerator * inv_denominator
 
     @mode(Ptype.arithmetic)
+    def log_softmax(self, dim, **kwargs):
+        """Applies a softmax followed by a logarithm.
+        While mathematically equivalent to log(softmax(x)), doing these two
+        operations separately is slower, and numerically unstable. This function
+        uses an alternative formulation to compute the output and gradient correctly.
+        """
+        # 0-d case
+        if self.dim() == 0:
+            assert dim == 0, "Improper dim argument"
+            return MPCTensor(torch.zeros(()))
+
+        if self.size(dim) == 1:
+            return MPCTensor(torch.zeros(self.size()))
+
+        maximum_value = self.max(dim, keepdim=True)[0]
+        logits = self - maximum_value
+        normalize_term = logits.exp().sum(dim, keepdim=True)
+        result = logits - normalize_term.log()
+        return result
+
+    @mode(Ptype.arithmetic)
     def pad(self, pad, mode="constant", value=0):
         result = self.shallow_copy()
         if isinstance(value, MPCTensor):

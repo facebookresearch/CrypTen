@@ -1093,6 +1093,41 @@ class Softmax(Module):
         return Softmax(attributes["axis"])
 
 
+class LogSoftmax(Module):
+    r"""Applies the :math:`\log(\text{Softmax}(x))` function to an n-dimensional
+    input Tensor. The LogSoftmax formulation can be simplified as:
+
+    .. math::
+        \text{LogSoftmax}(x_{i}) =
+        \log\left(\frac{\exp(x_i) }{ \sum_j \exp(x_j)} \right)
+
+    Shape:
+        - Input: :math:`(*)` where `*` means, any number of additional
+          dimensions
+        - Output: :math:`(*)`, same shape as the input
+
+    Arguments:
+        dim (int): A dimension along which LogSoftmax will be computed.
+
+    Returns:
+        a Tensor of the same dimension and shape as the input with
+        values in the range \[-inf, 0\)
+    """
+
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, input):
+        return input.log_softmax(self.dim)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        return LogSoftmax(attributes["axis"])
+
+
 class _Pool2d(Module):
     """
     Module that performs 2D pooling.
