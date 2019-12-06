@@ -780,15 +780,21 @@ class TestMPC(object):
 
     def test_pow(self):
         """Tests pow function"""
-        tensor = get_random_test_tensor(is_float=True)
-        encrypted_tensor = MPCTensor(tensor)
-
-        for power in [-3, -2, -1, 0, 1, 2, 3]:
-            reference = tensor.pow(power)
-            with self.benchmark(niters=10, func="pow", power=power) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted_tensor.pow(power)
+        for pow_fn in ["pow", "pow_"]:
+            for power in [-3, -2, -1, 0, 1, 2, 3]:
+                tensor = get_random_test_tensor(is_float=True)
+                encrypted_tensor = MPCTensor(tensor)
+                reference = getattr(tensor, pow_fn)(power)
+                with self.benchmark(niters=10, func=pow_fn, power=power) as bench:
+                    for _ in bench.iters:
+                        encrypted_out = getattr(encrypted_tensor, pow_fn)(power)
             self._check(encrypted_out, reference, "pow failed with power %s" % power)
+            if pow_fn.endswith("_"):
+                self._check(
+                    encrypted_tensor, reference, "in-place pow_ does not modify input"
+                )
+            else:
+                self._check(encrypted_tensor, tensor, "out-of-place pow modifies input")
 
     def test_norm(self):
         """Tests p-norm"""

@@ -693,7 +693,6 @@ class MPCTensor(CrypTensor):
         Computes an element-wise exponent `p` of a tensor, where `p` is an
         integer.
         """
-        # TODO: Make an inplace version to be consistent with PyTorch
         if isinstance(p, float) and int(p) == p:
             p = int(p)
 
@@ -718,6 +717,12 @@ class MPCTensor(CrypTensor):
             return self.square().pow(p // 2)
         else:
             return self.square().mul_(self).pow((p - 1) // 2)
+
+    def pow_(self, p, **kwargs):
+        """In-place version of pow_ function"""
+        result = self.pow(p)
+        self.share.data = result.share.data
+        return self
 
     def pos_pow(self, p):
         """

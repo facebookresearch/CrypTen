@@ -33,6 +33,9 @@ class CrypTensor(object):
     def __rpow__(self, scalar):
         raise NotImplementedError("__rpow__ is not implemented")
 
+    def pow_(self):
+        raise NotImplementedError("pow_ is not implemented")
+
     def __init__(self):
         raise NotImplementedError("Cannot instantiate an CrypTensor")
 
