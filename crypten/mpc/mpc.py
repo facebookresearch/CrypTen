@@ -148,8 +148,16 @@ class MPCTensor(CrypTensor):
         return self > crypten.mpc.rand(self.size())
 
     def dropout(self, p=0.5, training=True, inplace=False):
-        """Randomly zeroes some of the elements of the input tensor with
-        probability :attr:`p`."""
+        r"""
+        Randomly zeroes some of the elements of the input tensor with
+        probability :attr:`p`.
+
+        Args:
+            p: probability of a channel to be zeroed. Default: 0.5
+            training: apply dropout if is ``True``. Default: ``True``
+            inplace: If set to ``True``, will do this operation in-place.
+                Default: ``False``
+        """
         assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
         if training is False:
             if inplace:
@@ -171,6 +179,7 @@ class MPCTensor(CrypTensor):
         batched input is a 2D tensor :math:`\text{input}[i, j]`) of the input tensor).
         Each channel will be zeroed out independently on every forward call with
         probability :attr:`p` using samples from a Bernoulli distribution.
+        
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
@@ -187,6 +196,7 @@ class MPCTensor(CrypTensor):
         batched input is a 3D tensor :math:`\text{input}[i, j]`) of the input tensor).
         Each channel will be zeroed out independently on every forward call with
         probability :attr:`p` using samples from a Bernoulli distribution.
+
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
@@ -584,7 +594,8 @@ class MPCTensor(CrypTensor):
         return result
 
     def log(self, iterations=2, exp_iterations=8, order=8):
-        """Approximates the natural logarithm using 8th order modified
+        r"""
+        Approximates the natural logarithm using 8th order modified
         Householder iterations. This approximation is accurate within 2% relative
         error on [0.0001, 250].
 
@@ -592,7 +603,7 @@ class MPCTensor(CrypTensor):
 
         .. math::
 
-            y_{n+1} = y_n - \sum_k^{order} \frac{h^k}{k}
+            y_{n+1} = y_n - \sum_k^{order}\frac{h^k}{k}
 
         Args:
             iterations (int): number of Householder iterations for the approximation

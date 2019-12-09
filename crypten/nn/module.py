@@ -691,6 +691,7 @@ class DropoutNd(Module):
     batched input is a nD tensor :math:`\text{input}[i, j]`).
     Each channel will be zeroed out independently on every forward call with
     probability :attr:`p` using samples from a Bernoulli distribution.
+
     Args:
         p (float, optional): probability of an element to be zero-ed.
     """
@@ -739,6 +740,7 @@ class Dropout2d(DropoutNd):
     probability :attr:`p` using samples from a Bernoulli distribution.
 
     Usually the input comes from :class:`nn.Conv2d` modules.
+
     Args:
         p (float, optional): probability of an element to be zero-ed.
         inplace (bool, optional): If set to ``True``, will do this operation

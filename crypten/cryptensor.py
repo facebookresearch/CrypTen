@@ -402,8 +402,16 @@ class CrypTensor(object):
         raise NotImplementedError("_max_pool2d_backward is not implemented")
 
     def dropout(self, p=0.5, training=True, inplace=False):
-        """Randomly zeroes some of the elements of the input tensor with
-        probability :attr:`p`."""
+        r"""
+        Randomly zeroes some of the elements of the input tensor with
+        probability :attr:`p`.
+
+        Args:
+            p: probability of a channel to be zeroed. Default: 0.5
+            training: apply dropout if is ``True``. Default: ``True``
+            inplace: If set to ``True``, will do this operation in-place. Default: ``False``
+
+        """
         raise NotImplementedError("dropout is not implemented")
 
     def dropout2d(self, p=0.5, training=True, inplace=False):
@@ -413,11 +421,11 @@ class CrypTensor(object):
         batched input is a 2D tensor :math:`\text{input}[i, j]`) of the input tensor).
         Each channel will be zeroed out independently on every forward call with
         probability :attr:`p` using samples from a Bernoulli distribution.
+        
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, will do this operation in-place.
-                Default: ``False``
+            inplace: If set to ``True``, will do this operation in-place. Default: ``False``
         """
         raise NotImplementedError("dropout2d is not implemented")
 
@@ -428,11 +436,11 @@ class CrypTensor(object):
         batched input is a 3D tensor :math:`\text{input}[i, j]`) of the input tensor).
         Each channel will be zeroed out independently on every forward call with
         probability :attr:`p` using samples from a Bernoulli distribution.
+
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, will do this operation in-place.
-                Default: ``False``
+            inplace: If set to ``True``, will do this operation in-place. Default: ``False``
         """
         raise NotImplementedError("dropout3d is not implemented")
 
