@@ -5,6 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from functools import wraps
+
 import crypten
 import torch
 from crypten.common.util import pool_reshape
@@ -19,6 +21,8 @@ def mode(ptype, inplace=False):
     if inplace:
 
         def function_wrapper(func):
+            # @wraps ensures docstrings are updated
+            @wraps(func)
             def convert_wrapper(self, *args, **kwargs):
                 self._tensor = convert(self._tensor, ptype)
                 self.ptype = ptype
@@ -30,6 +34,8 @@ def mode(ptype, inplace=False):
     else:
 
         def function_wrapper(func):
+            # @wraps ensures docstrings are updated
+            @wraps(func)
             def convert_wrapper(self, *args, **kwargs):
                 result = self.to(ptype)
                 return func(result, *args, **kwargs)
@@ -179,7 +185,7 @@ class MPCTensor(CrypTensor):
         batched input is a 2D tensor :math:`\text{input}[i, j]`) of the input tensor).
         Each channel will be zeroed out independently on every forward call with
         probability :attr:`p` using samples from a Bernoulli distribution.
-        
+
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
