@@ -7,7 +7,9 @@
 
 import logging
 import os
+import pickle
 
+import numpy
 import torch
 import torch.distributed as dist
 from torch.distributed import ReduceOp
@@ -54,6 +56,7 @@ class DistributedCommunicator(Communicator):
             )
             self.ttp_group = dist.new_group([i for i in range(total_ws)])
             self.main_group = dist.new_group([i for i in range(self.world_size)])
+            self.ttp_initialized = init_ttp
             logging.info("World size = %d" % self.world_size)
 
     @classmethod
@@ -89,6 +92,12 @@ class DistributedCommunicator(Communicator):
 
     @classmethod
     def shutdown(cls):
+        if dist.get_rank() == 0 and cls.instance.ttp_initialized:
+            cls.instance.send_obj(
+                "terminate", cls.instance.get_ttp_rank(), cls.instance.ttp_group
+            )
+        dist.destroy_process_group(cls.instance.main_group)
+        dist.destroy_process_group(cls.instance.ttp_group)
         dist.destroy_process_group()
         cls.instance = None
 
@@ -186,6 +195,58 @@ class DistributedCommunicator(Communicator):
         """
         assert dist.is_initialized(), "initialize the communicator first"
         dist.barrier(group=self.main_group)
+
+    @_logging
+    def send_obj(self, obj, dst, group=None):
+        if group is None:
+            group = self.main_group
+
+        buf = pickle.dumps(obj)
+        size = torch.tensor(len(buf), dtype=torch.int32)
+        arr = torch.from_numpy(numpy.frombuffer(buf, dtype=numpy.int8))
+
+        r0 = dist.isend(size, dst=dst, group=group)
+        r1 = dist.isend(arr, dst=dst, group=group)
+
+        r0.wait()
+        r1.wait()
+
+    @_logging
+    def recv_obj(self, src, group=None):
+        if group is None:
+            group = self.main_group
+
+        size = torch.tensor(1, dtype=torch.int32)
+        dist.irecv(size, src=src, group=group).wait()
+
+        data = torch.zeros(size=(size,), dtype=torch.int8)
+        dist.irecv(data, src=src, group=group).wait()
+        buf = data.numpy().tobytes()
+        return pickle.loads(buf)
+
+    @_logging
+    def oblivious_transfer(self, value, sender, receiver):
+        """Performs a 1-out-of-2 Oblivious Transfer (OT) between the
+        `sender` and `receiver` parties.
+        """
+        rank = dist.rank()
+        if rank != sender and rank != receiver:
+            return None
+
+        # TODO: Make this transfer oblivious by implementing OT protocol
+        # WARNING: This is currently insecure since transfers are not oblivious.
+        if rank == sender:
+            assert isinstance(value, list), "OT sender must input a list of values"
+
+            # Receive index from receiver
+            index = self.recv_obj(receiver)
+            result = torch.where(index, value[0], value[1])
+            self.send_obj(result, receiver)
+            return None
+        else:
+            self.send_obj(value, sender)
+            result = self.recv_obj(sender)
+            return result
 
     def get_world_size(self):
         """Returns the size of the world."""
