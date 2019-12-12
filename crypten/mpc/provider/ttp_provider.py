@@ -6,12 +6,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
-import pickle
 from functools import reduce
 
 import crypten
 import crypten.communicator as comm
-import numpy
 import torch
 import torch.distributed as dist
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
@@ -158,29 +156,6 @@ class TrustedThirdParty:
         TTPClient.uninit()
 
 
-# TODO: Move send_obj / recv_obj to Communicator
-def send_obj(obj, dst, group):
-    buf = pickle.dumps(obj)
-    size = torch.tensor(len(buf), dtype=torch.int32)
-    arr = torch.from_numpy(numpy.frombuffer(buf, dtype=numpy.int8))
-
-    r0 = dist.isend(size, dst=dst, group=group)
-    r1 = dist.isend(arr, dst=dst, group=group)
-
-    r0.wait()
-    r1.wait()
-
-
-def recv_obj(src, group):
-    size = torch.tensor(1, dtype=torch.int32)
-    dist.irecv(size, src=src, group=group).wait()
-
-    data = torch.zeros(size=(size,), dtype=torch.int8)
-    dist.irecv(data, src=src, group=group).wait()
-    buf = data.numpy().tobytes()
-    return pickle.loads(buf)
-
-
 class TTPClient:
     __instance = None
 
@@ -205,8 +180,8 @@ class TTPClient:
 
         def ttp_request(self, func_name, *args, **kwargs):
             message = {"function": func_name, "args": args, "kwargs": kwargs}
-            send_obj(message, comm.get().get_ttp_rank(), self.group)
-            return recv_obj(comm.get().get_ttp_rank(), self.group)
+            comm.get().send_obj(message, comm.get().get_ttp_rank(), self.group)
+            return comm.get().recv_obj(comm.get().get_ttp_rank(), self.group)
 
     @staticmethod
     def _init():
@@ -243,14 +218,18 @@ class TTPServer:
         try:
             while True:
                 # Wait for next request from client
-                message = recv_obj(0, self.group)
+                message = comm.get().recv_obj(0, self.group)
                 logging.info("Message received: %s" % message)
+
+                if message == "terminate":
+                    logging.info("TTPServer shutting down.")
+                    return
 
                 function = message["function"]
                 args = message["args"]
                 kwargs = message["kwargs"]
                 result = getattr(self, function)(*args, **kwargs)
-                send_obj(result, 0, self.group)
+                comm.get().send_obj(result, 0, self.group)
         except RuntimeError:
             logging.info("TTPServer shutting down.")
 

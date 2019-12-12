@@ -11,7 +11,6 @@ import logging
 import math
 import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
-from test.multithread_test_case import MultiThreadTestCase
 
 import crypten
 import torch
