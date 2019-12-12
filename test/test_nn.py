@@ -664,12 +664,14 @@ class TestNN(object):
 
     def test_custom_module_training(self):
         """Tests training CrypTen models created directly using the crypten.nn.Module"""
+        BATCH_SIZE = 32
+        NUM_FEATURES = 3
 
         class ExampleNet(crypten.nn.Module):
             def __init__(self):
                 super(ExampleNet, self).__init__()
-                self.fc1 = crypten.nn.Linear(20, 5)
-                self.fc2 = crypten.nn.Linear(5, 2)
+                self.fc1 = crypten.nn.Linear(NUM_FEATURES, BATCH_SIZE)
+                self.fc2 = crypten.nn.Linear(BATCH_SIZE, 2)
 
             def forward(self, x):
                 out = self.fc1(x)
@@ -678,11 +680,9 @@ class TestNN(object):
 
         model = ExampleNet()
 
-        batch_size = 5
-        x_orig = get_random_test_tensor(size=(batch_size, 20), is_float=True)
-        y_orig = (
-            get_random_test_tensor(size=(batch_size, 1), is_float=True).gt(0).long()
-        )
+        x_orig = get_random_test_tensor(size=(BATCH_SIZE, NUM_FEATURES), is_float=True)
+        # y is a linear combo of x to ensure network can easily learn pattern
+        y_orig = (2 * x_orig.mean(dim=1)).gt(0).long()
         y_one_hot = onehot(y_orig, num_targets=2)
 
         # encrypt training sample:
