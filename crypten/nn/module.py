@@ -650,14 +650,13 @@ class Dropout(Module):
         - Output: :math:`(*)`. Output is of the same shape as input
     """
 
-    def __init__(self, p=0.5, inplace=False):
+    def __init__(self, p=0.5):
         super().__init__()
         self.p = p
-        self.inplace = inplace
 
     def forward(self, input):
         if self.training:
-            result = input.dropout(p=self.p, inplace=self.inplace)
+            result = input.dropout(p=self.p)
             return result
         return input
 
@@ -666,23 +665,6 @@ class Dropout(Module):
         if attributes is None:
             attributes = {}
         return Dropout(attributes["ratio"])
-
-
-class _Dropout_(Dropout):
-    r"""
-    Module for performing in-place Dropout during training
-    """
-
-    def __init__(self, p=0.5):
-        super().__init__()
-        self.p = p
-        self.inplace = True
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if attributes is None:
-            attributes = {}
-        return _Dropout_(attributes["ratio"])
 
 
 class DropoutNd(Module):
@@ -696,14 +678,13 @@ class DropoutNd(Module):
         p (float, optional): probability of an element to be zero-ed.
     """
 
-    def __init__(self, p=0.5, inplace=False):
+    def __init__(self, p=0.5):
         super().__init__()
         self.p = p
-        self.inplace = inplace
 
     def forward(self, input):
         if self.training:
-            result = input._feature_dropout(p=self.p, inplace=self.inplace)
+            result = input._feature_dropout(p=self.p)
             return result
         return input
 
@@ -712,23 +693,6 @@ class DropoutNd(Module):
         if attributes is None:
             attributes = {}
         return DropoutNd(attributes["ratio"])
-
-
-class _DropoutNd_(DropoutNd):
-    """
-    In-place version of DropoutNd module
-    """
-
-    def __init__(self, p=0.5):
-        super().__init__()
-        self.p = p
-        self.inplace = True
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if attributes is None:
-            attributes = {}
-        return _DropoutNd_(attributes["ratio"])
 
 
 class Dropout2d(DropoutNd):
@@ -743,8 +707,6 @@ class Dropout2d(DropoutNd):
 
     Args:
         p (float, optional): probability of an element to be zero-ed.
-        inplace (bool, optional): If set to ``True``, will do this operation
-            in-place
     Shape:
         - Input: :math:`(N, C, H, W)`
         - Output: :math:`(N, C, H, W)` (same shape as input)
@@ -755,18 +717,6 @@ class Dropout2d(DropoutNd):
         if attributes is None:
             attributes = {}
         return Dropout2d(attributes["ratio"])
-
-
-class _Dropout2d_(_DropoutNd_):
-    """
-    In-place version of Dropout3d module
-    """
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if attributes is None:
-            attributes = {}
-        return _Dropout2d_(attributes["ratio"])
 
 
 class Dropout3d(DropoutNd):
@@ -791,18 +741,6 @@ class Dropout3d(DropoutNd):
         if attributes is None:
             attributes = {}
         return Dropout3d(attributes["ratio"])
-
-
-class _Dropout3d_(_DropoutNd_):
-    """
-    In-place version of Dropout3d module
-    """
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if attributes is None:
-            attributes = {}
-        return _Dropout3d_(attributes["ratio"])
 
 
 class Gather(Module):

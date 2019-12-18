@@ -49,16 +49,9 @@ from .module import (
     Unsqueeze,
     _BatchNorm,
     _ConstantPad,
-    _Dropout2d_,
-    _Dropout3d_,
-    _Dropout_,
-    _DropoutNd_,
     _Pool2d,
 )
 from .onnx_helper import (
-    _run_symbolic_function_with_in_place,
-    _trace_and_get_graph_from_model_with_inplace,
-    _trace_with_inplace,
     _update_onnx_symbolic_registry,
     get_attribute_value,
     get_parameter_name,
@@ -117,13 +110,9 @@ ONNX_TO_CRYPTEN = {
     "Conv": Conv2d,
     "Constant": Constant,
     "Dropout": Dropout,
-    "_Dropout_": _Dropout_,
     "Dropout2d": Dropout2d,
-    "_Dropout2d_": _Dropout2d_,
     "Dropout3d": Dropout3d,
-    "_Dropout3d_": _Dropout3d_,
     "DropoutNd": DropoutNd,
-    "_DropoutNd_": _DropoutNd_,
     "Exp": Exp,
     "Flatten": Flatten,
     "Gather": Gather,
@@ -150,12 +139,6 @@ def from_pytorch(pytorch_model, dummy_input):
     # Exporting model to ONNX graph:
     # TODO: Currently export twice because the torch-to-ONNX symbolic registry
     # only gets created on the first call.
-
-    torch.onnx.utils._trace = _trace_with_inplace
-    torch.onnx.utils._trace_and_get_graph_from_model = (
-        _trace_and_get_graph_from_model_with_inplace
-    )
-    torch.onnx.utils._run_symbolic_function = _run_symbolic_function_with_in_place
 
     # export first time so symbolic registry is created
     f = io.BytesIO()
