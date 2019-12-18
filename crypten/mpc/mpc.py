@@ -301,17 +301,20 @@ class MPCTensor(CrypTensor):
         return self * (1 - self._ltz(scale=False))
 
     # max / min-related functions
-    def _argmax_helper(self):
-        """Returns 1 for all elements that have the highest value in each row"""
-        # TODO: Adapt this to take a dim argument.
-        row_length = self.size(-1) if self.size(-1) > 1 else 2
+    def _argmax_helper(self, dim=None):
+        """Returns 1 for all elements that have the highest value in the appropriate
+           dimension of the tensor.
+        """
+
+        dim = -1 if dim is None else dim
+        row_length = self.size(dim) if self.size(dim) > 1 else 2
 
         # Copy each row (length - 1) times to compare to each other row
         a = self.expand(row_length - 1, *self.size())
 
         # Generate cyclic permutations for each row
         b = crypten.mpc.stack(
-            [self.roll(i + 1, dims=-1) for i in range(row_length - 1)]
+            [self.roll(i + 1, dims=dim) for i in range(row_length - 1)]
         )
 
         # Sum of columns with all 1s will have value equal to (length - 1).
@@ -327,15 +330,22 @@ class MPCTensor(CrypTensor):
         if self.dim() == 0:
             return MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
 
-        input = self.flatten() if dim is None else self.transpose(dim, -1)
+        input = self.flatten() if dim is None else self
 
-        result = input._argmax_helper()
+        result = input._argmax_helper(dim)
 
         # Multiply by a random permutation to give each maximum a random priority
-        result *= crypten.mpc.randperm(input.size())
-        result = result._argmax_helper()
+        randperm_size = [x for x in input.size()]
+        if dim is not None:
+            randperm_size[-1] = input.size(dim)
+            randperm_size[dim] = input.size(-1)
+        randperm = crypten.mpc.randperm(randperm_size)
+        if dim is not None:
+            randperm = randperm.transpose(dim, -1)
+        result *= randperm
+        result = result._argmax_helper(dim)
 
-        result = result.view(self.size()) if dim is None else result.transpose(dim, -1)
+        result = result.view(self.size()) if dim is None else result
         return result if one_hot else _one_hot_to_index(result, dim, keepdim)
 
     @mode(Ptype.arithmetic)
