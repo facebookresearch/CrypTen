@@ -171,17 +171,20 @@ class ArithmeticSharedTensor(CrypTensor):
         )
         return result
 
-    def reveal(self):
+    def reveal(self, dst=None):
         """Get plaintext without any downscaling"""
         tensor = self.share.clone()
-        return comm.get().all_reduce(tensor)
+        if dst is None:
+            return comm.get().all_reduce(tensor)
+        else:
+            return comm.get().reduce(tensor, dst=dst)
 
-    def get_plain_text(self):
+    def get_plain_text(self, dst=None):
         """Decrypt the tensor"""
         # Edge case where share becomes 0 sized (e.g. result of split)
         if self.nelement() < 1:
             return torch.empty(self.share.size())
-        return self.encoder.decode(self.reveal())
+        return self.encoder.decode(self.reveal(dst=dst))
 
     def _arithmetic_function_(self, y, op, *args, **kwargs):
         return self._arithmetic_function(y, op, inplace=True, *args, **kwargs)

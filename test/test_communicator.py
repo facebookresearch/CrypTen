@@ -80,7 +80,7 @@ class TestCommunicator:
             if rank == self.rank:
                 self.assertEqual(result, [torch.tensor([0]), torch.tensor([1])])
             else:
-                self.assertIsNone(result)
+                self.assertIsNone(result[0])
 
     def test_gather_random(self):
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5), (1000,)]
@@ -93,7 +93,7 @@ class TestCommunicator:
                     for res in result:
                         self.assertTrue((res == tensor).all())
                 else:
-                    self.assertIsNone(result)
+                    self.assertIsNone(result[0])
 
     def test_all_gather(self):
         tensor = torch.tensor([self.rank])

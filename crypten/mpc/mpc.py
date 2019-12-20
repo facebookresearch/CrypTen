@@ -106,9 +106,9 @@ class MPCTensor(CrypTensor):
         """Converts self._tensor to binary secret sharing"""
         return self.to(Ptype.binary)
 
-    def get_plain_text(self):
+    def get_plain_text(self, dst=None):
         """Decrypts the tensor"""
-        return self._tensor.get_plain_text()
+        return self._tensor.get_plain_text(dst=dst)
 
     def __bool__(self):
         """Override bool operator since encrypted tensors cannot evaluate"""

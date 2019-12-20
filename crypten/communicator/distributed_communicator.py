@@ -147,7 +147,7 @@ class DistributedCommunicator(Communicator):
         assert dist.is_initialized(), "initialize the communicator first"
         result = tensor.clone()
         dist.reduce(result, dst, op=op, group=self.main_group)
-        return result
+        return result if dst == self.get_rank() else None
 
     @_logging
     def all_reduce(self, tensor, op=ReduceOp.SUM):
@@ -168,6 +168,7 @@ class DistributedCommunicator(Communicator):
             dist.gather(tensor, result, dst, group=self.main_group)
             return result
         dist.gather(tensor, [], dst, group=self.main_group)
+        return [None]
 
     @_logging
     def all_gather(self, tensor):

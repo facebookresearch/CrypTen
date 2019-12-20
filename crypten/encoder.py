@@ -59,6 +59,8 @@ class FixedPointEncoder:
 
     def decode(self, tensor):
         """Helper function that decodes from scaled tensor"""
+        if tensor is None:
+            return None
         assert is_int_tensor(tensor), "input must be a LongTensor"
         if self._scale > 1:
             correction = (tensor < 0).long()
