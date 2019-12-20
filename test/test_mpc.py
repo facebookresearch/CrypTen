@@ -26,10 +26,13 @@ class TestMPC(object):
 
     benchmarks_enabled = False
 
-    def _check(self, encrypted_tensor, reference, msg, tolerance=None):
+    def _check(self, encrypted_tensor, reference, msg, dst=None, tolerance=None):
         if tolerance is None:
             tolerance = getattr(self, "default_tolerance", 0.05)
-        tensor = encrypted_tensor.get_plain_text()
+        tensor = encrypted_tensor.get_plain_text(dst=dst)
+        if dst is not None and dst != self.rank:
+            self.assertIsNone(tensor)
+            return
 
         # Check sizes match
         self.assertTrue(tensor.size() == reference.size(), msg)
@@ -101,15 +104,19 @@ class TestMPC(object):
         ]
         for size in sizes:
             reference = get_random_test_tensor(size=size, is_float=True)
-            with self.benchmark(tensor_type="MPCTensor") as bench:
-                for _ in bench.iters:
-                    encrypted_tensor = MPCTensor(reference)
-                    self._check(encrypted_tensor, reference, "en/decryption failed")
-                    encrypted_tensor2 = encrypted_tensor.new(reference)
-                    self.assertIsInstance(
-                        encrypted_tensor2, MPCTensor, "new() returns incorrect type"
-                    )
-                    self._check(encrypted_tensor2, reference, "en/decryption failed")
+            encrypted_tensor = MPCTensor(reference)
+            self._check(encrypted_tensor, reference, "en/decryption failed")
+            for dst in range(self.world_size):
+                self._check(
+                    encrypted_tensor, reference, "en/decryption failed", dst=dst
+                )
+
+            # Test new()
+            encrypted_tensor2 = encrypted_tensor.new(reference)
+            self.assertIsInstance(
+                encrypted_tensor2, MPCTensor, "new() returns incorrect type"
+            )
+            self._check(encrypted_tensor2, reference, "en/decryption failed")
 
     def test_arithmetic(self):
         """Tests arithmetic functions on encrypted tensor."""

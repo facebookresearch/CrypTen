@@ -5,6 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from functools import reduce
+
 import crypten.communicator as comm
 
 # dependencies:
@@ -245,20 +247,20 @@ class BinarySharedTensor(CrypTensor):
     def trace(self, *args, **kwargs):
         raise NotImplementedError("BinarySharedTensor trace not implemented")
 
-    def reveal(self):
+    def reveal(self, dst=None):
         """Get plaintext without any downscaling"""
-        shares = comm.get().all_gather(self.share)
-        result = shares[0]
-        for x in shares[1:]:
-            result = result ^ x
-        return result
+        if dst is None:
+            shares = comm.get().all_gather(self.share)
+        else:
+            shares = comm.get().gather(self.share, dst=dst)
+        return reduce(lambda x, y: x ^ y, shares)
 
-    def get_plain_text(self):
+    def get_plain_text(self, dst=None):
         """Decrypt the tensor"""
         # Edge case where share becomes 0 sized (e.g. result of split)
         if self.nelement() < 1:
             return torch.empty(self.share.size())
-        return self.encoder.decode(self.reveal())
+        return self.encoder.decode(self.reveal(dst=dst))
 
     def where(self, condition, y):
         """Selects elements from self or y based on condition
