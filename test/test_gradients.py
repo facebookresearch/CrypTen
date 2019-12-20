@@ -75,7 +75,7 @@ class TestGradients(object):
         self.assertTrue(test_passed, msg=msg)
 
     def _check_forward_backward(
-        self, func_name, input_tensor, *args, msg=None, **kwargs
+        self, func_name, input_tensor, *args, torch_func_name=None, msg=None, **kwargs
     ):
         """Checks forward and backward against PyTorch
 
@@ -100,8 +100,12 @@ class TestGradients(object):
             args = self._set_grad_to_zero(args)
             args_encr = self._set_grad_to_zero(list(args), make_private=private)
 
-            # check forward pass
-            torch_func = self._get_torch_func(func_name)
+            # obtain torch function
+            if torch_func_name is not None:
+                torch_func = self._get_torch_func(torch_func_name)
+            else:
+                torch_func = self._get_torch_func(func_name)
+
             reference = torch_func(input, *args, **kwargs)
             encrypted_out = getattr(input_encr, func_name)(*args_encr, **kwargs)
 
@@ -214,16 +218,20 @@ class TestGradients(object):
         matmul_sizes = [(1, 1), (1, 5), (5, 1), (5, 5)]
         batch_dims = [(), (1,), (5,), (1, 1), (1, 5), (5, 5)]
 
-        for size in matmul_sizes:
-            for batch1, batch2 in itertools.combinations(batch_dims, 2):
-                size1 = (*batch1, *size)
-                size2 = (*batch2, *size)
+        matmul_funcs = ["matmul", "__matmul__", "__imatmul__"]
+        torch_funcs = ["matmul", "__matmul__", "__matmul__"]
+        for i, func in enumerate(matmul_funcs):
+            for size in matmul_sizes:
+                for batch1, batch2 in itertools.combinations(batch_dims, 2):
+                    size1 = (*batch1, *size)
+                    size2 = (*batch2, *size)
 
-                tensor1 = get_random_test_tensor(size=size1, is_float=True)
-                tensor2 = get_random_test_tensor(size=size2, is_float=True)
-                tensor2 = tensor2.transpose(-2, -1)
-
-                self._check_forward_backward("matmul", tensor1, tensor2)
+                    tensor1 = get_random_test_tensor(size=size1, is_float=True)
+                    tensor2 = get_random_test_tensor(size=size2, is_float=True)
+                    tensor2 = tensor2.transpose(-2, -1)
+                    self._check_forward_backward(
+                        func, tensor1, tensor2, torch_func_name=torch_funcs[i]
+                    )
 
     def test_unary_functions(self):
         """Test unary functions on tensors of various sizes."""
@@ -233,6 +241,7 @@ class TestGradients(object):
             "exp",
             "reciprocal",
             "abs",
+            "__abs__",
             "sign",
             "relu",
             "sin",
@@ -394,13 +403,14 @@ class TestGradients(object):
 
     def test_pow(self):
         """Tests pow function"""
-        for size in SIZES:
-            tensor = get_random_test_tensor(
-                size=size, min_value=0.5, is_float=True
-            )  # prevent division by values close to zero
-            for power in [-3, -2, -1, 0, 1, 2, 3]:
-                self._check_forward_backward("pow", tensor, power)
-                self._check_forward_backward("pow", tensor, float(power))
+        for pow_fn in ["pow", "__pow__"]:
+            for size in SIZES:
+                tensor = get_random_test_tensor(
+                    size=size, min_value=0.5, is_float=True
+                )  # prevent division by values close to zero
+                for power in [-3, -2, -1, 0, 1, 2, 3]:
+                    self._check_forward_backward(pow_fn, tensor, power)
+                    self._check_forward_backward(pow_fn, tensor, float(power))
 
     def test_norm(self):
         """Tests p-norm"""
