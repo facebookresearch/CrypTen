@@ -25,11 +25,11 @@ PyTorch networks that need to be encrypted before use.
     example of how to use ``from_pytorch`` function, please see
     `Tutorial 4 <https://github.com/facebookresearch/CrypTen/blob/master/tutorials/Tutorial_4_Classification_with_Encrypted_Neural_Networks.ipynb>`_.
 
-Modules
--------
+Custom CrypTen Modules
+----------------------
 
 ``crypten.nn`` also provides several modules and containers
-for directly building neural network. Here is an example of how
+for directly building neural networks. Here is an example of how
 to use these objects to build a CrypTen network: 
 
 .. code-block:: python
@@ -41,6 +41,28 @@ to use these objects to build a CrypTen network:
                 crypten.nn.Linear(num_intermediate, num_outputs),
             ]
         )
+
+
+Alternately, you can create a custom CrypTen network in much
+the same way as you create a custom PyTorch network, i.e., you
+can subclass ``crypten.nn.Module`` and allow it contain other
+``crypten.nn.Module``, nesting them in a tree structure. You can assign
+the submodules as regular attribute modules within them. for example:
+
+
+.. code-block:: python
+
+        class CrypTenModel(crypten.nn.Module):
+            def __init__(self):
+                super(CrypTenModel, self).__init__()
+                self.fc1 = crypten.nn.Linear(20, 5) 
+                self.fc2 = crypten.nn.Linear(5, 2)
+
+            def forward(self, x):
+                x = self.fc1(x)
+		x = self.fc2(x)
+                return x
+
 
 Generic ``Modules``
 +++++++++++++++++++++++++++
@@ -125,6 +147,24 @@ Generic ``Modules``
    :members: forward
 
 .. autoclass:: crypten.nn.module.BatchNorm3d
+   :members: forward
+
+.. autoclass:: crypten.nn.module.Dropout
+   :members: forward
+
+.. autoclass:: crypten.nn.module.Dropout2d
+   :members: forward
+
+.. autoclass:: crypten.nn.module.Dropout3d
+   :members: forward
+
+.. autoclass:: crypten.nn.module.DropoutNd
+   :members: forward
+
+.. autoclass:: crypten.nn.module.Softmax
+   :members: forward
+
+.. autoclass:: crypten.nn.module.LogSoftmax
    :members: forward
 
 Loss Functions

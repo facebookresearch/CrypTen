@@ -1034,6 +1034,25 @@ class AutogradSoftmax(AutogradFunction):
         )
 
 
+@register_function("log_softmax")
+class AutogradLogSoftmax(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input):
+        input, dim = input
+        probs = input.log_softmax(dim)
+        ctx.save_multiple_for_backward([probs, dim])
+        return probs
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        probs, dim = ctx.saved_tensors
+        if grad_output.dim() == 0 or grad_output.size(dim) == 1:
+            return grad_output.new(torch.zeros(grad_output.size()))
+        z = probs.exp()
+        result = grad_output - z * grad_output.sum(dim, keepdim=True)
+        return result
+
+
 @register_function("pad")
 class AutogradPad(AutogradFunction):
     @staticmethod

@@ -5,6 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from functools import wraps
+
 import crypten
 import torch
 from crypten.common.util import pool_reshape
@@ -19,6 +21,8 @@ def mode(ptype, inplace=False):
     if inplace:
 
         def function_wrapper(func):
+            # @wraps ensures docstrings are updated
+            @wraps(func)
             def convert_wrapper(self, *args, **kwargs):
                 self._tensor = convert(self._tensor, ptype)
                 self.ptype = ptype
@@ -30,6 +34,8 @@ def mode(ptype, inplace=False):
     else:
 
         def function_wrapper(func):
+            # @wraps ensures docstrings are updated
+            @wraps(func)
             def convert_wrapper(self, *args, **kwargs):
                 result = self.to(ptype)
                 return func(result, *args, **kwargs)
@@ -100,9 +106,9 @@ class MPCTensor(CrypTensor):
         """Converts self._tensor to binary secret sharing"""
         return self.to(Ptype.binary)
 
-    def get_plain_text(self):
+    def get_plain_text(self, dst=None):
         """Decrypts the tensor"""
-        return self._tensor.get_plain_text()
+        return self._tensor.get_plain_text(dst=dst)
 
     def __bool__(self):
         """Override bool operator since encrypted tensors cannot evaluate"""
@@ -148,8 +154,16 @@ class MPCTensor(CrypTensor):
         return self > crypten.mpc.rand(self.size())
 
     def dropout(self, p=0.5, training=True, inplace=False):
-        """Randomly zeroes some of the elements of the input tensor with
-        probability :attr:`p`."""
+        r"""
+        Randomly zeroes some of the elements of the input tensor with
+        probability :attr:`p`.
+
+        Args:
+            p: probability of a channel to be zeroed. Default: 0.5
+            training: apply dropout if is ``True``. Default: ``True``
+            inplace: If set to ``True``, will do this operation in-place.
+                Default: ``False``
+        """
         assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
         if training is False:
             if inplace:
@@ -171,6 +185,7 @@ class MPCTensor(CrypTensor):
         batched input is a 2D tensor :math:`\text{input}[i, j]`) of the input tensor).
         Each channel will be zeroed out independently on every forward call with
         probability :attr:`p` using samples from a Bernoulli distribution.
+
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
@@ -187,6 +202,7 @@ class MPCTensor(CrypTensor):
         batched input is a 3D tensor :math:`\text{input}[i, j]`) of the input tensor).
         Each channel will be zeroed out independently on every forward call with
         probability :attr:`p` using samples from a Bernoulli distribution.
+
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
@@ -229,11 +245,15 @@ class MPCTensor(CrypTensor):
 
     # Comparators
     @mode(Ptype.binary)
-    def _ltz(self):
+    def _ltz(self, scale=True):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
         shift = torch.iinfo(torch.long).bits - 1
         result = (self >> shift).to(Ptype.arithmetic, bits=1)
-        return result * result._tensor.encoder._scale
+        if scale:
+            return result * result._tensor.encoder._scale
+        else:
+            result._tensor.encoder._scale = 1
+            return result
 
     @mode(Ptype.arithmetic)
     def ge(self, y):
@@ -266,32 +286,35 @@ class MPCTensor(CrypTensor):
         return 1 - self.eq(y)
 
     @mode(Ptype.arithmetic)
-    def sign(self):
+    def sign(self, scale=True):
         """Computes the sign value of a tensor (0 is considered positive)"""
-        return 2 * (self >= 0) - 1
+        return 1 - 2 * self._ltz(scale=scale)
 
     @mode(Ptype.arithmetic)
     def abs(self):
         """Computes the absolute value of a tensor"""
-        return self * self.sign()
+        return self * self.sign(scale=False)
 
     @mode(Ptype.arithmetic)
     def relu(self):
         """Compute a Rectified Linear function on the input tensor."""
-        return self * (self > 0)
+        return self * (1 - self._ltz(scale=False))
 
     # max / min-related functions
-    def _argmax_helper(self):
-        """Returns 1 for all elements that have the highest value in each row"""
-        # TODO: Adapt this to take a dim argument.
-        row_length = self.size(-1) if self.size(-1) > 1 else 2
+    def _argmax_helper(self, dim=None):
+        """Returns 1 for all elements that have the highest value in the appropriate
+           dimension of the tensor.
+        """
+
+        dim = -1 if dim is None else dim
+        row_length = self.size(dim) if self.size(dim) > 1 else 2
 
         # Copy each row (length - 1) times to compare to each other row
         a = self.expand(row_length - 1, *self.size())
 
         # Generate cyclic permutations for each row
         b = crypten.mpc.stack(
-            [self.roll(i + 1, dims=-1) for i in range(row_length - 1)]
+            [self.roll(i + 1, dims=dim) for i in range(row_length - 1)]
         )
 
         # Sum of columns with all 1s will have value equal to (length - 1).
@@ -307,15 +330,22 @@ class MPCTensor(CrypTensor):
         if self.dim() == 0:
             return MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
 
-        input = self.flatten() if dim is None else self.transpose(dim, -1)
+        input = self.flatten() if dim is None else self
 
-        result = input._argmax_helper()
+        result = input._argmax_helper(dim)
 
         # Multiply by a random permutation to give each maximum a random priority
-        result *= crypten.mpc.randperm(input.size())
-        result = result._argmax_helper()
+        randperm_size = [x for x in input.size()]
+        if dim is not None:
+            randperm_size[-1] = input.size(dim)
+            randperm_size[dim] = input.size(-1)
+        randperm = crypten.mpc.randperm(randperm_size)
+        if dim is not None:
+            randperm = randperm.transpose(dim, -1)
+        result *= randperm
+        result = result._argmax_helper(dim)
 
-        result = result.view(self.size()) if dim is None else result.transpose(dim, -1)
+        result = result.view(self.size()) if dim is None else result
         return result if one_hot else _one_hot_to_index(result, dim, keepdim)
 
     @mode(Ptype.arithmetic)
@@ -456,20 +486,22 @@ class MPCTensor(CrypTensor):
 
     # Logistic Functions
     @mode(Ptype.arithmetic)
-    def sigmoid(self, reciprocal_method="log"):
+    def sigmoid(self, reciprocal_method="NR"):
         """Computes the sigmoid function on the input value
                 sigmoid(x) = (1 + exp(-x))^{-1}
 
         For numerical stability, we compute this by:
                 sigmoid(x) = (sigmoid(|x|) - 0.5) * sign(x) + 0.5
         """
-        sign = self.sign()
+        sign = self.sign(scale=False)
         x = self * sign
-        result = (1 + (-x).exp()).reciprocal(method=reciprocal_method, log_iters=2)
+        result = (1 + (-x).exp()).reciprocal(
+            method=reciprocal_method, all_pos=True, log_iters=2
+        )
         return (result - 0.5) * sign + 0.5
 
     @mode(Ptype.arithmetic)
-    def tanh(self, reciprocal_method="log"):
+    def tanh(self, reciprocal_method="NR"):
         """Computes tanh from the sigmoid function:
             tanh(x) = 2 * sigmoid(2 * x) - 1
         """
@@ -490,8 +522,29 @@ class MPCTensor(CrypTensor):
         maximum_value = self.max(dim, keepdim=True)[0]
         logits = self - maximum_value
         numerator = logits.exp()
-        denominator = numerator.sum(dim, keepdim=True)
-        return numerator / denominator
+        inv_denominator = numerator.sum(dim, keepdim=True).reciprocal(all_pos=True)
+        return numerator * inv_denominator
+
+    @mode(Ptype.arithmetic)
+    def log_softmax(self, dim, **kwargs):
+        """Applies a softmax followed by a logarithm.
+        While mathematically equivalent to log(softmax(x)), doing these two
+        operations separately is slower, and numerically unstable. This function
+        uses an alternative formulation to compute the output and gradient correctly.
+        """
+        # 0-d case
+        if self.dim() == 0:
+            assert dim == 0, "Improper dim argument"
+            return MPCTensor(torch.zeros(()))
+
+        if self.size(dim) == 1:
+            return MPCTensor(torch.zeros(self.size()))
+
+        maximum_value = self.max(dim, keepdim=True)[0]
+        logits = self - maximum_value
+        normalize_term = logits.exp().sum(dim, keepdim=True)
+        result = logits - normalize_term.log()
+        return result
 
     @mode(Ptype.arithmetic)
     def pad(self, pad, mode="constant", value=0):
@@ -557,7 +610,8 @@ class MPCTensor(CrypTensor):
         return result
 
     def log(self, iterations=2, exp_iterations=8, order=8):
-        """Approximates the natural logarithm using 8th order modified
+        r"""
+        Approximates the natural logarithm using 8th order modified
         Householder iterations. This approximation is accurate within 2% relative
         error on [0.0001, 250].
 
@@ -565,7 +619,7 @@ class MPCTensor(CrypTensor):
 
         .. math::
 
-            y_{n+1} = y_n - \sum_k^{order} \frac{h^k}{k}
+            y_{n+1} = y_n - \sum_k^{order}\frac{h^k}{k}
 
         Args:
             iterations (int): number of Householder iterations for the approximation
@@ -608,11 +662,12 @@ class MPCTensor(CrypTensor):
             https://en.wikipedia.org/wiki/Newton%27s_method
         """
         if not all_pos:
-            sgn = self.sign()
+            sgn = self.sign(scale=False)
             abs = sgn * self
-            return sgn * abs.reciprocal(
+            rec = abs.reciprocal(
                 method=method, nr_iters=nr_iters, log_iters=log_iters, all_pos=True
             )
+            return sgn * rec
 
         if method == "NR":
             # Initialization to a decent estimate (found by qualitative inspection):
@@ -665,7 +720,6 @@ class MPCTensor(CrypTensor):
         Computes an element-wise exponent `p` of a tensor, where `p` is an
         integer.
         """
-        # TODO: Make an inplace version to be consistent with PyTorch
         if isinstance(p, float) and int(p) == p:
             p = int(p)
 
@@ -690,6 +744,12 @@ class MPCTensor(CrypTensor):
             return self.square().pow(p // 2)
         else:
             return self.square().mul_(self).pow((p - 1) // 2)
+
+    def pow_(self, p, **kwargs):
+        """In-place version of pow_ function"""
+        result = self.pow(p)
+        self.share.data = result.share.data
+        return self
 
     def pos_pow(self, p):
         """

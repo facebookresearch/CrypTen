@@ -5,6 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from collections import OrderedDict
+
 import crypten
 import torch.nn
 from crypten.autograd_cryptensor import AutogradCrypTensor
@@ -16,9 +18,9 @@ class Module:
     """
 
     def __init__(self):
-        self._parameters = {}
-        self._buffers = {}
-        self._modules = {}
+        self._parameters = OrderedDict()
+        self._buffers = OrderedDict()
+        self._modules = OrderedDict()
         self.encrypted = False
         self.train()
 
@@ -158,9 +160,9 @@ class Module:
 
     def _apply(self, fn):
         """Applies a function recursively on all modules."""
-        fn(self)
         for module in self.modules():
             module._apply(fn)
+        fn(self)
         return self
 
     def encrypt(self, mode=True, src=0):
@@ -203,6 +205,57 @@ class Module:
     def decrypt(self):
         """Decrypts model."""
         return self.encrypt(mode=False)
+
+    def __getattr__(self, name):
+        """Redefine __getattr__ so that any parameters, modules or buffers
+           inside the Module object can be accessed as attributes
+        """
+        if "_parameters" in self.__dict__:
+            parameters = self.__dict__["_parameters"]
+            if name in parameters:
+                return parameters[name]
+        if "_modules" in self.__dict__:
+            modules = self.__dict__["_modules"]
+            if name in modules:
+                return modules[name]
+        if "_buffers" in self.__dict__:
+            buffers = self.__dict__["_buffers"]
+            if name in buffers:
+                return buffers[name]
+        raise AttributeError(
+            "'{}' object has no attribute '{}'".format(type(self).__name__, name)
+        )
+
+    def __setattr__(self, name, value):
+        """Redefine __setattr__ so that any submodules created
+           inside the Module object are registered with _modules
+           OrderedDict.
+        """
+
+        def remove_from(*dicts):
+            for d in dicts:
+                if name in d:
+                    del d[name]
+
+        modules = self.__dict__.get("_modules")
+        if isinstance(value, Module):
+            if modules is None:
+                raise AttributeError(
+                    "cannot assign module before Module.__init__() call"
+                )
+            remove_from(self.__dict__, self._parameters, self._buffers)
+            modules[name] = value
+        elif modules is not None and name in modules:
+            if value is not None:
+                raise TypeError(
+                    "cannot assign '{}' as child module '{}' "
+                    "(torch.nn.Module or None expected)".format(
+                        torch.typename(value), name
+                    )
+                )
+            modules[name] = value
+        else:
+            object.__setattr__(self, name, value)
 
 
 class Container(Module):
@@ -597,14 +650,13 @@ class Dropout(Module):
         - Output: :math:`(*)`. Output is of the same shape as input
     """
 
-    def __init__(self, p=0.5, inplace=False):
+    def __init__(self, p=0.5):
         super().__init__()
         self.p = p
-        self.inplace = inplace
 
     def forward(self, input):
         if self.training:
-            result = input.dropout(p=self.p, inplace=self.inplace)
+            result = input.dropout(p=self.p)
             return result
         return input
 
@@ -615,41 +667,24 @@ class Dropout(Module):
         return Dropout(attributes["ratio"])
 
 
-class _Dropout_(Dropout):
-    r"""
-    Module for performing in-place Dropout during training
-    """
-
-    def __init__(self, p=0.5):
-        super().__init__()
-        self.p = p
-        self.inplace = True
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if attributes is None:
-            attributes = {}
-        return _Dropout_(attributes["ratio"])
-
-
 class DropoutNd(Module):
     """Randomly zero out entire channels (a channel is a nD feature map,
     e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
     batched input is a nD tensor :math:`\text{input}[i, j]`).
     Each channel will be zeroed out independently on every forward call with
     probability :attr:`p` using samples from a Bernoulli distribution.
+
     Args:
         p (float, optional): probability of an element to be zero-ed.
     """
 
-    def __init__(self, p=0.5, inplace=False):
+    def __init__(self, p=0.5):
         super().__init__()
         self.p = p
-        self.inplace = inplace
 
     def forward(self, input):
         if self.training:
-            result = input._feature_dropout(p=self.p, inplace=self.inplace)
+            result = input._feature_dropout(p=self.p)
             return result
         return input
 
@@ -658,23 +693,6 @@ class DropoutNd(Module):
         if attributes is None:
             attributes = {}
         return DropoutNd(attributes["ratio"])
-
-
-class _DropoutNd_(DropoutNd):
-    """
-    In-place version of DropoutNd module
-    """
-
-    def __init__(self, p=0.5):
-        super().__init__()
-        self.p = p
-        self.inplace = True
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if attributes is None:
-            attributes = {}
-        return _DropoutNd_(attributes["ratio"])
 
 
 class Dropout2d(DropoutNd):
@@ -686,10 +704,9 @@ class Dropout2d(DropoutNd):
     probability :attr:`p` using samples from a Bernoulli distribution.
 
     Usually the input comes from :class:`nn.Conv2d` modules.
+
     Args:
         p (float, optional): probability of an element to be zero-ed.
-        inplace (bool, optional): If set to ``True``, will do this operation
-            in-place
     Shape:
         - Input: :math:`(N, C, H, W)`
         - Output: :math:`(N, C, H, W)` (same shape as input)
@@ -700,18 +717,6 @@ class Dropout2d(DropoutNd):
         if attributes is None:
             attributes = {}
         return Dropout2d(attributes["ratio"])
-
-
-class _Dropout2d_(_DropoutNd_):
-    """
-    In-place version of Dropout3d module
-    """
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if attributes is None:
-            attributes = {}
-        return _Dropout2d_(attributes["ratio"])
 
 
 class Dropout3d(DropoutNd):
@@ -736,18 +741,6 @@ class Dropout3d(DropoutNd):
         if attributes is None:
             attributes = {}
         return Dropout3d(attributes["ratio"])
-
-
-class _Dropout3d_(_DropoutNd_):
-    """
-    In-place version of Dropout3d module
-    """
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if attributes is None:
-            attributes = {}
-        return _Dropout3d_(attributes["ratio"])
 
 
 class Gather(Module):
@@ -1091,6 +1084,41 @@ class Softmax(Module):
         if attributes is None:
             attributes = {}
         return Softmax(attributes["axis"])
+
+
+class LogSoftmax(Module):
+    r"""Applies the :math:`\log(\text{Softmax}(x))` function to an n-dimensional
+    input Tensor. The LogSoftmax formulation can be simplified as:
+
+    .. math::
+        \text{LogSoftmax}(x_{i}) =
+        \log\left(\frac{\exp(x_i) }{ \sum_j \exp(x_j)} \right)
+
+    Shape:
+        - Input: :math:`(*)` where `*` means, any number of additional
+          dimensions
+        - Output: :math:`(*)`, same shape as the input
+
+    Arguments:
+        dim (int): A dimension along which LogSoftmax will be computed.
+
+    Returns:
+        a Tensor of the same dimension and shape as the input with
+        values in the range \[-inf, 0\)
+    """
+
+    def __init__(self, dim):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, input):
+        return input.log_softmax(self.dim)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        return LogSoftmax(attributes["axis"])
 
 
 class _Pool2d(Module):

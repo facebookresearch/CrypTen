@@ -29,10 +29,13 @@ class TestBinary(MultiProcessTestCase):
         if self.rank >= 0:
             crypten.init()
 
-    def _check(self, encrypted_tensor, reference, msg, tolerance=None):
+    def _check(self, encrypted_tensor, reference, msg, dst=None, tolerance=None):
         if tolerance is None:
             tolerance = getattr(self, "default_tolerance", 0.05)
-        tensor = encrypted_tensor.get_plain_text()
+        tensor = encrypted_tensor.get_plain_text(dst=dst)
+        if dst is not None and dst != self.rank:
+            self.assertIsNone(tensor)
+            return
 
         # Check sizes match
         self.assertTrue(tensor.size() == reference.size(), msg)
@@ -70,6 +73,11 @@ class TestBinary(MultiProcessTestCase):
                 for _ in bench.iters:
                     encrypted_tensor = BinarySharedTensor(reference)
             self._check(encrypted_tensor, reference, "en/decryption failed")
+
+            for dst in range(self.world_size):
+                self._check(
+                    encrypted_tensor, reference, "en/decryption failed", dst=dst
+                )
 
     def test_transpose(self):
         sizes = [

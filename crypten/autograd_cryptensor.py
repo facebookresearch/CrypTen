@@ -246,28 +246,17 @@ PYTORCH_BUILTIN = {
     "__abs__": "abs",
     "__neg__": "neg",
     "__pow__": "pow",
-    "__rpow__": "pow",
     "__add__": "add",
     "__radd__": "add",
-    "__iadd__": "add_",
     "__sub__": "sub",
     "__rsub__": "__rsub__",
-    "__isub__": "sub_",
     "__mul__": "mul",
     "__rmul__": "mul",
-    "__imul__": "mul_",
     "__div__": "div",
     "__truediv__": "div",
     "__rtruediv__": "__rtruediv__",
-    "__itruediv__": "div_",
     "__matmul__": "matmul",
     "__imatmul__": "matmul",  # not in-place, matching PyTorch
-    "__eq__": "eq",
-    "__ne__": "ne",
-    "__ge__": "ge",
-    "__gt__": "gt",
-    "__le__": "le",
-    "__lt__": "lt",
-}  # TODO: Add unit tests for these built-in functions.
+}
 for name, value in PYTORCH_BUILTIN.items():
     register_python_builtin(name, value)

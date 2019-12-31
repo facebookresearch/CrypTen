@@ -11,7 +11,6 @@ import logging
 import math
 import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
-from test.multithread_test_case import MultiThreadTestCase
 
 import crypten
 import torch
@@ -27,10 +26,13 @@ class TestMPC(object):
 
     benchmarks_enabled = False
 
-    def _check(self, encrypted_tensor, reference, msg, tolerance=None):
+    def _check(self, encrypted_tensor, reference, msg, dst=None, tolerance=None):
         if tolerance is None:
             tolerance = getattr(self, "default_tolerance", 0.05)
-        tensor = encrypted_tensor.get_plain_text()
+        tensor = encrypted_tensor.get_plain_text(dst=dst)
+        if dst is not None and dst != self.rank:
+            self.assertIsNone(tensor)
+            return
 
         # Check sizes match
         self.assertTrue(tensor.size() == reference.size(), msg)
@@ -102,15 +104,19 @@ class TestMPC(object):
         ]
         for size in sizes:
             reference = get_random_test_tensor(size=size, is_float=True)
-            with self.benchmark(tensor_type="MPCTensor") as bench:
-                for _ in bench.iters:
-                    encrypted_tensor = MPCTensor(reference)
-                    self._check(encrypted_tensor, reference, "en/decryption failed")
-                    encrypted_tensor2 = encrypted_tensor.new(reference)
-                    self.assertIsInstance(
-                        encrypted_tensor2, MPCTensor, "new() returns incorrect type"
-                    )
-                    self._check(encrypted_tensor2, reference, "en/decryption failed")
+            encrypted_tensor = MPCTensor(reference)
+            self._check(encrypted_tensor, reference, "en/decryption failed")
+            for dst in range(self.world_size):
+                self._check(
+                    encrypted_tensor, reference, "en/decryption failed", dst=dst
+                )
+
+            # Test new()
+            encrypted_tensor2 = encrypted_tensor.new(reference)
+            self.assertIsInstance(
+                encrypted_tensor2, MPCTensor, "new() returns incorrect type"
+            )
+            self._check(encrypted_tensor2, reference, "en/decryption failed")
 
     def test_arithmetic(self):
         """Tests arithmetic functions on encrypted tensor."""
@@ -780,15 +786,21 @@ class TestMPC(object):
 
     def test_pow(self):
         """Tests pow function"""
-        tensor = get_random_test_tensor(is_float=True)
-        encrypted_tensor = MPCTensor(tensor)
-
-        for power in [-3, -2, -1, 0, 1, 2, 3]:
-            reference = tensor.pow(power)
-            with self.benchmark(niters=10, func="pow", power=power) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted_tensor.pow(power)
+        for pow_fn in ["pow", "pow_"]:
+            for power in [-3, -2, -1, 0, 1, 2, 3]:
+                tensor = get_random_test_tensor(is_float=True)
+                encrypted_tensor = MPCTensor(tensor)
+                reference = getattr(tensor, pow_fn)(power)
+                with self.benchmark(niters=10, func=pow_fn, power=power) as bench:
+                    for _ in bench.iters:
+                        encrypted_out = getattr(encrypted_tensor, pow_fn)(power)
             self._check(encrypted_out, reference, "pow failed with power %s" % power)
+            if pow_fn.endswith("_"):
+                self._check(
+                    encrypted_tensor, reference, "in-place pow_ does not modify input"
+                )
+            else:
+                self._check(encrypted_tensor, tensor, "out-of-place pow modifies input")
 
     def test_norm(self):
         """Tests p-norm"""
@@ -849,42 +861,43 @@ class TestMPC(object):
         self.assertTrue(math.isclose(frac_zero, 0.8, rel_tol=1e-3, abs_tol=1e-3))
 
     def test_softmax(self):
-        """Test softmax function"""
-        # Test 0-dim tensor:
-        tensor = get_random_test_tensor(size=(), is_float=True)
-        reference = tensor.softmax(0)
-        encrypted_tensor = MPCTensor(tensor)
-        with self.benchmark(size=(), dim=0) as bench:
-            for _ in bench.iters:
-                encrypted_out = encrypted_tensor.softmax(0)
-        self._check(encrypted_out, reference, "softmax failed")
-
-        # Test all other sizes
-        sizes = [
-            (1,),
-            (5,),
-            (1, 1),
-            (1, 5),
-            (5, 1),
-            (5, 5),
-            (1, 5, 5),
-            (5, 1, 5),
-            (5, 5, 1),
-            (5, 5, 5),
-            (1, 5, 5, 5),
-            (5, 5, 5, 5),
-        ]
-        for size in sizes:
-            tensor = get_random_test_tensor(size=size, is_float=True) / 5
+        """Test softmax and log_softmax function"""
+        for softmax_fn in ["softmax", "log_softmax"]:
+            # Test 0-dim tensor:
+            tensor = get_random_test_tensor(size=(), is_float=True)
+            reference = getattr(tensor, softmax_fn)(0)
             encrypted_tensor = MPCTensor(tensor)
+            with self.benchmark(size=(), dim=0) as bench:
+                for _ in bench.iters:
+                    encrypted_out = getattr(encrypted_tensor, softmax_fn)(0)
+            self._check(encrypted_out, reference, "0-dim tensor %s failed" % softmax_fn)
 
-            for dim in range(tensor.dim()):
-                reference = tensor.softmax(dim)
-                with self.benchmark(size=size, dim=dim) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = encrypted_tensor.softmax(dim)
+            # Test all other sizes
+            sizes = [
+                (1,),
+                (5,),
+                (1, 1),
+                (1, 5),
+                (5, 1),
+                (5, 5),
+                (1, 5, 5),
+                (5, 1, 5),
+                (5, 5, 1),
+                (5, 5, 5),
+                (1, 5, 5, 5),
+                (5, 5, 5, 5),
+            ]
+            for size in sizes:
+                tensor = get_random_test_tensor(size=size, is_float=True) / 5
+                encrypted_tensor = MPCTensor(tensor)
 
-                self._check(encrypted_out, reference, "softmax failed")
+                for dim in range(tensor.dim()):
+                    reference = getattr(tensor, softmax_fn)(dim)
+                    with self.benchmark(size=size, dim=dim) as bench:
+                        for _ in bench.iters:
+                            encrypted_out = getattr(encrypted_tensor, softmax_fn)(dim)
+
+                    self._check(encrypted_out, reference, "%s failed" % softmax_fn)
 
     def test_get_set(self):
         """Tests element setting and getting by index"""

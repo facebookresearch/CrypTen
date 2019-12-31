@@ -117,80 +117,64 @@ class TestNN(object):
                         encr_input = AutogradCrypTensor(encr_input)
 
                     # create PyTorch module:
-                    for inplace in [False, True]:
-                        module = getattr(torch.nn, module_name)(prob, inplace=inplace)
-                        module.train()
+                    module = getattr(torch.nn, module_name)(prob)
+                    module.train()
 
-                        # create encrypted CrypTen module:
-                        encr_module = crypten.nn.from_pytorch(module, input)
+                    # create encrypted CrypTen module:
+                    encr_module = crypten.nn.from_pytorch(module, input)
 
-                        # check that module properly encrypts / decrypts and
-                        # check that encrypting with current mode properly
-                        # performs no-op
-                        for encrypted in [False, True, True, False, True]:
-                            encr_module.encrypt(mode=encrypted)
-                            if encrypted:
-                                self.assertTrue(
-                                    encr_module.encrypted, "module not encrypted"
-                                )
-                            else:
-                                self.assertFalse(
-                                    encr_module.encrypted, "module encrypted"
-                                )
-
-                        # compare model outputs:
-                        # compare the zero and non-zero entries of the encrypted tensor
-                        # with a directly constructed plaintext tensor, since we cannot
-                        # ensure that the randomization produces the same output
-                        # for both encrypted and plaintext tensors
-                        self.assertTrue(
-                            encr_module.training, "training value incorrect"
-                        )
-                        encr_output = encr_module(encr_input)
-                        plaintext_output = encr_output.get_plain_text()
-                        scaled_tensor = input / (1 - prob)
-                        reference = plaintext_output.where(
-                            plaintext_output == 0, scaled_tensor
-                        )
-                        self._check(encr_output, reference, "Dropout forward failed")
-                        if inplace:
-                            self._check(
-                                encr_input, reference, "In-place dropout failed"
+                    # check that module properly encrypts / decrypts and
+                    # check that encrypting with current mode properly
+                    # performs no-op
+                    for encrypted in [False, True, True, False, True]:
+                        encr_module.encrypt(mode=encrypted)
+                        if encrypted:
+                            self.assertTrue(
+                                encr_module.encrypted, "module not encrypted"
                             )
                         else:
-                            self._check(
-                                encr_input, input, "Out-of-place dropout failed"
-                            )
-                            # check backward
-                            # compare the zero and non-zero entries of the grad in
-                            # the encrypted tensor with a directly constructed plaintext
-                            # tensor: we do this because we cannot ensure that the
-                            # randomization produces the same output for the input
-                            # encrypted and plaintext tensors and so we cannot ensure
-                            # that the grad in the input tensor is populated identically
-                            all_ones = torch.ones(reference.size())
-                            ref_grad = plaintext_output.where(
-                                plaintext_output == 0, all_ones
-                            )
-                            ref_grad_input = ref_grad / (1 - prob)
-                            encr_output.backward()
-                            if (
-                                wrap
-                            ):  # you cannot get input gradients on MPCTensor inputs
-                                self._check(
-                                    encr_input.grad,
-                                    ref_grad_input,
-                                    "dropout backward on input failed",
-                                )
+                            self.assertFalse(encr_module.encrypted, "module encrypted")
 
-                        # check testing mode for Dropout module
-                        encr_module.train(mode=False)
-                        encr_output = encr_module(encr_input)
-                        result = encr_input.eq(encr_output)
-                        result_plaintext = result.get_plain_text().bool()
-                        self.assertTrue(
-                            result_plaintext.all(), "dropout failed in test mode"
+                    # compare model outputs:
+                    # compare the zero and non-zero entries of the encrypted tensor
+                    # with a directly constructed plaintext tensor, since we cannot
+                    # ensure that the randomization produces the same output
+                    # for both encrypted and plaintext tensors
+                    self.assertTrue(encr_module.training, "training value incorrect")
+                    encr_output = encr_module(encr_input)
+                    plaintext_output = encr_output.get_plain_text()
+                    scaled_tensor = input / (1 - prob)
+                    reference = plaintext_output.where(
+                        plaintext_output == 0, scaled_tensor
+                    )
+                    self._check(encr_output, reference, "Dropout forward failed")
+
+                    # check backward
+                    # compare the zero and non-zero entries of the grad in
+                    # the encrypted tensor with a directly constructed plaintext
+                    # tensor: we do this because we cannot ensure that the
+                    # randomization produces the same output for the input
+                    # encrypted and plaintext tensors and so we cannot ensure
+                    # that the grad in the input tensor is populated identically
+                    all_ones = torch.ones(reference.size())
+                    ref_grad = plaintext_output.where(plaintext_output == 0, all_ones)
+                    ref_grad_input = ref_grad / (1 - prob)
+                    encr_output.backward()
+                    if wrap:  # you cannot get input gradients on MPCTensor inputs
+                        self._check(
+                            encr_input.grad,
+                            ref_grad_input,
+                            "dropout backward on input failed",
                         )
+
+                    # check testing mode for Dropout module
+                    encr_module.train(mode=False)
+                    encr_output = encr_module(encr_input)
+                    result = encr_input.eq(encr_output)
+                    result_plaintext = result.get_plain_text().bool()
+                    self.assertTrue(
+                        result_plaintext.all(), "dropout failed in test mode"
+                    )
 
     def test_non_pytorch_modules(self):
         """
@@ -268,7 +252,6 @@ class TestNN(object):
         }
         # loop over all modules:
         for module_name in module_args.keys():
-
             # create encrypted CrypTen module:
             encr_module = getattr(crypten.nn, module_name)(*module_args[module_name])
             encr_module.encrypt()
@@ -346,6 +329,7 @@ class TestNN(object):
             "MaxPool2d": (2,),
             "ReLU": (),
             "Softmax": (0,),
+            "LogSoftmax": (0,),
         }
         input_sizes = {
             "AdaptiveAvgPool2d": (1, 3, 32, 32),
@@ -361,6 +345,7 @@ class TestNN(object):
             "MaxPool2d": (1, 2, 32, 32),
             "ReLU": (1, 3, 32, 32),
             "Softmax": (5, 5, 5),
+            "LogSoftmax": (5, 5, 5),
         }
 
         # loop over all modules:
@@ -576,6 +561,35 @@ class TestNN(object):
         )
         self._check(encrypted_loss, loss, "cross-entropy loss failed")
 
+    def test_getattr_setattr(self):
+        """Tests the __getattr__ and __setattr__ functions"""
+
+        tensor1 = get_random_test_tensor(size=(3, 3), is_float=True)
+        tensor2 = get_random_test_tensor(size=(3, 3), is_float=True)
+
+        class ExampleNet(crypten.nn.Module):
+            def __init__(self):
+                super(ExampleNet, self).__init__()
+                self.fc1 = crypten.nn.Linear(20, 1)
+                sample_buffer = tensor1
+                self.register_buffer("sample_buffer", sample_buffer)
+                sample_param = tensor2
+                self.register_parameter("sample_param", sample_param)
+
+            def forward(self, x):
+                out = self.fc1(x)
+                return out
+
+        model = ExampleNet()
+        model.encrypt()
+
+        self.assertTrue("fc1" in model._modules.keys(), "modules __setattr__ failed")
+        self._check(model.sample_buffer, tensor1, "buffer __getattr__ failed")
+        self._check(model.sample_param, tensor2, "parameter __getattr__ failed")
+        self.assertTrue(
+            isinstance(model.fc1, crypten.nn.Linear), "modules __getattr__ failed"
+        )
+
     def test_training(self):
         """
         Tests training of simple model in crypten.nn.
@@ -631,6 +645,96 @@ class TestNN(object):
                 )
                 model.update_parameters(learning_rate)
                 self._check_reference_parameters("", reference, model)
+
+    def test_custom_module_training(self):
+        """Tests training CrypTen models created directly using the crypten.nn.Module"""
+        BATCH_SIZE = 32
+        NUM_FEATURES = 3
+
+        class ExampleNet(crypten.nn.Module):
+            def __init__(self):
+                super(ExampleNet, self).__init__()
+                self.fc1 = crypten.nn.Linear(NUM_FEATURES, BATCH_SIZE)
+                self.fc2 = crypten.nn.Linear(BATCH_SIZE, 2)
+
+            def forward(self, x):
+                out = self.fc1(x)
+                out = self.fc2(out)
+                return out
+
+        model = ExampleNet()
+
+        x_orig = get_random_test_tensor(size=(BATCH_SIZE, NUM_FEATURES), is_float=True)
+        # y is a linear combo of x to ensure network can easily learn pattern
+        y_orig = (2 * x_orig.mean(dim=1)).gt(0).long()
+        y_one_hot = onehot(y_orig, num_targets=2)
+
+        # encrypt training sample:
+        x_train = AutogradCrypTensor(crypten.cryptensor(x_orig))
+        y_train = crypten.cryptensor(y_one_hot)
+
+        for loss_name in ["BCELoss", "CrossEntropyLoss", "MSELoss"]:
+            # create loss function
+            loss = getattr(crypten.nn, loss_name)()
+
+            # create encrypted model
+            model.train()
+            model.encrypt()
+
+            num_epochs = 3
+            learning_rate = 0.001
+
+            for i in range(num_epochs):
+                output = model(x_train)
+                if loss_name == "MSELoss":
+                    output_norm = output
+                else:
+                    output_norm = output.softmax(1)
+                loss_value = loss(output_norm, y_train)
+
+                # set gradients to "zero"
+                model.zero_grad()
+                for param in model.parameters():
+                    self.assertIsNone(param.grad, "zero_grad did not reset gradients")
+
+                # perform backward pass:
+                loss_value.backward()
+                for param in model.parameters():
+                    if param.requires_grad:
+                        self.assertIsNotNone(
+                            param.grad, "required parameter gradient not created"
+                        )
+
+                # update parameters
+                orig_parameters, upd_parameters = {}, {}
+                orig_parameters = self._compute_reference_parameters(
+                    "", orig_parameters, model, 0
+                )
+                model.update_parameters(learning_rate)
+                upd_parameters = self._compute_reference_parameters(
+                    "", upd_parameters, model, learning_rate
+                )
+
+                parameter_changed = False
+                for name, value in orig_parameters.items():
+                    if param.requires_grad and param.grad is not None:
+                        unchanged = torch.allclose(upd_parameters[name], value)
+                        if unchanged is False:
+                            parameter_changed = True
+                        self.assertTrue(
+                            parameter_changed, "no parameter changed in training step"
+                        )
+
+                # record initial and current loss
+                if i == 0:
+                    orig_loss = loss_value.get_plain_text()
+                curr_loss = loss_value.get_plain_text()
+
+            # check that the loss has decreased after training
+            self.assertTrue(
+                curr_loss.item() < orig_loss.item(),
+                "loss has not decreased after training",
+            )
 
     def test_from_pytorch_training(self):
         """Tests the from_pytorch code path for training CrypTen models"""
