@@ -69,7 +69,7 @@ class BinarySharedTensor(CrypTensor):
 
         This function does so by generating `n` numbers across `n` parties with
         each number being held by exactly 2 parties. Therefore, each party holds
-        two numbes. A zero sharing is found by having each party xor their two
+        two numbers. A zero sharing is found by having each party xor their two
         numbers together.
         """
         tensor = BinarySharedTensor(src=SENTINEL)
