@@ -96,7 +96,7 @@ def _setup_przs():
         This allows for the generation of `n` random values, each known to
         exactly two of the `n` parties.
 
-        For arithmetic sharing, one of theseparties will add the number
+        For arithmetic sharing, one of these parties will add the number
         while the other subtracts it, allowing for the generation of a
         pseudo-random sharing of zero. (This can be done for binary
         sharing using bitwise-xor rather than addition / subtraction)
@@ -178,7 +178,7 @@ def load(f, encrypted=False, dummy_model=None, src=0, **kwargs):
     Args:
         f: a file-like object (has to implement `read()`, `readline()`,
               `tell()`, and `seek()`), or a string containing a file name
-        encrypted: Determines whether crypten should load an encrypted tesnor
+        encrypted: Determines whether crypten should load an encrypted tensor
                       or a plaintext torch tensor.
         dummy_model: Takes a model architecture to fill with the loaded model
                     (on the `src` party only). Non-source parties will return the
