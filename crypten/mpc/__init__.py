@@ -83,17 +83,6 @@ def bernoulli(tensor):
     return rand(tensor.size()) < tensor
 
 
-def randperm(size):
-    """
-        Generate an MPCTensor with rows that contain values [1, 2, ... n]
-        where `n` is the length of each row (size[-1])
-    """
-    result = MPCTensor(None)
-    result._tensor = __default_provider.randperm(size)
-    result.ptype = ptype.arithmetic
-    return result
-
-
 # Set provider
 __SUPPORTED_PROVIDERS = {
     "TFP": provider.TrustedFirstParty,

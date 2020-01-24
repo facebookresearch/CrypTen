@@ -38,16 +38,3 @@ class HomomorphicProvider:
     def rand(*sizes):
         """Generate random ArithmeticSharedTensor uniform on [0, 1]"""
         raise NotImplementedError("HomomorphicProvider not implemented")
-
-    @staticmethod
-    def bernoulli(tensor):
-        """Generate random ArithmeticSharedTensor bernoulli on {0, 1}"""
-        raise NotImplementedError("HomomorphicProvider not implemented")
-
-    @staticmethod
-    def randperm(tensor_size):
-        """
-        Generate `tensor_size[:-1]` random ArithmeticSharedTensor permutations of
-        the first `tensor_size[-1]` whole numbers
-        """
-        raise NotImplementedError("HomomorphicProvider not implemented")

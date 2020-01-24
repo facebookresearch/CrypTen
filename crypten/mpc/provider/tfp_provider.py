@@ -80,18 +80,3 @@ class TrustedFirstParty:
         """Generate random ArithmeticSharedTensor uniform on [0, 1]"""
         samples = torch.rand(*sizes)
         return ArithmeticSharedTensor(samples, src=0)
-
-    @staticmethod
-    def randperm(tensor_size):
-        """
-        Generate `tensor_size[:-1]` random ArithmeticSharedTensor permutations of
-        the first `tensor_size[-1]` whole numbers
-        """
-        tensor_len = tensor_size[-1]
-        nperms = int(torch.tensor(tensor_size[:-1]).prod().item())
-        random_permutation = (
-            torch.stack([torch.randperm(tensor_len) + 1 for _ in range(nperms)])
-            .view(tensor_size)
-            .float()
-        )
-        return ArithmeticSharedTensor(random_permutation, src=0)

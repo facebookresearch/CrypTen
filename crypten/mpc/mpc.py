@@ -302,6 +302,38 @@ class MPCTensor(CrypTensor):
         """Compute a Rectified Linear function on the input tensor."""
         return self * self.ge(0, scale=False)
 
+    @mode(Ptype.arithmetic)
+    def weighted_index(self, dim=None):
+        """
+        Returns a tensor with entries that are one-hot along dimension `dim`.
+        These one-hot entries are set at random with weights given by the input
+        `self`.
+        """
+        if dim is None:
+            return self.flatten().weighted_index(dim=0).view(self.size())
+
+        x = self.cumsum(dim)
+        max_weight = x.index_select(dim, torch.tensor(x.size(dim) - 1))
+        r = crypten.mpc.rand(max_weight.size()) * max_weight
+
+        gt = x.gt(r, scale=False)
+        shifted = gt.roll(1, dims=dim)
+        shifted.share.index_fill_(dim, torch.tensor(0), 0)
+
+        return gt - shifted
+
+    @mode(Ptype.arithmetic)
+    def weighted_sample(self, dim=None):
+        """
+        Samples a single value across dimension `dim` with weights corresponding
+        to the values in `self`
+
+        Returns the sample and the one-hot index of the sample.
+        """
+        indices = self.weighted_index(dim)
+        sample = self.mul(indices).sum(dim)
+        return sample, indices
+
     # max / min-related functions
     def _argmax_helper(self, dim=None):
         """Returns 1 for all elements that have the highest value in the appropriate
@@ -333,19 +365,10 @@ class MPCTensor(CrypTensor):
             return MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
 
         input = self.flatten() if dim is None else self
-
         result = input._argmax_helper(dim)
 
-        # Multiply by a random permutation to give each maximum a random priority
-        randperm_size = [x for x in input.size()]
-        if dim is not None:
-            randperm_size[-1] = input.size(dim)
-            randperm_size[dim] = input.size(-1)
-        randperm = crypten.mpc.randperm(randperm_size)
-        if dim is not None:
-            randperm = randperm.transpose(dim, -1)
-        result *= randperm
-        result = result._argmax_helper(dim)
+        # Break ties by using a uniform weighted sample among tied indices
+        result = result.weighted_index(dim)
 
         result = result.view(self.size()) if dim is None else result
         return result if one_hot else _one_hot_to_index(result, dim, keepdim)

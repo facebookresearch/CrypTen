@@ -345,7 +345,7 @@ def stack(tensors, dim=0):
 
 
 # Top level tensor functions
-__PASSTHROUGH_FUNCTIONS = ["bernoulli", "rand", "randperm"]
+__PASSTHROUGH_FUNCTIONS = ["bernoulli", "rand"]
 
 
 def __add_top_level_function(func_name):
