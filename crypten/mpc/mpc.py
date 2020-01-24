@@ -256,34 +256,36 @@ class MPCTensor(CrypTensor):
             return result
 
     @mode(Ptype.arithmetic)
-    def ge(self, y):
+    def ge(self, y, scale=True):
         """Returns self >= y"""
-        return 1 - self.lt(y)
+        return 1 - self.lt(y, scale=scale)
 
     @mode(Ptype.arithmetic)
-    def gt(self, y):
+    def gt(self, y, scale=True):
         """Returns self > y"""
-        return (-self + y)._ltz()
+        return (-self + y)._ltz(scale=scale)
 
     @mode(Ptype.arithmetic)
-    def le(self, y):
+    def le(self, y, scale=True):
         """Returns self <= y"""
-        return 1 - self.gt(y)
+        return 1 - self.gt(y, scale=scale)
 
     @mode(Ptype.arithmetic)
-    def lt(self, y):
+    def lt(self, y, scale=True):
         """Returns self < y"""
-        return (self - y)._ltz()
+        return (self - y)._ltz(scale=scale)
 
     @mode(Ptype.arithmetic)
-    def eq(self, y):
+    def eq(self, y, scale=True):
         """Returns self == y"""
-        return self.ge(y) - self.gt(y)
+        return 1 - self.ne(y, scale=scale)
 
     @mode(Ptype.arithmetic)
-    def ne(self, y):
+    def ne(self, y, scale=True):
         """Returns self != y"""
-        return 1 - self.eq(y)
+        difference = self - y
+        difference.share = torch.stack([difference.share, -(difference.share)])
+        return difference._ltz(scale=scale).sum(0)
 
     @mode(Ptype.arithmetic)
     def sign(self, scale=True):
@@ -298,7 +300,7 @@ class MPCTensor(CrypTensor):
     @mode(Ptype.arithmetic)
     def relu(self):
         """Compute a Rectified Linear function on the input tensor."""
-        return self * (1 - self._ltz(scale=False))
+        return self * self.ge(0, scale=False)
 
     # max / min-related functions
     def _argmax_helper(self, dim=None):
