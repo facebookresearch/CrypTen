@@ -501,11 +501,30 @@ class MPCTensor(CrypTensor):
         return (result - 0.5) * sign + 0.5
 
     @mode(Ptype.arithmetic)
-    def tanh(self, reciprocal_method="NR"):
-        """Computes tanh from the sigmoid function:
-            tanh(x) = 2 * sigmoid(2 * x) - 1
+    def tanh(self, maxval=6, terms=32):
+        r"""Computes tanh via Chebyshev approximation with truncation.
+
+        .. math::
+            tanh(x) = \sum_{j=1}^terms c_{2j - 1} P_{2j - 1} (x / maxval)
+
+        where c_i is the ith Chebyshev series coefficient and P_i is ith polynomial.
+        The approximation is truncated to +/-1 outside [-maxval, maxval].
+
+        Args:
+            maxval (int): interval width used for computing chebyshev polynomials
+            terms (int): highest degree of Chebyshev polynomials.
+                         Must be even and at least 6.
         """
-        return (self * 2).sigmoid(reciprocal_method=reciprocal_method) * 2 - 1
+        coeffs = crypten.common.util.chebyshev_series(torch.tanh, maxval, terms)[1::2]
+        tanh_polys = self.div(maxval)._chebyshev_polynomials(terms)
+        tanh_polys_flipped = (
+            tanh_polys.unsqueeze(dim=-1).transpose(0, -1).squeeze(dim=0)
+        )
+        out = tanh_polys_flipped.matmul(coeffs)
+        # truncate outside [-maxval, maxval]
+        out = crypten.where(self > maxval, 1.0, out)
+        out = crypten.where(self < -maxval, -1.0, out)
+        return out
 
     @mode(Ptype.arithmetic)
     def softmax(self, dim, **kwargs):
@@ -843,6 +862,35 @@ class MPCTensor(CrypTensor):
             iterations (int): for approximating exp(i * x)
         """
         return self._eix(iterations=iterations)
+
+    def _chebyshev_polynomials(self, terms):
+        r"""Evaluates odd degree Chebyshev polynomials at x
+
+        Chebyshev Polynomials of the first kind are defined as
+
+        .. math::
+            P_0(x) = 1, P_1(x) = x, P_n(x) = 2 P_{n - 1}(x) - P_{n-2}(x)
+
+        Args:
+            self (MPCTensor): input at which polynomials are evaluated
+            terms (int): highest degree of Chebyshev polynomials.
+                         Must be even and at least 6.
+        Returns:
+            MPCTensor of polynomials evaluated at self of shape `(terms, *self)`
+        """
+        if terms % 2 != 0 or terms < 6:
+            raise ValueError("Chebyshev terms must be even and >= 6")
+
+        polynomials = [self.clone()]
+        y = 4 * self.square() - 2
+        z = y - 1
+        polynomials.append(z.mul(self))
+
+        for k in range(2, terms // 2):
+            next_polynomial = y * polynomials[k - 1] - polynomials[k - 2]
+            polynomials.append(next_polynomial)
+
+        return crypten.stack(polynomials)
 
     def index_add(self, dim, index, tensor):
         """Performs out-of-place index_add: Accumulate the elements of tensor into the

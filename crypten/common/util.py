@@ -5,6 +5,9 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import functools
+
+import numpy as np
 import torch
 
 
@@ -82,3 +85,28 @@ def pool_reshape(input, kernel_size, padding=None, stride=None, pad_value=0):
     input = input.take(kernel_indices)
 
     return input, out_size
+
+
+@functools.lru_cache(maxsize=10)
+def chebyshev_series(func, width, terms):
+    r"""Computes Chebyshev coefficients
+
+    For n = terms, the ith Chebyshev series coefficient is
+
+    .. math::
+        c_i = 2/n \sum_{k=1}^n \cos(j(2k-1)\pi / 4n) f(w\cos((2k-1)\pi / 4n))
+
+    Args:
+        func (function): function to be approximated
+        width (int): approximation will support inputs in range [-width, width]
+        terms (int): number of Chebyshev terms used in approximation
+
+    Returns:
+        Chebyshev coefficients with shape equal to num of terms.
+    """
+    n_range = torch.arange(start=0, end=terms).float()
+    x = width * torch.cos((n_range + 0.5) * np.pi / terms)
+    y = func(x)
+    cos_term = torch.cos(torch.ger(n_range, n_range + 0.5) * np.pi / terms)
+    coeffs = (2 / terms) * torch.sum(y * cos_term, axis=1)
+    return coeffs
