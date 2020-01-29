@@ -518,23 +518,24 @@ class TestMPC(object):
 
     def test_comparators(self):
         """Test comparators (>, >=, <, <=, ==, !=)"""
-        for comp in ["gt", "ge", "lt", "le", "eq", "ne"]:
-            for tensor_type in [lambda x: x, MPCTensor]:
-                tensor = get_random_test_tensor(is_float=True)
-                tensor2 = get_random_test_tensor(is_float=True)
+        for _scale in [False, True]:
+            for comp in ["gt", "ge", "lt", "le", "eq", "ne"]:
+                for tensor_type in [lambda x: x, MPCTensor]:
+                    tensor = get_random_test_tensor(is_float=True)
+                    tensor2 = get_random_test_tensor(is_float=True)
 
-                encrypted_tensor = MPCTensor(tensor)
-                encrypted_tensor2 = tensor_type(tensor2)
+                    encrypted_tensor = MPCTensor(tensor)
+                    encrypted_tensor2 = tensor_type(tensor2)
 
-                reference = getattr(tensor, comp)(tensor2).float()
+                    reference = getattr(tensor, comp)(tensor2).float()
 
-                with self.benchmark(comp=comp) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = getattr(encrypted_tensor, comp)(
-                            encrypted_tensor2
-                        )
+                    with self.benchmark(comp=comp) as bench:
+                        for _ in bench.iters:
+                            encrypted_out = getattr(encrypted_tensor, comp)(
+                                encrypted_tensor2, _scale=_scale
+                            )
 
-                self._check(encrypted_out, reference, "%s comparator failed" % comp)
+                    self._check(encrypted_out, reference, "%s comparator failed" % comp)
 
     def test_max_min(self):
         """Test max and min"""

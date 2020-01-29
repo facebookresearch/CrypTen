@@ -245,60 +245,62 @@ class MPCTensor(CrypTensor):
 
     # Comparators
     @mode(Ptype.binary)
-    def _ltz(self, scale=True):
+    def _ltz(self, _scale=True):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
         shift = torch.iinfo(torch.long).bits - 1
         result = (self >> shift).to(Ptype.arithmetic, bits=1)
-        if scale:
+        if _scale:
             return result * result._tensor.encoder._scale
         else:
             result._tensor.encoder._scale = 1
             return result
 
     @mode(Ptype.arithmetic)
-    def ge(self, y):
+    def ge(self, y, _scale=True):
         """Returns self >= y"""
-        return 1 - self.lt(y)
+        return 1 - self.lt(y, _scale=_scale)
 
     @mode(Ptype.arithmetic)
-    def gt(self, y):
+    def gt(self, y, _scale=True):
         """Returns self > y"""
-        return (-self + y)._ltz()
+        return (-self + y)._ltz(_scale=_scale)
 
     @mode(Ptype.arithmetic)
-    def le(self, y):
+    def le(self, y, _scale=True):
         """Returns self <= y"""
-        return 1 - self.gt(y)
+        return 1 - self.gt(y, _scale=_scale)
 
     @mode(Ptype.arithmetic)
-    def lt(self, y):
+    def lt(self, y, _scale=True):
         """Returns self < y"""
-        return (self - y)._ltz()
+        return (self - y)._ltz(_scale=_scale)
 
     @mode(Ptype.arithmetic)
-    def eq(self, y):
+    def eq(self, y, _scale=True):
         """Returns self == y"""
-        return self.ge(y) - self.gt(y)
+        return 1 - self.ne(y, _scale=_scale)
 
     @mode(Ptype.arithmetic)
-    def ne(self, y):
+    def ne(self, y, _scale=True):
         """Returns self != y"""
-        return 1 - self.eq(y)
+        difference = self - y
+        difference.share = torch.stack([difference.share, -(difference.share)])
+        return difference._ltz(_scale=_scale).sum(0)
 
     @mode(Ptype.arithmetic)
-    def sign(self, scale=True):
+    def sign(self, _scale=True):
         """Computes the sign value of a tensor (0 is considered positive)"""
-        return 1 - 2 * self._ltz(scale=scale)
+        return 1 - 2 * self._ltz(_scale=_scale)
 
     @mode(Ptype.arithmetic)
     def abs(self):
         """Computes the absolute value of a tensor"""
-        return self * self.sign(scale=False)
+        return self * self.sign(_scale=False)
 
     @mode(Ptype.arithmetic)
     def relu(self):
         """Compute a Rectified Linear function on the input tensor."""
-        return self * (1 - self._ltz(scale=False))
+        return self * self.ge(0, _scale=False)
 
     # max / min-related functions
     def _argmax_helper(self, dim=None):
@@ -493,7 +495,7 @@ class MPCTensor(CrypTensor):
         For numerical stability, we compute this by:
                 sigmoid(x) = (sigmoid(|x|) - 0.5) * sign(x) + 0.5
         """
-        sign = self.sign(scale=False)
+        sign = self.sign(_scale=False)
         x = self * sign
         result = (1 + (-x).exp()).reciprocal(
             method=reciprocal_method, all_pos=True, log_iters=2
@@ -662,7 +664,7 @@ class MPCTensor(CrypTensor):
             https://en.wikipedia.org/wiki/Newton%27s_method
         """
         if not all_pos:
-            sgn = self.sign(scale=False)
+            sgn = self.sign(_scale=False)
             abs = sgn * self
             rec = abs.reciprocal(
                 method=method, nr_iters=nr_iters, log_iters=log_iters, all_pos=True
