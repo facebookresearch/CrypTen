@@ -1730,6 +1730,39 @@ class TestMPC(object):
         frac_zero = float((dropout_tensor == 0).sum()) / dropout_tensor.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.4, rel_tol=1e-2, abs_tol=1e-2))
 
+    def test_chebyshev_polynomials(self):
+        """Tests evaluation of chebyshev polynomials"""
+        sizes = [(1, 10), (3, 5), (3, 5, 10)]
+        possible_terms = [6, 40]
+
+        for size, terms in itertools.product(sizes, possible_terms):
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            tensor_enc = MPCTensor(tensor)
+            result = tensor_enc._chebyshev_polynomials(terms)
+            # check number of polynomials
+            self.assertEqual(result.shape[0], terms // 2)
+
+            self._check(result[0], tensor, "first term is incorrect")
+            second_term = 4 * tensor ** 3 - 3 * tensor
+            self._check(result[1], second_term, "second term is incorrect")
+
+    def test_truncate_tanh(self):
+        """Tests truncation outside of given interval"""
+        sizes = [(1, 10), (3, 5), (3, 5, 10)]
+        maxvalues = [2, 8, 40]
+
+        for size, maxval in itertools.product(sizes, maxvalues):
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            tensor_enc = MPCTensor(tensor)
+
+            out = get_random_test_tensor(size=size, is_float=True)
+            out_enc = MPCTensor(out)
+
+            tensor_enc_truncated = tensor_enc._truncate_tanh(maxval, out_enc)
+            out[tensor > maxval] = 1
+            out[tensor < -maxval] = -1
+            self._check(tensor_enc_truncated, out, "truncation incorrect")
+
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestMPC):

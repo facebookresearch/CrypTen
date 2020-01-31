@@ -10,6 +10,7 @@ import unittest
 
 import crypten
 import torch
+from crypten.common.util import chebyshev_series
 from crypten.encoder import FixedPointEncoder, nearest_integer_division
 
 
@@ -86,6 +87,16 @@ class TestCommon(unittest.TestCase):
             torch.LongTensor(reference),
             "Nearest integer division failed.",
         )
+
+    def test_chebyshev_series(self):
+        """Checks coefficients returned by chebyshev_series are correct"""
+        for width, terms in [(6, 10), (6, 20)]:
+            result = chebyshev_series(torch.tanh, width, terms)
+            # check shape
+            self.assertTrue(result.shape == torch.Size([terms]))
+            # check terms
+            self.assertTrue(result[0] < 1e-4)
+            self.assertTrue(torch.isclose(result[-1], torch.tensor(3.5e-2), atol=1e-1))
 
 
 if __name__ == "__main__":
