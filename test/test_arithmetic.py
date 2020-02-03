@@ -173,6 +173,7 @@ class TestArithmetic(MultiProcessTestCase):
         self._check(encrypted_out, reference, "right mul failed")
 
     def test_sum(self):
+        """Tests sum reduction on encrypted tensor."""
         tensor = get_random_test_tensor(size=(5, 100, 100), is_float=True)
         encrypted = ArithmeticSharedTensor(tensor)
         self._check(encrypted.sum(), tensor.sum(), "sum failed")
@@ -183,6 +184,20 @@ class TestArithmetic(MultiProcessTestCase):
                 for _ in bench.iters:
                     encrypted_out = encrypted.sum(dim)
             self._check(encrypted_out, reference, "sum failed")
+
+    def test_prod(self):
+        """Tests prod reduction on encrypted tensor."""
+        # Increaing size to reduce relative error due to quantization
+        tensor = get_random_test_tensor(size=(5, 5, 5), is_float=False)
+        encrypted = ArithmeticSharedTensor(tensor)
+        self._check(encrypted.prod(), tensor.prod().float(), "prod failed")
+
+        for dim in [0, 1, 2]:
+            reference = tensor.prod(dim).float()
+            with self.benchmark(type="prod", dim=dim) as bench:
+                for _ in bench.iters:
+                    encrypted_out = encrypted.prod(dim)
+            self._check(encrypted_out, reference, "prod failed")
 
     def test_div(self):
         """Tests division of encrypted tensor by scalar."""

@@ -140,13 +140,23 @@ class MPCTensor(CrypTensor):
 
     @property
     def share(self):
-        """Returns underlying _tensor"""
+        """Returns underlying share"""
         return self._tensor.share
 
     @share.setter
     def share(self, value):
-        """Sets _tensor to value"""
+        """Sets share to value"""
         self._tensor.share = value
+
+    @property
+    def encoder(self):
+        """Returns underlying encoder"""
+        return self._tensor.encoder
+
+    @encoder.setter
+    def encoder(self, value):
+        """Sets encoder to value"""
+        self._tensor.encoder = value
 
     def bernoulli(self):
         """Returns a tensor with elements in {0, 1}. The i-th element of the
@@ -251,9 +261,9 @@ class MPCTensor(CrypTensor):
         shift = torch.iinfo(torch.long).bits - 1
         result = (self >> shift).to(Ptype.arithmetic, bits=1)
         if _scale:
-            return result * result._tensor.encoder._scale
+            return result * result.encoder._scale
         else:
-            result._tensor.encoder._scale = 1
+            result.encoder._scale = 1
             return result
 
     @mode(Ptype.arithmetic)
@@ -303,6 +313,58 @@ class MPCTensor(CrypTensor):
         """Compute a Rectified Linear function on the input tensor."""
         return self * self.ge(0, _scale=False)
 
+    @mode(Ptype.arithmetic)
+    def weighted_index(self, dim=None):
+        """
+        Returns a tensor with entries that are one-hot along dimension `dim`.
+        These one-hot entries are set at random with weights given by the input
+        `self`.
+
+        Examples::
+
+            >>> encrypted_tensor = MPCTensor(torch.tensor([1., 6.]))
+            >>> index = encrypted_tensor.weighted_index().get_plain_text()
+            # With 1 / 7 probability
+            torch.tensor([1., 0.])
+
+            # With 6 / 7 probability
+            torch.tensor([0., 1.])
+        """
+        if dim is None:
+            return self.flatten().weighted_index(dim=0).view(self.size())
+
+        x = self.cumsum(dim)
+        max_weight = x.index_select(dim, torch.tensor(x.size(dim) - 1))
+        r = crypten.mpc.rand(max_weight.size()) * max_weight
+
+        gt = x.gt(r, _scale=False)
+        shifted = gt.roll(1, dims=dim)
+        shifted.share.index_fill_(dim, torch.tensor(0), 0)
+
+        return gt - shifted
+
+    @mode(Ptype.arithmetic)
+    def weighted_sample(self, dim=None):
+        """
+        Samples a single value across dimension `dim` with weights corresponding
+        to the values in `self`
+
+        Returns the sample and the one-hot index of the sample.
+
+        Examples::
+
+            >>> encrypted_tensor = MPCTensor(torch.tensor([1., 6.]))
+            >>> index = encrypted_tensor.weighted_sample().get_plain_text()
+            # With 1 / 7 probability
+            (torch.tensor([1., 0.]), torch.tensor([1., 0.]))
+
+            # With 6 / 7 probability
+            (torch.tensor([0., 6.]), torch.tensor([0., 1.]))
+        """
+        indices = self.weighted_index(dim)
+        sample = self.mul(indices).sum(dim)
+        return sample, indices
+
     # max / min-related functions
     def _argmax_helper(self, dim=None):
         """Returns 1 for all elements that have the highest value in the appropriate
@@ -320,10 +382,24 @@ class MPCTensor(CrypTensor):
             [self.roll(i + 1, dims=dim) for i in range(row_length - 1)]
         )
 
-        # Sum of columns with all 1s will have value equal to (length - 1).
-        # Using >= since it requires 1-fewer comparrison than !=
-        result = (a >= b).sum(dim=0)
-        return result >= (row_length - 1)
+        # Use either prod or sum & comparison depending on size
+        if row_length - 1 < torch.iinfo(torch.long).bits * 2:
+            pairwise_comparisons = a.ge(b, _scale=False)
+            result = pairwise_comparisons.prod(dim=0)
+            result.share *= self.encoder._scale
+            result.encoder = self.encoder
+        else:
+            # Sum of columns with all 1s will have value equal to (length - 1).
+            # Using ge() since it is slightly faster than eq()
+            pairwise_comparisons = a.ge(b)
+            result = pairwise_comparisons.sum(dim=0).ge(row_length - 1)
+        return result
+
+        """
+        pairwise_comparisons = a.ge(b, _scale=False)
+
+        return result
+        """
 
     @mode(Ptype.arithmetic)
     def argmax(self, dim=None, keepdim=False, one_hot=False):
@@ -334,19 +410,10 @@ class MPCTensor(CrypTensor):
             return MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
 
         input = self.flatten() if dim is None else self
-
         result = input._argmax_helper(dim)
 
-        # Multiply by a random permutation to give each maximum a random priority
-        randperm_size = [x for x in input.size()]
-        if dim is not None:
-            randperm_size[-1] = input.size(dim)
-            randperm_size[dim] = input.size(-1)
-        randperm = crypten.mpc.randperm(randperm_size)
-        if dim is not None:
-            randperm = randperm.transpose(dim, -1)
-        result *= randperm
-        result = result._argmax_helper(dim)
+        # Break ties by using a uniform weighted sample among tied indices
+        result = result.weighted_index(dim)
 
         result = result.view(self.size()) if dim is None else result
         return result if one_hot else _one_hot_to_index(result, dim, keepdim)
@@ -1138,6 +1205,7 @@ REGULAR_FUNCTIONS = [
     "unfold",
     "flip",
     "trace",
+    "prod",
     "sum",
     "cumsum",
     "reshape",

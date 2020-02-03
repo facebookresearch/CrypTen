@@ -18,7 +18,7 @@ from crypten.encoder import FixedPointEncoder
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 
-TTP_FUNCTIONS = ["additive", "square", "binary", "wraps", "B2A", "rand", "randperm"]
+TTP_FUNCTIONS = ["additive", "square", "binary", "wraps", "B2A", "rand"]
 
 
 class TrustedThirdParty:
@@ -131,20 +131,6 @@ class TrustedThirdParty:
             samples = TTPClient.get().ttp_request("rand", *sizes, encoder=encoder)
         else:
             samples = generate_random_ring_element(sizes, generator=generator)
-        return ArithmeticSharedTensor.from_shares(samples)
-
-    @staticmethod
-    def randperm(tensor_size, encoder=None):
-        """
-        Generate `tensor_size[:-1]` random ArithmeticSharedTensor permutations of
-        the first `tensor_size[-1]` whole numbers
-        """
-        generator = TTPClient.get().generator
-        if comm.get().get_rank() == 0:
-            # Request samples from TTP
-            samples = TTPClient.get().ttp_request("randperm", tensor_size)
-        else:
-            samples = generate_random_ring_element(tensor_size, generator=generator)
         return ArithmeticSharedTensor.from_shares(samples)
 
     @staticmethod
@@ -320,13 +306,3 @@ class TTPServer:
         r = encoder.encode(torch.rand(*sizes))
         r = r - self._get_additive_PRSS(sizes, remove_rank=True)
         return r
-
-    def randperm(self, tensor_size, encoder=None):
-        tensor_len = tensor_size[-1]
-        nperms = int(torch.tensor(tensor_size[:-1]).prod().item())
-        random_permutation = torch.stack(
-            [torch.randperm(tensor_len) + 1 for _ in range(nperms)]
-        ).view(tensor_size)
-        return random_permutation - self._get_additive_PRSS(
-            random_permutation.size(), remove_rank=True
-        )

@@ -327,6 +327,31 @@ class ArithmeticSharedTensor(CrypTensor):
         """Perform matrix multiplication using some tensor"""
         return self._arithmetic_function(y, "matmul")
 
+    def prod(self, dim=None, keepdim=False):
+        """
+        Returns the product of each row of the `input` tensor in the given
+        dimension `dim`.
+
+        If `keepdim` is `True`, the output tensor is of the same size as `input`
+        except in the dimension `dim` where it is of size 1. Otherwise, `dim` is
+        squeezed, resulting in the output tensor having 1 fewer dimension than
+        `input`.
+        """
+        if dim is None:
+            return self.flatten().prod(dim=0)
+
+        result = self.clone()
+        while result.size(dim) > 1:
+            size = result.size(dim)
+            x, y, remainder = result.split([size // 2, size // 2, size % 2], dim=dim)
+            result = x.mul_(y)
+            result.share = torch.cat([result.share, remainder.share], dim=dim)
+
+        # Squeeze result if necessary
+        if not keepdim:
+            result.share = result.share.squeeze(dim)
+        return result
+
     def mean(self, *args, **kwargs):
         """Computes mean of given tensor"""
         result = self.sum(*args, **kwargs)
