@@ -1,4 +1,4 @@
-<p align="center"><img width="70%" src="docs/\_static/img/CrypTen_Identity_Horizontal_Lockup_01_FullColor.png" alt="CrypTen logo" /></p>
+<p align="center"><img width="70%" src="https://raw.githubusercontent.com/facebookresearch/CrypTen/master/docs/_static/img/CrypTen_Identity_Horizontal_Lockup_01_FullColor.png" alt="CrypTen logo" /></p>
 
 [![GitHub license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/facebookresearch/CrypTen/blob/master/LICENSE) [![CircleCI](https://circleci.com/gh/facebookresearch/CrypTen.svg?style=shield)](https://circleci.com/gh/facebookresearch/CrypTen/tree/master) [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/facebookresearch/CrypTen/blob/master/CONTRIBUTING.md)
 
@@ -41,19 +41,13 @@ It is currently not production ready and its main use is as a research framework
 
 ## Installing CrypTen
 
-CrypTen currently runs on Linux and Mac. It also needs a PyTorch nightly build.
-Windows is not supported. We also do not currently support computation on GPUs.
+CrypTen currently runs on Linux and Mac with Python >= 3.7.
+Windows **is not** supported. We also do not currently support computation on GPUs.
 
-Install Anaconda 2019.07 or later and then do the following:
 
 _For Linux or Mac_
 ```bash
-conda create -n crypten-env python=3.7
-conda activate crypten-env
-conda install pytorch torchvision -c pytorch
-git clone https://github.com/facebookresearch/CrypTen.git
-cd CrypTen
-pip install -e .
+pip install crypten
 ```
 
 If you want to run the examples in the `examples` directory, you should also do the following

@@ -130,12 +130,7 @@ class Index extends React.Component {
             {
               content: 'Please see the '+
               '[CrypTen Docs](https://github.com/facebookresearch/crypten#installing-crypten).'+
-              '\n```bash\n\nconda create -n crypten python=3.7\t\n' +
-              'conda activate crypten\n' +
-              'conda install pytorch torchvision -c pytorch\n' +
-              '# clone\n' +
-              'git clone https://github.com/facebookresearch/CrypTen.git\n' +
-              'cd CrypTen; pip install -e .\n\n\n```',
+              '\n```bash\n\n pip install crypten\n```',
               title: 'Installation Script',
             },
             {
