@@ -190,7 +190,8 @@ def load(f, encrypted=False, dummy_model=None, src=0, **kwargs):
                     a tensor.
         src: Determines the source of the tensor. If `src` is None, each
             party will attempt to read in the specified file. If `src` is
-            specified, the source party will read the tensor from
+            specified, the source party will read the tensor from `f` and it
+            will broadcast it to the other parties
     """
     if encrypted:
         raise NotImplementedError("Loading encrypted tensors is not yet supported")
