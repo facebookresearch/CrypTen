@@ -521,22 +521,37 @@ class TestNN(object):
         encrypted_target = crypten.cryptensor(target)
 
         # test forward() function of all simple losses:
-        for loss_name in ["BCELoss", "L1Loss", "MSELoss"]:
-            enc_loss_object = getattr(torch.nn, loss_name)()
-            self.assertEqual(
-                enc_loss_object.reduction, "mean", "Reduction used is not 'mean'"
-            )
+        for loss_name in ["BCELoss", "BCEWithLogitsLoss", "L1Loss", "MSELoss"]:
+            for skip_forward in [False, True]:
+                enc_loss_object = getattr(torch.nn, loss_name)()
+                self.assertEqual(
+                    enc_loss_object.reduction, "mean", "Reduction used is not 'mean'"
+                )
 
-            loss = getattr(torch.nn, loss_name)()(input, target)
-            encrypted_loss = getattr(crypten.nn, loss_name)()(
-                encrypted_input, encrypted_target
-            )
-            self._check(encrypted_loss, loss, "%s failed" % loss_name)
-            encrypted_loss = getattr(crypten.nn, loss_name)()(
-                AutogradCrypTensor(encrypted_input),
-                AutogradCrypTensor(encrypted_target),
-            )
-            self._check(encrypted_loss, loss, "%s failed" % loss_name)
+                input.requires_grad = True
+                input.grad = None
+                loss = getattr(torch.nn, loss_name)()(input, target)
+                if not skip_forward:
+                    encrypted_loss = getattr(crypten.nn, loss_name)()(
+                        encrypted_input, encrypted_target
+                    )
+                    self._check(encrypted_loss, loss, "%s failed" % loss_name)
+
+                encrypted_input = AutogradCrypTensor(
+                    encrypted_input, requires_grad=True
+                )
+                encrypted_loss = getattr(crypten.nn, loss_name)(
+                    skip_forward=skip_forward
+                )(encrypted_input, AutogradCrypTensor(encrypted_target))
+                if not skip_forward:
+                    self._check(encrypted_loss, loss, "%s failed" % loss_name)
+
+                # Check backward
+                loss.backward()
+                encrypted_loss.backward()
+                self._check(
+                    encrypted_input.grad, input.grad, "%s grad failed" % loss_name
+                )
 
         # test forward() function of cross-entropy loss:
         batch_size, num_targets = 16, 5
