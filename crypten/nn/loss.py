@@ -14,11 +14,12 @@ class _Loss(Module):
     Base criterion class that mimics Pytorch's Loss.
     """
 
-    def __init__(self, reduction="mean"):
+    def __init__(self, reduction="mean", skip_forward=False):
         super(_Loss, self).__init__()
         if reduction != "mean":
             raise NotImplementedError("reduction %s not supported")
         self.reduction = reduction
+        self.skip_forward = skip_forward
 
     def forward(self, x, y):
         raise NotImplementedError("forward not implemented")
@@ -44,11 +45,11 @@ class MSELoss(_Loss):
     """
 
     def forward(self, x, y):
-        N = y.nelement()
-        assert (
-            x.nelement() == N
-        ), "input and target must have the same number of elements"
-        return (x - y).square().sum().div(N)
+        assert all(
+            isinstance(val, AutogradCrypTensor) for val in [y, x]
+        ), "inputs must be AutogradCrypTensors"
+        assert x.size() == y.size(), "input and target must have the same size"
+        return (x - y).square().mean()
 
 
 class L1Loss(_Loss):
@@ -67,11 +68,11 @@ class L1Loss(_Loss):
     """
 
     def forward(self, x, y):
-        N = y.nelement()
-        assert (
-            x.nelement() == N
-        ), "input and target must have the same number of elements"
-        return (x - y).abs().sum().div(N)
+        assert all(
+            isinstance(val, AutogradCrypTensor) for val in [y, x]
+        ), "inputs must be AutogradCrypTensors"
+        assert x.size() == y.size(), "input and target must have the same size"
+        return (x - y).abs().mean()
 
 
 class BCELoss(_Loss):
@@ -94,13 +95,11 @@ class BCELoss(_Loss):
     """
 
     def forward(self, x, y):
-        assert (
-            x.nelement() == y.nelement()
-        ), "input and target must have the same number of elements"
         assert all(
             isinstance(val, AutogradCrypTensor) for val in [y, x]
         ), "inputs must be AutogradCrypTensors"
-        return x.binary_cross_entropy(y)
+        assert x.size() == y.size(), "input and target must have the same size"
+        return x.binary_cross_entropy(y, skip_forward=self.skip_forward)
 
 
 class CrossEntropyLoss(_Loss):
@@ -133,8 +132,30 @@ class CrossEntropyLoss(_Loss):
     """
 
     def forward(self, x, y):
-        assert x.size() == y.size(), "input and target must have the same size"
         assert all(
             isinstance(val, AutogradCrypTensor) for val in [y, x]
         ), "inputs must be AutogradCrypTensors"
-        return x.cross_entropy(y)
+        assert x.size() == y.size(), "input and target must have the same size"
+        return x.cross_entropy(y, skip_forward=self.skip_forward)
+
+
+class BCEWithLogitsLoss(_Loss):
+    """
+    This loss combines a Sigmoid layer and the BCELoss in one single class.
+
+    The loss can be described as:
+
+    .. math::
+        \ell(x, y) = mean(L) = mean(\{l_1,\dots,l_N\}^\top), \quad
+        l_n = - \left [ y_n \cdot \log x_n + (1 - y_n) \cdot \log (1 - x_n) \right ],
+
+    This is used for measuring the error of a reconstruction in for example an
+    auto-encoder. Note that the targets t[i] should be numbers between 0 and 1.
+    """
+
+    def forward(self, x, y):
+        assert all(
+            isinstance(val, AutogradCrypTensor) for val in [y, x]
+        ), "inputs must be AutogradCrypTensors"
+        assert x.size() == y.size(), "input and target must have the same size"
+        return x.binary_cross_entropy_with_logits(y, skip_forward=self.skip_forward)

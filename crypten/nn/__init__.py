@@ -12,7 +12,7 @@ import torch
 import torch.onnx.utils
 from onnx import numpy_helper
 
-from .loss import BCELoss, CrossEntropyLoss, L1Loss, MSELoss
+from .loss import BCELoss, BCEWithLogitsLoss, CrossEntropyLoss, L1Loss, MSELoss
 from .module import (
     Add,
     AvgPool2d,
@@ -63,6 +63,7 @@ __all__ = [
     "MSELoss",
     "L1Loss",
     "BCELoss",
+    "BCEWithLogitsLoss",
     "Add",
     "AvgPool2d",
     "_BatchNorm",

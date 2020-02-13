@@ -923,7 +923,7 @@ class AutogradMean(AutogradFunction):
         )
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
-        return grad_output.mul(torch.ones(input_size)).div_(nelement)
+        return grad_output.mul(torch.ones(input_size).div_(nelement))
 
 
 @register_function("var")
@@ -1371,13 +1371,18 @@ class AutogradBatchNorm(AutogradFunction):
 @register_function("binary_cross_entropy")
 class AutogradBinaryCrossEntropy(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
+    def forward(ctx, input, skip_forward=False):
         pred, target = input
+        assert pred.size()
         ctx.save_multiple_for_backward([pred, target])
         ctx.mark_non_differentiable(target)
+        if skip_forward:
+            return pred
+
+        # Compute full forward pass
         log_pos, log_neg = crypten.stack([pred, 1.0 - pred]).log().unbind(dim=0)
         loss_values = target * log_pos + ((1.0 - target) * log_neg)
-        return loss_values.sum().div(-target.nelement())
+        return -loss_values.mean()
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -1387,14 +1392,46 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
         return grad.div_(target.nelement()).mul_(grad_output)
 
 
+@register_function("binary_cross_entropy_with_logits")
+class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input, skip_forward=False):
+        logit, target = input
+        sigmoid_out = logit.sigmoid()
+        assert (
+            sigmoid_out.size() == target.size()
+        ), "Incorrect input sizes for binary_cross_entropy_with_logits"
+        ctx.mark_non_differentiable(target)
+        ctx.save_multiple_for_backward([target, sigmoid_out])
+        if skip_forward:
+            return sigmoid_out
+
+        # Compute full forward pass
+        log_pos, log_neg = (
+            crypten.stack([sigmoid_out, 1.0 - sigmoid_out]).log().unbind(dim=0)
+        )
+        loss_values = target * log_pos + ((1.0 - target) * log_neg)
+        return -loss_values.mean()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        saved = ctx.saved_tensors
+        target, sigmoid_out = saved
+        return (sigmoid_out - target).div(target.nelement())
+
+
 @register_function("cross_entropy")
 class AutogradCrossEntropy(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
+    def forward(ctx, input, skip_forward=False):
         pred, target = input  # NOTE: target is assumed to be one-hot vector.
         softmax = pred.softmax(1)
         ctx.save_multiple_for_backward([softmax, target])
         ctx.mark_non_differentiable(target)
+        if skip_forward:
+            return softmax
+
+        # Compute full forward pass
         loss_values = softmax.log().mul_(target).neg_()
         return loss_values.sum().div_(target.size(0))
 

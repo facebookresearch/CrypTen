@@ -632,44 +632,57 @@ class TestGradients(object):
     def test_cross_entropy(self):
         """Tests cross_entropy and binary_cross_entropy"""
         sizes = [(3, 2), (8, 4), (5, 10)]
-        losses = ["binary_cross_entropy", "cross_entropy"]
+        losses = [
+            "binary_cross_entropy",
+            "binary_cross_entropy_with_logits",
+            "cross_entropy",
+        ]
 
         for size, loss in itertools.product(sizes, losses):
-            batch_size, num_targets = size
-            if loss == "binary_cross_entropy":
-                tensor = get_random_test_tensor(
-                    size=(batch_size,), max_value=1.0, is_float=True
+            for skip_forward in [False, True]:
+                batch_size, num_targets = size
+                if loss in ["binary_cross_entropy", "binary_cross_entropy_with_logits"]:
+                    if loss == "binary_cross_entropy":
+                        tensor = get_random_test_tensor(
+                            size=(batch_size,), max_value=0.998, is_float=True
+                        )
+                        tensor = tensor.abs().add_(0.001)
+                    else:
+                        tensor = get_random_test_tensor(
+                            size=(batch_size,), is_float=True
+                        )
+
+                    target = get_random_test_tensor(size=(batch_size,), is_float=True)
+                    target = target.gt(0.0).float()
+                    target_encr = crypten.cryptensor(target)
+                else:
+                    tensor = get_random_test_tensor(size=size, is_float=True)
+                    target = get_random_test_tensor(
+                        size=(batch_size,), max_value=num_targets - 1
+                    )
+                    target = onehot(target.abs(), num_targets=num_targets)
+                    target_encr = crypten.cryptensor(target)
+                    # CrypTen, unlike PyTorch, uses one-hot targets
+                    target = target.argmax(1)
+
+                # forward
+                tensor.requires_grad = True
+                tensor_encr = AutogradCrypTensor(
+                    crypten.cryptensor(tensor), requires_grad=True
                 )
-                tensor = tensor.abs().add_(0.001)
-
-                target = get_random_test_tensor(size=(batch_size,), is_float=True)
-                target = target.gt(0.0).float()
-                target_encr = crypten.cryptensor(target)
-            else:
-                tensor = get_random_test_tensor(size=size, is_float=True)
-                target = get_random_test_tensor(
-                    size=(batch_size,), max_value=num_targets - 1
+                reference = getattr(torch.nn.functional, loss)(tensor, target)
+                out_encr = getattr(tensor_encr, loss)(
+                    target_encr, skip_forward=skip_forward
                 )
-                target = onehot(target.abs(), num_targets=num_targets)
-                target_encr = crypten.cryptensor(target)
-                # CrypTen, unlike PyTorch, uses one-hot targets
-                target = target.argmax(1)
+                if not skip_forward:
+                    self._check(out_encr, reference, f"{loss} forward failed")
 
-            # forward
-            tensor.requires_grad = True
-            tensor_encr = AutogradCrypTensor(
-                crypten.cryptensor(tensor), requires_grad=True
-            )
-            reference = getattr(torch.nn.functional, loss)(tensor, target)
-            out_encr = getattr(tensor_encr, loss)(target_encr)
-            self._check(out_encr, reference, f"{loss} forward failed")
-
-            # backward
-            grad_out = get_random_test_tensor(size=reference.shape, is_float=True)
-            grad_out_encr = crypten.cryptensor(grad_out)
-            reference.backward(grad_out)
-            out_encr.backward(grad_out_encr)
-            self._check(tensor_encr.grad, tensor.grad, f"{loss} backward failed with")
+                # backward
+                reference.backward()
+                out_encr.backward()
+                self._check(
+                    tensor_encr.grad, tensor.grad, f"{loss} backward failed with"
+                )
 
     def test_view_reshape(self):
         """Tests view and reshape gradients"""

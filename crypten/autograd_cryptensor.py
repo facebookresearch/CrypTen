@@ -69,7 +69,10 @@ class AutogradCrypTensor(object):
     def __init__(self, tensor, requires_grad=True):
         if torch.is_tensor(tensor):
             raise ValueError("Cannot create AutogradCrypTensor from PyTorch tensor.")
-        self._tensor = tensor  # value of tensor
+        if isinstance(tensor, AutogradCrypTensor):
+            self._tensor = tensor._tensor.shallow_copy()
+        else:
+            self._tensor = tensor  # value of tensor
         self.requires_grad = requires_grad  # whether tensors needs gradient
         self._reset_gradients()
 
