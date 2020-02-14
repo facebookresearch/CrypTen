@@ -186,16 +186,23 @@ class TestGradients(object):
                         self._check_forward_backward(rfunc, tensor1, scalar)
 
     def test_div(self):
-        funcs = ["div", "__truediv__", "__rtruediv__"]
-        for func in funcs:
-            for size1 in SIZES:
-                tensor1 = get_random_test_tensor(size=size1, is_float=True)
-                for size2 in SIZES:
-                    tensor2 = get_random_test_tensor(
-                        min_value=0.5, size=size2, is_float=True
-                    )  # do not divide by value very close to zero
-                    self._check_forward_backward(func, tensor1, tensor2)
-                self._check_forward_backward(func, tensor1, 2.0)
+        self._div_helper("div")
+
+    def test_truediv(self):
+        self._div_helper("__truediv__")
+
+    def test_rtruediv(self):
+        self._div_helper("__rtruediv__")
+
+    def _div_helper(self, func):
+        for size1 in SIZES:
+            tensor1 = get_random_test_tensor(size=size1, is_float=True)
+            for size2 in SIZES:
+                tensor2 = get_random_test_tensor(
+                    min_value=0.5, size=size2, is_float=True
+                )  # do not divide by value very close to zero
+                self._check_forward_backward(func, tensor1, tensor2)
+            self._check_forward_backward(func, tensor1, 2.0)
 
     def test_reductions(self):
         """Tests reductions on tensors of various sizes."""
@@ -402,15 +409,17 @@ class TestGradients(object):
             )
 
     def test_pow(self):
-        """Tests pow function"""
-        for pow_fn in ["pow", "__pow__"]:
-            for size in SIZES:
-                tensor = get_random_test_tensor(
-                    size=size, min_value=0.5, is_float=True
-                )  # prevent division by values close to zero
-                for power in [-3, -2, -1, 0, 1, 2, 3]:
-                    self._check_forward_backward(pow_fn, tensor, power)
-                    self._check_forward_backward(pow_fn, tensor, float(power))
+        self._pow_helper("pow")
+
+    def test_pow_private(self):
+        self._pow_helper("__pow__")
+
+    def _pow_helper(self, pow_fn):
+        for size in SIZES:
+            tensor = get_random_test_tensor(size=size, min_value=0.5, is_float=True)
+            for power in [-3, -2, -1, 0, 1, 2, 3]:
+                self._check_forward_backward(pow_fn, tensor, power)
+                self._check_forward_backward(pow_fn, tensor, float(power))
 
     def test_norm(self):
         """Tests p-norm"""
