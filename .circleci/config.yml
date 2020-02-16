@@ -8,8 +8,8 @@ setup_venv: &setup_venv
     . ~/crypten-test/bin/activate
     pip3 install --upgrade pip
     pip3 install numpy
-    pip3 install --pre torch -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
-    pip3 install onnx tensorboard future torchvision
+    pip3 install torch==1.4.0+cpu torchvision==0.5.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
+    pip3 install onnx tensorboard future
 
 # -------------------------------------------------------------------------------------
 # Jobs
@@ -29,7 +29,7 @@ jobs:
             . ~/crypten-test/bin/activate
             pip3 install --upgrade pip
             pip3 install numpy
-            pip3 install --pre torch -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+            pip3 install torch==1.4.0+cpu torchvision==0.5.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
             pip3 install onnx tensorboard future
       - run:
           name: Unit tests
@@ -67,7 +67,6 @@ jobs:
           name: TFE benchmarks example
           command: |
             . ~/crypten-test/bin/activate
-            pip3 install --pre torchvision -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
             PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network A --epochs 2
             PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network B --epochs 2
             PYTHONPATH=. python3 examples/tfe_benchmarks/launcher.py --network C --epochs 2
