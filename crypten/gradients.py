@@ -422,7 +422,8 @@ class AutogradReLU(AutogradFunction):
 class AutogradDropout(AutogradFunction):
     @staticmethod
     def forward(ctx, input, p=0.5, inplace=False):
-        rand_tensor = crypten.mpc.rand(input.size())
+        cryptensor_type = crypten.get_cryptensor_type(input)
+        rand_tensor = crypten.rand(input.size(), cryptensor_type=cryptensor_type)
         boolean_mask = rand_tensor > p
         if inplace:
             result = input.mul_(boolean_mask).div_(1 - p)
@@ -442,7 +443,10 @@ class AutogradFeatureDropout(AutogradFunction):
     @staticmethod
     def forward(ctx, input, p=0.5, inplace=False):
         feature_dropout_size = input.size()[0:2]
-        rand_tensor = crypten.mpc.rand(feature_dropout_size)
+        cryptensor_type = crypten.get_cryptensor_type(input)
+        rand_tensor = crypten.rand(
+            feature_dropout_size, cryptensor_type=cryptensor_type
+        )
         boolean_mask = rand_tensor > p
         for i in range(2, input.dim()):
             boolean_mask = boolean_mask.unsqueeze(i)

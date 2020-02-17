@@ -158,11 +158,60 @@ class MPCTensor(CrypTensor):
         """Sets encoder to value"""
         self._tensor.encoder = value
 
+    @staticmethod
+    def __cat_stack_helper(op, tensors, *args, **kwargs):
+        assert op in ["cat", "stack"], "Unsupported op for helper function"
+        assert isinstance(tensors, list), "%s input must be a list" % op
+        assert len(tensors) > 0, "expected a non-empty list of MPCTensors"
+
+        _ptype = kwargs.pop("ptype", None)
+        # Populate ptype field
+        if _ptype is None:
+            for tensor in tensors:
+                if isinstance(tensor, MPCTensor):
+                    _ptype = tensor.ptype
+                    break
+        if _ptype is None:
+            _ptype = Ptype.arithmetic
+
+        # Make all inputs MPCTensors of given ptype
+        for i, tensor in enumerate(tensors):
+            if tensor.ptype != _ptype:
+                tensors[i] = tensor.to(_ptype)
+
+        # Operate on all input tensors
+        result = tensors[0].clone()
+        result.share = getattr(torch, op)(
+            [tensor.share for tensor in tensors], *args, **kwargs
+        )
+        return result
+
+    @staticmethod
+    def cat(tensors, *args, **kwargs):
+        """Perform matrix concatenation"""
+        return MPCTensor.__cat_stack_helper("cat", tensors, *args, **kwargs)
+
+    @staticmethod
+    def stack(tensors, *args, **kwargs):
+        """Perform tensor stacking"""
+        return MPCTensor.__cat_stack_helper("stack", tensors, *args, **kwargs)
+
+    @staticmethod
+    def rand(*sizes):
+        """
+        Returns a tensor with elements uniformly sampled in [0, 1) using the
+        trusted third party.
+        """
+        rand = MPCTensor(None)
+        rand._tensor = crypten.mpc.get_default_provider().rand(*sizes)
+        rand.ptype = Ptype.arithmetic
+        return rand
+
     def bernoulli(self):
         """Returns a tensor with elements in {0, 1}. The i-th element of the
         output will be 1 with probability according to the i-th value of the
         input tensor."""
-        return self > crypten.mpc.rand(self.size())
+        return self > MPCTensor.rand(self.size())
 
     def dropout(self, p=0.5, training=True, inplace=False):
         r"""
@@ -181,7 +230,7 @@ class MPCTensor(CrypTensor):
                 return self
             else:
                 return self.clone()
-        rand_tensor = crypten.mpc.rand(self.size())
+        rand_tensor = MPCTensor.rand(self.size())
         dropout_tensor = rand_tensor > p
         if inplace:
             result_tensor = self.mul_(dropout_tensor).div_(1 - p)
@@ -240,7 +289,7 @@ class MPCTensor(CrypTensor):
         # take first 2 dimensions
         feature_dropout_size = self.size()[0:2]
         # create dropout tensor over the first two dimensions
-        rand_tensor = crypten.mpc.rand(feature_dropout_size)
+        rand_tensor = MPCTensor.rand(feature_dropout_size)
         feature_dropout_tensor = rand_tensor > p
         # Broadcast to remaining dimensions
         for i in range(2, self.dim()):
@@ -335,7 +384,7 @@ class MPCTensor(CrypTensor):
 
         x = self.cumsum(dim)
         max_weight = x.index_select(dim, torch.tensor(x.size(dim) - 1))
-        r = crypten.mpc.rand(max_weight.size()) * max_weight
+        r = MPCTensor.rand(max_weight.size()) * max_weight
 
         gt = x.gt(r, _scale=False)
         shifted = gt.roll(1, dims=dim)
@@ -378,9 +427,7 @@ class MPCTensor(CrypTensor):
         a = self.expand(row_length - 1, *self.size())
 
         # Generate cyclic permutations for each row
-        b = crypten.mpc.stack(
-            [self.roll(i + 1, dims=dim) for i in range(row_length - 1)]
-        )
+        b = crypten.stack([self.roll(i + 1, dims=dim) for i in range(row_length - 1)])
 
         # Use either prod or sum & comparison depending on size
         if row_length - 1 < torch.iinfo(torch.long).bits * 2:
@@ -685,7 +732,7 @@ class MPCTensor(CrypTensor):
             return self.mul(coeffs)
 
         # Compute terms of polynomial using exponentially growing tree
-        terms = crypten.mpc.stack([self, self.square()])
+        terms = crypten.stack([self, self.square()])
         while terms.size(0) < coeffs.size(0):
             highest_term = terms[-1:].expand(terms.size())
             new_terms = getattr(terms, func)(highest_term)
