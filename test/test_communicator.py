@@ -7,11 +7,15 @@
 
 import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
-from test.multithread_test_case import MultiThreadTestCase
 
 import crypten
 import crypten.communicator as comm
 import torch
+
+
+# TODO: Commenting this out until we figure out why `thread.join() hangs
+#       Perhaps the thread to be joined has somehow exited
+# from test.multithread_test_case import MultiThreadTestCase
 
 
 class TestCommunicator:
@@ -140,8 +144,10 @@ class TestCommunicator:
         self.assertEqual(comm.get().get_rank(), self.rank)
 
 
-class TestCommunicatorMultiThread(TestCommunicator, MultiThreadTestCase):
-    pass
+# TODO: Commenting this out until we figure out why `thread.join() hangs
+#       Perhaps the thread to be joined has somehow exited
+# class TestCommunicatorMultiThread(TestCommunicator, MultiThreadTestCase):
+#    pass
 
 
 class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):

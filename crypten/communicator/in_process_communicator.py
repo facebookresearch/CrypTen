@@ -25,10 +25,10 @@ class InProcessCommunicator(Communicator):
     lock = threading.Lock()
 
     @classmethod
-    def initialize(cls, rank, world_size):
+    def initialize(cls, rank, world_size, init_ttp=False):
         cls.tls.instance = cls(rank, world_size)
 
-    def __init__(self, rank, world_size):
+    def __init__(self, rank, world_size, init_ttp=False):
         self.world_size = world_size
         self.rank = rank
         self.reset_communication_stats()
