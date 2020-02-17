@@ -43,7 +43,7 @@ def online_learner(
     total_reward = 0.0
 
     # initialize constructor for tensors:
-    crypten.set_default_backend(getattr(crypten, backend))
+    crypten.set_default_backend(backend)
 
     # loop over dataset:
     idx = 0

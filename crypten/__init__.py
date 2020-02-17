@@ -52,35 +52,85 @@ def reset_communication_stats():
     comm.get().reset_communication_stats()
 
 
-# Set backend
-__SUPPORTED_BACKENDS = [crypten.mpc]
-__default_backend = __SUPPORTED_BACKENDS[0]
+# set tensor type to be used for CrypTensors:
+__CRYPTENSOR_TYPES__ = {"mpc": crypten.mpc.MPCTensor}
+__DEFAULT_CRYPTENSOR_TYPE__ = "mpc"
 
 
-def set_default_backend(new_default_backend):
-    """Sets the default cryptensor backend (mpc, he)"""
-    global __default_backend
-    assert new_default_backend in __SUPPORTED_BACKENDS, (
-        "Backend %s is not supported" % new_default_backend
-    )
-    __default_backend = new_default_backend
+def register_cryptensor(name):
+    """Registers a custom :class:`CrypTensor` subclass.
 
+    This decorator allows the user to instantiate a subclass of `CrypTensor`
+    from Python cpde, even if the class itself is not  part of CrypTen. To use
+    it, apply this decorator to a `CrypTensor` subclass, like this:
 
-def get_default_backend():
-    """Returns the default cryptensor backend (mpc, he)"""
-    return __default_backend
+    .. code-block:: python
 
-
-def cryptensor(*args, backend=None, **kwargs):
+        @crypten.register_cryptensor('my_cryptensor')
+        class MyCrypTensor(crypten.CrypTensor):
+            ...
     """
-    Factory function to return encrypted tensor of given backend.
+
+    def register_cryptensor_cls(cls):
+        if name in __CRYPTENSOR_TYPES__:
+            raise ValueError(
+                "Cannot register duplicate CrypTensor type: \
+                tensor type {} already exists.".format(
+                    name
+                )
+            )
+        if not issubclass(cls, CrypTensor):
+            raise ValueError(
+                "Registered tensor ({}: {}) must extend \
+                CrypTensor".format(
+                    name, cls.__name__
+                )
+            )
+        __CRYPTENSOR_TYPES__[name] = cls
+        return cls
+
+    return register_cryptensor_cls
+
+
+def set_default_cryptensor_type(cryptensor_type):
+    """Sets the default type used to create `CrypTensor`s."""
+    global __DEFAULT_CRYPTENSOR_TYPE__
+    if cryptensor_type not in __CRYPTENSOR_TYPES__:
+        raise ValueError("CrypTensor type %s does not exist." % cryptensor_type)
+    __DEFAULT_CRYPTENSOR_TYPE__ = cryptensor_type
+
+
+def get_default_cryptensor_type():
+    """Gets the default type used to create `CrypTensor`s."""
+    return __DEFAULT_CRYPTENSOR_TYPE__
+
+
+def get_cryptensor_type(tensor):
+    """Gets the type name of the specified `tensor` `CrypTensor`."""
+    if not isinstance(tensor, CrypTensor):
+        raise ValueError(
+            "Specified tensor is not a CrypTensor: {}".format(type(tensor))
+        )
+    for name, cls in __CRYPTENSOR_TYPES__.items():
+        if isinstance(tensor, cls):
+            return name
+    raise ValueError("Unregistered CrypTensor type: {}".format(type(tensor)))
+
+
+def cryptensor(*args, cryptensor_type=None, **kwargs):
     """
-    if backend is None:
-        backend = get_default_backend()
-    if backend == crypten.mpc:
-        return backend.MPCTensor(*args, **kwargs)
-    else:
-        raise TypeError("Backend %s is not supported" % backend)
+    Factory function to return encrypted tensor of given `cryptensor_type`. If no
+    `cryptensor_type` is specified, the default type is used.
+    """
+
+    # determine CrypTensor type to use:
+    if cryptensor_type is None:
+        cryptensor_type = get_default_cryptensor_type()
+    if cryptensor_type not in __CRYPTENSOR_TYPES__:
+        raise ValueError("CrypTensor type %s does not exist." % cryptensor_type)
+
+    # create CrypTensor:
+    return __CRYPTENSOR_TYPES__[cryptensor_type](*args, **kwargs)
 
 
 def is_encrypted_tensor(obj):
@@ -154,16 +204,16 @@ def __validate_model(loaded_model, dummy_model):
             dummy_module = dummy_modules.pop(0)
 
             # Assert modules have the same number of parameters
-            loaded_params = [param for param in loaded_module.parameters()]
-            dummy_params = [param for param in dummy_module.parameters()]
+            loaded_params = list(loaded_module.parameters())
+            dummy_params = list(dummy_module.parameters())
             assert len(loaded_params) == len(dummy_params)
 
             for i, param in enumerate(loaded_params):
                 assert param.size() == dummy_params[i].size()
 
             # Assert that modules have the same number of sub-modules
-            loaded_module_modules = [mod for mod in loaded_module.modules()][1:]
-            dummy_module_modules = [mod for mod in dummy_module.modules()][1:]
+            loaded_module_modules = list(loaded_module.modules())[1:]
+            dummy_module_modules = list(dummy_module.modules())[1:]
 
             loaded_modules.extend(loaded_module_modules)
             dummy_modules.extend(dummy_module_modules)
@@ -318,7 +368,15 @@ def where(condition, input, other):
 
 
 def cat(tensors, dim=0):
+    """
+    Concatenates the specified CrypTen `tensors` along dimension `dim`.
+    """
     assert isinstance(tensors, list), "input to cat must be a list"
+    assert all(isinstance(t, CrypTensor) for t in tensors), "inputs must be CrypTensors"
+    tensor_types = [get_cryptensor_type(t) for t in tensors]
+    assert all(
+        ttype == tensor_types[0] for ttype in tensor_types
+    ), "cannot stack CrypTensors with different underlying types"
     if len(tensors) == 1:
         return tensors[0]
 
@@ -329,11 +387,20 @@ def cat(tensors, dim=0):
             tensors[0] = AutogradCrypTensor(tensors[0], requires_grad=False)
         return tensors[0].cat(*tensors[1:], dim=dim)
     else:
-        return get_default_backend().cat(tensors, dim=dim)
+        return type(tensors[0]).cat(tensors, dim=dim)
 
 
 def stack(tensors, dim=0):
+    """
+    Stacks the specified CrypTen `tensors` along dimension `dim`. In contrast to
+    `crypten.cat`, this adds a dimension to the result tensor.
+    """
     assert isinstance(tensors, list), "input to stack must be a list"
+    assert all(isinstance(t, CrypTensor) for t in tensors), "inputs must be CrypTensors"
+    tensor_types = [get_cryptensor_type(t) for t in tensors]
+    assert all(
+        ttype == tensor_types[0] for ttype in tensor_types
+    ), "cannot stack CrypTensors with different underlying types"
     if len(tensors) == 1:
         return tensors[0].unsqueeze(dim)
 
@@ -344,24 +411,26 @@ def stack(tensors, dim=0):
             tensors[0] = AutogradCrypTensor(tensors[0], requires_grad=False)
         return tensors[0].stack(*tensors[1:], dim=dim)
     else:
-        return get_default_backend().stack(tensors, dim=dim)
+        return type(tensors[0]).stack(tensors, dim=dim)
 
 
-# Top level tensor functions
-__PASSTHROUGH_FUNCTIONS = ["bernoulli", "rand"]
+def rand(*sizes, cryptensor_type=None):
+    """
+    Returns a tensor with elements uniformly sampled in [0, 1).
+    """
+    if cryptensor_type is None:
+        cryptensor_type = get_default_cryptensor_type()
+    return __CRYPTENSOR_TYPES__[cryptensor_type].rand(*sizes)
 
 
-def __add_top_level_function(func_name):
-    def _passthrough_function(*args, backend=None, **kwargs):
-        if backend is None:
-            backend = get_default_backend()
-        return getattr(backend, func_name)(*args, **kwargs)
+def bernoulli(tensor, cryptensor_type=None):
+    """
+    Returns a tensor with elements in {0, 1}. The i-th element of the
+    output will be 1 with probability according to the i-th value of the
+    input tensor.
+    """
+    return rand(tensor.size(), cryptensor_type=cryptensor_type) < tensor
 
-    globals()[func_name] = _passthrough_function
-
-
-for func in __PASSTHROUGH_FUNCTIONS:
-    __add_top_level_function(func)
 
 # expose classes and functions in package:
 __all__ = ["CrypTensor", "debug", "init", "init_thread", "mpc", "nn", "uninit"]

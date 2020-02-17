@@ -14,7 +14,6 @@ from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_te
 
 import crypten
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 from crypten.common.tensor_types import is_float_tensor
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
@@ -32,7 +31,7 @@ class TestCrypten(MultiProcessTestCase):
         super().setUp()
         if self.rank >= 0:
             crypten.init()
-            crypten.set_default_backend(crypten.mpc)
+            crypten.set_default_cryptensor_type("mpc")
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
@@ -56,29 +55,24 @@ class TestCrypten(MultiProcessTestCase):
         """Tests concatenation and stacking of tensors"""
         tensor1 = get_random_test_tensor(size=(5, 5, 5, 5), is_float=True)
         tensor2 = get_random_test_tensor(size=(5, 5, 5, 5), is_float=True)
+        encrypted1 = crypten.cryptensor(tensor1)
+        encrypted2 = crypten.cryptensor(tensor2)
 
-        for type1 in [lambda x: x, crypten.cryptensor]:
-            encrypted1 = type1(tensor1)
-            for type2 in [lambda x: x, crypten.cryptensor]:
-                encrypted2 = type2(tensor2)
+        for op in ["cat", "stack"]:
+            reference = getattr(torch, op)([tensor1, tensor2])
+            with self.benchmark(type=op) as bench:
+                for _ in bench.iters:
+                    encrypted_out = getattr(crypten, op)([encrypted1, encrypted2])
+            self._check(encrypted_out, reference, "%s failed" % op)
 
-                for op in ["cat", "stack"]:
-                    reference = getattr(torch, op)([tensor1, tensor2])
-                    with self.benchmark(type=op) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = getattr(crypten, op)(
-                                [encrypted1, encrypted2]
-                            )
-                    self._check(encrypted_out, reference, "%s failed" % op)
-
-                    for dim in range(4):
-                        reference = getattr(torch, op)([tensor1, tensor2], dim=dim)
-                        with self.benchmark(type=op, dim=dim) as bench:
-                            for _ in bench.iters:
-                                encrypted_out = getattr(crypten, op)(
-                                    [encrypted1, encrypted2], dim=dim
-                                )
-                        self._check(encrypted_out, reference, "%s failed" % op)
+            for dim in range(4):
+                reference = getattr(torch, op)([tensor1, tensor2], dim=dim)
+                with self.benchmark(type=op, dim=dim) as bench:
+                    for _ in bench.iters:
+                        encrypted_out = getattr(crypten, op)(
+                            [encrypted1, encrypted2], dim=dim
+                        )
+                self._check(encrypted_out, reference, "%s failed" % op)
 
     def test_rand(self):
         """Tests uniform random variable generation on [0, 1)"""
@@ -114,6 +108,33 @@ class TestCrypten(MultiProcessTestCase):
         randvec = crypten.bernoulli(probs).get_plain_text()
         frac_zero = float((randvec == 0).sum()) / randvec.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.8, rel_tol=1e-3, abs_tol=1e-3))
+
+    def test_cryptensor_registration(self):
+        """Tests the registration mechanism for custom `CrypTensor` types."""
+
+        # perform tests:
+        cryptensor_name = "my_cryptensor"
+        self.assertEqual(crypten.get_default_cryptensor_type(), "mpc")
+        with self.assertRaises(ValueError):
+            crypten.set_default_cryptensor_type(cryptensor_name)
+        tensor = crypten.cryptensor(torch.zeros(1, 3))
+        self.assertEqual(crypten.get_cryptensor_type(tensor), "mpc")
+
+        # register new tensor type:
+        @crypten.register_cryptensor(cryptensor_name)
+        class MyCrypTensor(crypten.CrypTensor):
+            """Dummy `CrypTensor` type."""
+
+            def __init__(self, *args, **kwargs):
+                self.is_custom_type = True
+
+        # test that registration was successful:
+        self.assertEqual(crypten.get_default_cryptensor_type(), "mpc")
+        crypten.set_default_cryptensor_type(cryptensor_name)
+        self.assertEqual(crypten.get_default_cryptensor_type(), cryptensor_name)
+        tensor = crypten.cryptensor(torch.zeros(1, 3))
+        self.assertTrue(getattr(tensor, "is_custom_type", False))
+        self.assertEqual(crypten.get_cryptensor_type(tensor), cryptensor_name)
 
     def test_ptype(self):
         """Test that ptype attribute creates the correct type of encrypted tensor"""
