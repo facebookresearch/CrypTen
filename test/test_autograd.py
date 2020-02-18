@@ -23,8 +23,6 @@ class TestAutograd(object):
     This class tests all autograd-related functionality.
     """
 
-    benchmarks_enabled = False
-
     def setUp(self):
         super().setUp()
 
@@ -373,8 +371,6 @@ class TestTTP(MultiProcessTestCase, TestAutograd):
         super(TestTTP, self).tearDown()
 
 
-# This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_mpc_benchmark)
+# This code only runs when executing the file outside the test harness
 if __name__ == "__main__":
-    TestAutograd.benchmarks_enabled = True
     unittest.main()

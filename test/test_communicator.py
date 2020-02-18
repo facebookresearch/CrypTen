@@ -23,8 +23,6 @@ class TestCommunicator:
         This class tests all member functions of crypten package
     """
 
-    benchmarks_enabled = False
-
     def test_przs_generators(self):
         """Tests that przs generators are initialized independently"""
         t0 = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,), generator=comm.get().g0)
@@ -213,8 +211,6 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
         self.assertEqual(comm.get().comm_bytes, 0)
 
 
-# This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_mpc_benchmark)
+# This code only runs when executing the file outside the test harness
 if __name__ == "__main__":
-    TestCommunicator.benchmarks_enabled = True
     unittest.main()

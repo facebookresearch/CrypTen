@@ -17,8 +17,6 @@ import crypten.debug
 import torch
 import torch.distributed as dist
 
-from .benchmark_helper import BenchmarkHelper
-
 
 def get_random_test_tensor(
     max_value=6, min_value=None, size=(1, 5), is_float=False, ex_zero=False
@@ -108,8 +106,6 @@ class MultiProcessTestCase(unittest.TestCase):
                 fn = getattr(cls, attr)
                 setattr(cls, attr, cls.join_or_run(fn))
 
-        cls.benchmark_helper = None
-
     def __init__(self, methodName):
         super().__init__(methodName)
 
@@ -121,16 +117,7 @@ class MultiProcessTestCase(unittest.TestCase):
 
         crypten.debug.configure_logging()
 
-        self.benchmark_iters = 100 if self.benchmarks_enabled else 1
         self.default_tolerance = 0.5
-
-        cls = self.__class__
-        queue = self.mp_context.Queue()
-        cls.benchmark_helper = BenchmarkHelper(
-            self.benchmarks_enabled, self.benchmark_iters, queue
-        )
-        if hasattr(self, "benchmark_queue"):
-            cls.benchmark_helper.queue = self.benchmark_queue
 
         # This gets called in the children process as well to give subclasses a
         # chance to initialize themselves in the new process
@@ -144,14 +131,8 @@ class MultiProcessTestCase(unittest.TestCase):
 
     def tearDown(self):
         super(MultiProcessTestCase, self).tearDown()
-        self.__class__.benchmark_helper.drain_benchmark_queue()
         for p in self.processes:
             p.terminate()
-
-    @classmethod
-    def tearDownClass(cls):
-        if cls.benchmark_helper:
-            cls.benchmark_helper.print_benchmark_summary(cls.__name__)
 
     def _current_test_name(self):
         # self.id() == e.g. '__main__.TestDistributed.TestAdditive.test_get_rank'
@@ -176,20 +157,17 @@ class MultiProcessTestCase(unittest.TestCase):
         name = "process " + str(rank)
         test_name = self._current_test_name()
         process = self.mp_context.Process(
-            target=self.__class__._run,
-            name=name,
-            args=(test_name, rank, self.__class__.benchmark_helper.queue, self.file),
+            target=self.__class__._run, name=name, args=(test_name, rank, self.file)
         )
         process.start()
         return process
 
     @classmethod
-    def _run(cls, test_name, rank, queue, file):
+    def _run(cls, test_name, rank, file):
         self = cls(test_name)
 
         self.file = file
         self.rank = int(rank)
-        self.benchmark_queue = queue
 
         # set environment variables:
         communicator_args = {
@@ -216,6 +194,3 @@ class MultiProcessTestCase(unittest.TestCase):
 
     def _check_return_codes(self, process):
         self.assertEqual(process.exitcode, 0)
-
-    def benchmark(self, niters=None, data=None, **kwargs):
-        return self.benchmark_helper.benchmark(self, niters, data, **kwargs)

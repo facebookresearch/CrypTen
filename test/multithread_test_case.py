@@ -15,8 +15,6 @@ from threading import Thread
 
 import crypten
 
-from .benchmark_helper import BenchmarkHelper
-
 
 class MultiThreadTestCase(unittest.TestCase):
     MAIN_PROCESS_RANK = -1
@@ -36,15 +34,6 @@ class MultiThreadTestCase(unittest.TestCase):
 
     def __init__(self, methodName):
         super().__init__(methodName)
-        # TODO(vini): support benchmarking in threaded mode
-        self.benchmark_iters = 1
-        self.benchmark_enabled = False
-        self.default_tolerance = 0.5
-        q = queue.Queue()
-        self.benchmark_helper = BenchmarkHelper(False, self.world_size, q)
-
-    def benchmark(self, niters=None, data=None, **kwargs):
-        return self.benchmark_helper.benchmark(self, niters, data, **kwargs)
 
     @classmethod
     def setUpClass(cls):

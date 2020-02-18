@@ -26,8 +26,6 @@ class TestNN(object):
         This class tests the crypten.nn package.
     """
 
-    benchmarks_enabled = False
-
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
             tolerance = getattr(self, "default_tolerance", 0.05)
@@ -924,15 +922,6 @@ class TestTTP(MultiProcessTestCase, TestNN):
         super(TestTTP, self).tearDown()
 
 
-# This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_mpc_benchmark)
+# This code only runs when executing the file outside the test harness
 if __name__ == "__main__":
-    TestNN.benchmarks_enabled = True
-    unittest.main()
-
-
-# This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_mpc_benchmark)
-if __name__ == "__main__":
-    TestNN.benchmarks_enabled = True
     unittest.main()

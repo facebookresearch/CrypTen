@@ -48,8 +48,6 @@ class TestGradients(object):
         This class tests all functions of AutogradCrypTensor.
     """
 
-    benchmarks_enabled = False
-
     def setUp(self):
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communicator
@@ -874,8 +872,6 @@ class TestTTP(MultiProcessTestCase, TestGradients):
         super(TestTTP, self).tearDown()
 
 
-# This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_mpc_benchmark)
+# This code only runs when executing the file outside the test harness
 if __name__ == "__main__":
-    TestGradients.benchmarks_enabled = True
     unittest.main()

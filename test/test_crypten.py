@@ -25,8 +25,6 @@ class TestCrypten(MultiProcessTestCase):
         This class tests all member functions of crypten package
     """
 
-    benchmarks_enabled = False
-
     def setUp(self):
         super().setUp()
         if self.rank >= 0:
@@ -60,26 +58,18 @@ class TestCrypten(MultiProcessTestCase):
 
         for op in ["cat", "stack"]:
             reference = getattr(torch, op)([tensor1, tensor2])
-            with self.benchmark(type=op) as bench:
-                for _ in bench.iters:
-                    encrypted_out = getattr(crypten, op)([encrypted1, encrypted2])
+            encrypted_out = getattr(crypten, op)([encrypted1, encrypted2])
             self._check(encrypted_out, reference, "%s failed" % op)
 
             for dim in range(4):
                 reference = getattr(torch, op)([tensor1, tensor2], dim=dim)
-                with self.benchmark(type=op, dim=dim) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = getattr(crypten, op)(
-                            [encrypted1, encrypted2], dim=dim
-                        )
+                encrypted_out = getattr(crypten, op)([encrypted1, encrypted2], dim=dim)
                 self._check(encrypted_out, reference, "%s failed" % op)
 
     def test_rand(self):
         """Tests uniform random variable generation on [0, 1)"""
         for size in [(10,), (10, 10), (10, 10, 10)]:
-            with self.benchmark(size=size) as bench:
-                for _ in bench.iters:
-                    randvec = crypten.rand(*size)
+            randvec = crypten.rand(*size)
             self.assertTrue(randvec.size() == size, "Incorrect size")
             tensor = randvec.get_plain_text()
             self.assertTrue(
@@ -97,9 +87,7 @@ class TestCrypten(MultiProcessTestCase):
     def test_bernoulli(self):
         for size in [(10,), (10, 10), (10, 10, 10)]:
             probs = torch.rand(size)
-            with self.benchmark(size=size) as bench:
-                for _ in bench.iters:
-                    randvec = crypten.bernoulli(probs)
+            randvec = crypten.bernoulli(probs)
             self.assertTrue(randvec.size() == size, "Incorrect size")
             tensor = randvec.get_plain_text()
             self.assertTrue(((tensor == 0) + (tensor == 1)).all(), "Invalid values")
@@ -284,8 +272,6 @@ class NestedTestModule(nn.Module):
         self.nested.set_all_parameters(value)
 
 
-# This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_mpc_benchmark)
+# This code only runs when executing the file outside the test harness
 if __name__ == "__main__":
-    TestCrypten.benchmarks_enabled = True
     unittest.main()
