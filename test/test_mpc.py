@@ -24,8 +24,6 @@ class TestMPC(object):
         This class tests all functions of MPCTensor.
     """
 
-    benchmarks_enabled = False
-
     def _check(self, encrypted_tensor, reference, msg, dst=None, tolerance=None):
         if tolerance is None:
             tolerance = getattr(self, "default_tolerance", 0.05)
@@ -190,9 +188,7 @@ class TestMPC(object):
 
         for dim in [0, 1]:
             reference = tensor.sum(dim)
-            with self.benchmark(type="sum", dim=dim) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted.sum(dim)
+            encrypted_out = encrypted.sum(dim)
             self._check(encrypted_out, reference, "sum failed")
 
     def test_prod(self):
@@ -203,9 +199,7 @@ class TestMPC(object):
 
         for dim in [0, 1]:
             reference = tensor.prod(dim).float()
-            with self.benchmark(type="prod", dim=dim) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted.prod(dim)
+            encrypted_out = encrypted.prod(dim)
             self._check(encrypted_out, reference, "prod failed")
 
     def test_div(self):
@@ -308,16 +302,12 @@ class TestMPC(object):
             reference = tensor.unsqueeze(dim)
 
             encrypted = MPCTensor(tensor)
-            with self.benchmark(type="unsqueeze", dim=dim) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted.unsqueeze(dim)
+            encrypted_out = encrypted.unsqueeze(dim)
             self._check(encrypted_out, reference, "unsqueeze failed")
 
             # Test squeeze
             encrypted = MPCTensor(tensor.unsqueeze(0))
-            with self.benchmark(type="squeeze", dim=dim) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted.squeeze()
+            encrypted_out = encrypted.squeeze()
             self._check(encrypted_out, reference.squeeze(), "squeeze failed")
 
             # Check that the encrypted_out and encrypted point to the same
@@ -347,17 +337,13 @@ class TestMPC(object):
 
             if len(size) == 2:  # t() asserts dim == 2
                 reference = tensor.t()
-                with self.benchmark(niters=10) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = encrypted_tensor.t()
+                encrypted_out = encrypted_tensor.t()
                 self._check(encrypted_out, reference, "t() failed")
 
             for dim0 in range(len(size)):
                 for dim1 in range(len(size)):
                     reference = tensor.transpose(dim0, dim1)
-                    with self.benchmark(niters=10) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = encrypted_tensor.transpose(dim0, dim1)
+                    encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
 
     def test_conv(self):
@@ -385,14 +371,9 @@ class TestMPC(object):
                             # perform filtering:
                             encr_matrix = MPCTensor(matrix)
                             encr_kernel = kernel_type(kernel)
-                            with self.benchmark(
-                                kernel_type=kernel_type.__name__,
-                                matrix_width=matrix_width,
-                            ) as bench:
-                                for _ in bench.iters:
-                                    encr_conv = getattr(encr_matrix, func_name)(
-                                        encr_kernel, padding=padding
-                                    )
+                            encr_conv = getattr(encr_matrix, func_name)(
+                                encr_kernel, padding=padding
+                            )
 
                             # check that result is correct:
                             reference = getattr(F, func_name)(
@@ -416,11 +397,9 @@ class TestMPC(object):
                                 reference *= kernel_size * kernel_size
 
                             encrypted_matrix = MPCTensor(matrix)
-                            with self.benchmark(func=func, width=width) as bench:
-                                for _ in bench.iters:
-                                    encrypted_pool = getattr(encrypted_matrix, func)(
-                                        kernel_size, stride=stride, padding=padding
-                                    )
+                            encrypted_pool = getattr(encrypted_matrix, func)(
+                                kernel_size, stride=stride, padding=padding
+                            )
                             self._check(encrypted_pool, reference, "%s failed" % func)
 
                         # Test max_pool2d
@@ -433,13 +412,9 @@ class TestMPC(object):
                             matrix.requires_grad = True
                             reference = F.max_pool2d(matrix, kernel_size, **kwargs)
                             encrypted_matrix = MPCTensor(matrix)
-                            with self.benchmark(
-                                func="max_pool2d", width=width
-                            ) as bench:
-                                for _ in bench.iters:
-                                    encrypted_pool = encrypted_matrix.max_pool2d(
-                                        kernel_size, **kwargs
-                                    )
+                            encrypted_pool = encrypted_matrix.max_pool2d(
+                                kernel_size, **kwargs
+                            )
                             if return_indices:
                                 self._check(
                                     encrypted_pool[0], reference[0], "max_pool2d failed"
@@ -524,9 +499,7 @@ class TestMPC(object):
 
             encrypted_matrix = MPCTensor(matrix)
             reference = F.relu_(matrix)
-            with self.benchmark(float=float, width=width, boolean=True) as bench:
-                for _ in bench.iters:
-                    encrypted_matrix = encrypted_matrix.relu()
+            encrypted_matrix = encrypted_matrix.relu()
             self._check(encrypted_matrix, reference, "relu failed")
 
     def test_comparators(self):
@@ -542,11 +515,9 @@ class TestMPC(object):
 
                     reference = getattr(tensor, comp)(tensor2).float()
 
-                    with self.benchmark(comp=comp) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = getattr(encrypted_tensor, comp)(
-                                encrypted_tensor2, _scale=_scale
-                            )
+                    encrypted_out = getattr(encrypted_tensor, comp)(
+                        encrypted_tensor2, _scale=_scale
+                    )
 
                     self._check(encrypted_out, reference, "%s comparator failed" % comp)
 
@@ -572,9 +543,7 @@ class TestMPC(object):
             encrypted_tensor = MPCTensor(tensor)
             for comp in ["max", "min"]:
                 reference = getattr(tensor, comp)()
-                with self.benchmark(niters=10, comp=comp, dim=None) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = getattr(encrypted_tensor, comp)()
+                encrypted_out = getattr(encrypted_tensor, comp)()
                 self._check(encrypted_out, reference, "%s reduction failed" % comp)
 
                 for dim in range(tensor.dim()):
@@ -582,17 +551,9 @@ class TestMPC(object):
                         reference = getattr(tensor, comp)(dim=dim, keepdim=keepdim)
 
                         # Test with one_hot = False
-                        with self.benchmark(
-                            niters=10,
-                            comp=comp,
-                            dim=dim,
-                            keepdim=keepdim,
-                            one_hot=False,
-                        ) as bench:
-                            for _ in bench.iters:
-                                encrypted_out = getattr(encrypted_tensor, comp)(
-                                    dim=dim, keepdim=keepdim, one_hot=False
-                                )
+                        encrypted_out = getattr(encrypted_tensor, comp)(
+                            dim=dim, keepdim=keepdim, one_hot=False
+                        )
 
                         # Check max / min values are correct
                         self._check(
@@ -618,13 +579,9 @@ class TestMPC(object):
                         )
 
                         # Test indices with one_hot = True
-                        with self.benchmark(
-                            niters=10, comp=comp, dim=dim, keepdim=keepdim, one_hot=True
-                        ) as bench:
-                            for _ in bench.iters:
-                                encrypted_out = getattr(encrypted_tensor, comp)(
-                                    dim=dim, keepdim=keepdim, one_hot=True
-                                )
+                        encrypted_out = getattr(encrypted_tensor, comp)(
+                            dim=dim, keepdim=keepdim, one_hot=True
+                        )
 
                         # Check argmax results
                         val_ref = reference[0]
@@ -664,11 +621,7 @@ class TestMPC(object):
                 value = getattr(tensor, cmp)()
 
                 # test with one_hot = False
-                with self.benchmark(
-                    niters=10, comp=comp, dim=None, one_hot=False
-                ) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = getattr(encrypted_tensor, comp)(one_hot=False)
+                encrypted_out = getattr(encrypted_tensor, comp)(one_hot=False)
 
                 # Must index into tensor since ties are broken randomly
                 # so crypten and PyTorch can return different indices.
@@ -681,11 +634,7 @@ class TestMPC(object):
                     self.assertTrue(decrypted_val.eq(value).all().item())
 
                 # test with one_hot = False
-                with self.benchmark(
-                    niters=10, comp=comp, dim=None, one_hot=True
-                ) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = getattr(encrypted_tensor, comp)(one_hot=True)
+                encrypted_out = getattr(encrypted_tensor, comp)(one_hot=True)
                 one_hot_indices = (tensor == value).float()
                 decrypted_out = encrypted_out.get_plain_text()
                 self.assertTrue(decrypted_out.sum() == 1)
@@ -697,13 +646,9 @@ class TestMPC(object):
                         values, indices = getattr(tensor, cmp)(dim=dim, keepdim=keepdim)
 
                         # test with one_hot = False
-                        with self.benchmark(
-                            niters=10, comp=comp, dim=dim, one_hot=False
-                        ) as bench:
-                            for _ in bench.iters:
-                                encrypted_out = getattr(encrypted_tensor, comp)(
-                                    dim=dim, keepdim=keepdim, one_hot=False
-                                )
+                        encrypted_out = getattr(encrypted_tensor, comp)(
+                            dim=dim, keepdim=keepdim, one_hot=False
+                        )
 
                         # Must index into tensor since ties are broken randomly
                         # so crypten and PyTorch can return different indices.
@@ -717,13 +662,9 @@ class TestMPC(object):
                         self.assertTrue(decrypted_val.eq(reference).all().item())
 
                         # test with one_hot = True
-                        with self.benchmark(
-                            niters=10, comp=comp, dim=dim, one_hot=True
-                        ) as bench:
-                            for _ in bench.iters:
-                                encrypted_out = getattr(encrypted_tensor, comp)(
-                                    dim=dim, keepdim=keepdim, one_hot=True
-                                )
+                        encrypted_out = getattr(encrypted_tensor, comp)(
+                            dim=dim, keepdim=keepdim, one_hot=True
+                        )
                         decrypted_out = encrypted_out.get_plain_text()
 
                         if not keepdim:
@@ -744,9 +685,7 @@ class TestMPC(object):
             encrypted_tensor = MPCTensor(tensor)
             reference = getattr(tensor, op)()
 
-            with self.benchmark(niters=10, op=op) as bench:
-                for _ in bench.iters:
-                    encrypted_out = getattr(encrypted_tensor, op)()
+            encrypted_out = getattr(encrypted_tensor, op)()
 
             self._check(encrypted_out, reference, "%s failed" % op)
 
@@ -756,9 +695,7 @@ class TestMPC(object):
         def test_with_inputs(func, input):
             encrypted_tensor = MPCTensor(input)
             reference = getattr(tensor, func)()
-            with self.benchmark(niters=10, func=func) as bench:
-                for _ in bench.iters:
-                    encrypted_out = getattr(encrypted_tensor, func)()
+            encrypted_out = getattr(encrypted_tensor, func)()
             self._check(encrypted_out, reference, "%s failed" % func)
 
         # Test on [-10, 10] range
@@ -793,9 +730,7 @@ class TestMPC(object):
                 reference = tensor.pow(p.get_plain_text())
             else:
                 reference = tensor.pow(p)
-            with self.benchmark(niters=10, func=func) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted_tensor.pos_pow(p)
+                encrypted_out = encrypted_tensor.pos_pow(p)
             self._check(encrypted_out, reference, f"pos_pow failed with power {p}")
 
     def test_pow(self):
@@ -805,9 +740,7 @@ class TestMPC(object):
                 tensor = get_random_test_tensor(is_float=True)
                 encrypted_tensor = MPCTensor(tensor)
                 reference = getattr(tensor, pow_fn)(power)
-                with self.benchmark(niters=10, func=pow_fn, power=power) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = getattr(encrypted_tensor, pow_fn)(power)
+                encrypted_out = getattr(encrypted_tensor, pow_fn)(power)
             self._check(encrypted_out, reference, "pow failed with power %s" % power)
             if pow_fn.endswith("_"):
                 self._check(
@@ -827,9 +760,7 @@ class TestMPC(object):
                     reference = tensor.norm(p=p, dim=dim)
 
                 encrypted = MPCTensor(tensor)
-                with self.benchmark() as bench:
-                    for _ in bench.iters:
-                        encrypted_out = encrypted.norm(p=p, dim=dim)
+                encrypted_out = encrypted.norm(p=p, dim=dim)
                 self._check(encrypted_out, reference, f"{p}-norm failed", tolerance=0.5)
 
     def test_logistic(self):
@@ -840,9 +771,7 @@ class TestMPC(object):
         cases = ["sigmoid", "tanh"]
         for func in cases:
             reference = getattr(tensor, func)()
-            with self.benchmark(niters=10, func=func) as bench:
-                for _ in bench.iters:
-                    encrypted_out = getattr(encrypted_tensor, func)()
+            encrypted_out = getattr(encrypted_tensor, func)()
             self._check(encrypted_out, reference, "%s failed" % func)
 
     def test_cos_sin(self):
@@ -853,18 +782,14 @@ class TestMPC(object):
         cases = ["cos", "sin"]
         for func in cases:
             reference = getattr(tensor, func)()
-            with self.benchmark(niters=10, func=func) as bench:
-                for _ in bench.iters:
-                    encrypted_out = getattr(encrypted_tensor, func)()
+            encrypted_out = getattr(encrypted_tensor, func)()
             self._check(encrypted_out, reference, "%s failed" % func)
 
     def test_bernoulli(self):
         """Tests bernoulli sampling"""
         for size in [(10,), (10, 10), (10, 10, 10)]:
             probs = MPCTensor(torch.rand(size))
-            with self.benchmark(size=size) as bench:
-                for _ in bench.iters:
-                    randvec = probs.bernoulli()
+            randvec = probs.bernoulli()
             self.assertTrue(randvec.size() == size, "Incorrect size")
             tensor = randvec.get_plain_text()
             self.assertTrue(((tensor == 0) + (tensor == 1)).all(), "Invalid values")
@@ -881,9 +806,7 @@ class TestMPC(object):
             tensor = get_random_test_tensor(size=(), is_float=True)
             reference = getattr(tensor, softmax_fn)(0)
             encrypted_tensor = MPCTensor(tensor)
-            with self.benchmark(size=(), dim=0) as bench:
-                for _ in bench.iters:
-                    encrypted_out = getattr(encrypted_tensor, softmax_fn)(0)
+            encrypted_out = getattr(encrypted_tensor, softmax_fn)(0)
             self._check(encrypted_out, reference, "0-dim tensor %s failed" % softmax_fn)
 
             # Test all other sizes
@@ -907,9 +830,7 @@ class TestMPC(object):
 
                 for dim in range(tensor.dim()):
                     reference = getattr(tensor, softmax_fn)(dim)
-                    with self.benchmark(size=size, dim=dim) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = getattr(encrypted_tensor, softmax_fn)(dim)
+                    encrypted_out = getattr(encrypted_tensor, softmax_fn)(dim)
 
                     self._check(encrypted_out, reference, "%s failed" % softmax_fn)
 
@@ -978,11 +899,7 @@ class TestMPC(object):
                             pad = pad[:2]
                         reference = torch.nn.functional.pad(tensor, pad, value=value)
                         encrypted_value = tensor_type(value)
-                        with self.benchmark(tensor_type=tensor_type.__name__) as bench:
-                            for _ in bench.iters:
-                                encrypted_out = encrypted_tensor.pad(
-                                    pad, value=encrypted_value
-                                )
+                        encrypted_out = encrypted_tensor.pad(pad, value=encrypted_value)
                         self._check(encrypted_out, reference, "pad failed")
 
     def test_index_add(self):
@@ -1801,7 +1718,6 @@ class TestTTP(MultiProcessTestCase, TestMPC):
 
 
 # This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_mpc_benchmark)
+# via the buck target of another test)
 if __name__ == "__main__":
-    TestMPC.benchmarks_enabled = True
     unittest.main()

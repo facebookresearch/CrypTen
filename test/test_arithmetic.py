@@ -26,8 +26,6 @@ class TestArithmetic(MultiProcessTestCase):
         This class tests all functions of the ArithmeticSharedTensor.
     """
 
-    benchmarks_enabled = False
-
     def setUp(self):
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communcator
@@ -93,9 +91,7 @@ class TestArithmetic(MultiProcessTestCase):
         ]
         for size in sizes:
             reference = get_random_test_tensor(size=size, is_float=True)
-            with self.benchmark(tensor_type="ArithmeticSharedTensor") as bench:
-                for _ in bench.iters:
-                    encrypted_tensor = ArithmeticSharedTensor(reference)
+            encrypted_tensor = ArithmeticSharedTensor(reference)
             self._check(encrypted_tensor, reference, "en/decryption failed")
 
             for dst in range(self.world_size):
@@ -180,9 +176,7 @@ class TestArithmetic(MultiProcessTestCase):
 
         for dim in [0, 1, 2]:
             reference = tensor.sum(dim)
-            with self.benchmark(type="sum", dim=dim) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted.sum(dim)
+            encrypted_out = encrypted.sum(dim)
             self._check(encrypted_out, reference, "sum failed")
 
     def test_prod(self):
@@ -194,9 +188,7 @@ class TestArithmetic(MultiProcessTestCase):
 
         for dim in [0, 1, 2]:
             reference = tensor.prod(dim).float()
-            with self.benchmark(type="prod", dim=dim) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted.prod(dim)
+            encrypted_out = encrypted.prod(dim)
             self._check(encrypted_out, reference, "prod failed")
 
     def test_div(self):
@@ -394,16 +386,12 @@ class TestArithmetic(MultiProcessTestCase):
             reference = tensor.unsqueeze(dim)
 
             encrypted = ArithmeticSharedTensor(tensor)
-            with self.benchmark(type="unsqueeze", dim=dim) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted.unsqueeze(dim)
+            encrypted_out = encrypted.unsqueeze(dim)
             self._check(encrypted_out, reference, "unsqueeze failed")
 
             # Test squeeze
             encrypted = ArithmeticSharedTensor(tensor.unsqueeze(0))
-            with self.benchmark(type="squeeze", dim=dim) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted.squeeze()
+            encrypted_out = encrypted.squeeze()
             self._check(encrypted_out, reference.squeeze(), "squeeze failed")
 
             # Check that the encrypted_out and encrypted point to the same
@@ -433,17 +421,13 @@ class TestArithmetic(MultiProcessTestCase):
 
             if len(size) == 2:  # t() asserts dim == 2
                 reference = tensor.t()
-                with self.benchmark(niters=10) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = encrypted_tensor.t()
+                encrypted_out = encrypted_tensor.t()
                 self._check(encrypted_out, reference, "t() failed")
 
             for dim0 in range(len(size)):
                 for dim1 in range(len(size)):
                     reference = tensor.transpose(dim0, dim1)
-                    with self.benchmark(niters=10) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = encrypted_tensor.transpose(dim0, dim1)
+                    encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
 
     def test_conv(self):
@@ -464,13 +448,9 @@ class TestArithmetic(MultiProcessTestCase):
                         reference = F.conv2d(matrix, kernel, padding=padding)
                         encrypted_matrix = ArithmeticSharedTensor(matrix)
                         encrypted_kernel = kernel_type(kernel)
-                        with self.benchmark(
-                            kernel_type=kernel_type.__name__, matrix_width=matrix_width
-                        ) as bench:
-                            for _ in bench.iters:
-                                encrypted_conv = encrypted_matrix.conv2d(
-                                    encrypted_kernel, padding=padding
-                                )
+                        encrypted_conv = encrypted_matrix.conv2d(
+                            encrypted_kernel, padding=padding
+                        )
 
                         self._check(encrypted_conv, reference, "conv2d failed")
 
@@ -491,11 +471,9 @@ class TestArithmetic(MultiProcessTestCase):
                                 reference *= width2 * width2
 
                             encrypted_matrix = ArithmeticSharedTensor(matrix)
-                            with self.benchmark(func=func, width=width) as bench:
-                                for _ in bench.iters:
-                                    encrypted_pool = getattr(encrypted_matrix, func)(
-                                        pool_size, stride=stride, padding=padding
-                                    )
+                            encrypted_pool = getattr(encrypted_matrix, func)(
+                                pool_size, stride=stride, padding=padding
+                            )
                             self._check(encrypted_pool, reference, "%s failed" % func)
 
     def test_take(self):
@@ -588,11 +566,7 @@ class TestArithmetic(MultiProcessTestCase):
                             pad = pad[:2]
                         reference = torch.nn.functional.pad(tensor, pad, value=value)
                         encrypted_value = tensor_type(value)
-                        with self.benchmark(tensor_type=tensor_type.__name__) as bench:
-                            for _ in bench.iters:
-                                encrypted_out = encrypted_tensor.pad(
-                                    pad, value=encrypted_value
-                                )
+                        encrypted_out = encrypted_tensor.pad(pad, value=encrypted_value)
                         self._check(encrypted_out, reference, "pad failed")
 
     def test_broadcast(self):
@@ -826,8 +800,6 @@ class TestArithmetic(MultiProcessTestCase):
         pass
 
 
-# This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_mpc_benchmark)
+# This code only runs when executing the file outside the test harness
 if __name__ == "__main__":
-    TestArithmetic.benchmarks_enabled = True
     unittest.main()

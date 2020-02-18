@@ -21,8 +21,6 @@ class TestBinary(MultiProcessTestCase):
         This class tests all functions of BinarySharedTensor.
     """
 
-    benchmarks_enabled = False
-
     def setUp(self):
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communcator
@@ -69,9 +67,7 @@ class TestBinary(MultiProcessTestCase):
         ]
         for size in sizes:
             reference = get_random_test_tensor(size=size, is_float=False)
-            with self.benchmark(tensor_type="BinarySharedTensor") as bench:
-                for _ in bench.iters:
-                    encrypted_tensor = BinarySharedTensor(reference)
+            encrypted_tensor = BinarySharedTensor(reference)
             self._check(encrypted_tensor, reference, "en/decryption failed")
 
             for dst in range(self.world_size):
@@ -100,17 +96,13 @@ class TestBinary(MultiProcessTestCase):
 
             if len(size) == 2:  # t() asserts dim == 2
                 reference = tensor.t()
-                with self.benchmark(niters=10) as bench:
-                    for _ in bench.iters:
-                        encrypted_out = encrypted_tensor.t()
+                encrypted_out = encrypted_tensor.t()
                 self._check(encrypted_out, reference, "t() failed")
 
             for dim0 in range(len(size)):
                 for dim1 in range(len(size)):
                     reference = tensor.transpose(dim0, dim1)
-                    with self.benchmark(niters=10) as bench:
-                        for _ in bench.iters:
-                            encrypted_out = encrypted_tensor.transpose(dim0, dim1)
+                    encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
 
     def test_XOR(self):
@@ -121,9 +113,7 @@ class TestBinary(MultiProcessTestCase):
             reference = tensor ^ tensor2
             encrypted_tensor = BinarySharedTensor(tensor)
             encrypted_tensor2 = tensor_type(tensor2)
-            with self.benchmark(tensor_type=tensor_type.__name__) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted_tensor ^ encrypted_tensor2
+            encrypted_out = encrypted_tensor ^ encrypted_tensor2
             self._check(encrypted_out, reference, "%s XOR failed" % tensor_type)
 
     def test_AND(self):
@@ -134,9 +124,7 @@ class TestBinary(MultiProcessTestCase):
             reference = tensor & tensor2
             encrypted_tensor = BinarySharedTensor(tensor)
             encrypted_tensor2 = tensor_type(tensor2)
-            with self.benchmark(tensor_type=tensor_type.__name__) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted_tensor & encrypted_tensor2
+            encrypted_out = encrypted_tensor & encrypted_tensor2
             self._check(encrypted_out, reference, "%s AND failed" % tensor_type)
 
     def test_OR(self):
@@ -147,9 +135,7 @@ class TestBinary(MultiProcessTestCase):
             reference = tensor | tensor2
             encrypted_tensor = BinarySharedTensor(tensor)
             encrypted_tensor2 = tensor_type(tensor2)
-            with self.benchmark(tensor_type=tensor_type.__name__) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted_tensor | encrypted_tensor2
+            encrypted_out = encrypted_tensor | encrypted_tensor2
             self._check(encrypted_out, reference, "%s OR failed" % tensor_type)
 
     def test_bitwise_broadcasting(self):
@@ -201,9 +187,7 @@ class TestBinary(MultiProcessTestCase):
         tensor = get_random_test_tensor(is_float=False)
         encrypted_tensor = BinarySharedTensor(tensor)
         reference = ~tensor
-        with self.benchmark() as bench:
-            for _ in bench.iters:
-                encrypted_out = ~encrypted_tensor
+        encrypted_out = ~encrypted_tensor
         self._check(encrypted_out, reference, "invert failed")
 
     def test_add(self):
@@ -214,9 +198,7 @@ class TestBinary(MultiProcessTestCase):
             reference = tensor + tensor2
             encrypted_tensor = BinarySharedTensor(tensor)
             encrypted_tensor2 = tensor_type(tensor2)
-            with self.benchmark(tensor_type=tensor_type.__name__) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted_tensor + encrypted_tensor2
+            encrypted_out = encrypted_tensor + encrypted_tensor2
             self._check(encrypted_out, reference, "%s AND failed" % tensor_type)
 
     def test_sum(self):
@@ -227,9 +209,7 @@ class TestBinary(MultiProcessTestCase):
 
         for dim in [0, 1, 2]:
             reference = tensor.sum(dim)
-            with self.benchmark(type="sum", dim=dim) as bench:
-                for _ in bench.iters:
-                    encrypted_out = encrypted.sum(dim)
+            encrypted_out = encrypted.sum(dim)
             self._check(encrypted_out, reference, "sum failed")
 
     def test_get_set(self):
@@ -421,8 +401,6 @@ class TestBinary(MultiProcessTestCase):
         pass
 
 
-# This code only runs when executing the file outside the test harness (e.g.
-# via the buck target test_mpc_benchmark)
+# This code only runs when executing the file outside the test harness
 if __name__ == "__main__":
-    TestBinary.benchmarks_enabled = True
     unittest.main()

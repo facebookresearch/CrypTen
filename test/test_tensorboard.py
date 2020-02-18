@@ -15,8 +15,6 @@ import crypten.nn.tensorboard as tensorboard
 class TestTensorboard(MultiProcessTestCase):
     """This class tests the crypten.nn.tensorboad package."""
 
-    benchmarks_enabled = False
-
     def setUp(self):
         super().setUp()
         if self.rank >= 0:
