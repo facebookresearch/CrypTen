@@ -794,10 +794,10 @@ class TestMPC(object):
             tensor = randvec.get_plain_text()
             self.assertTrue(((tensor == 0) + (tensor == 1)).all(), "Invalid values")
 
-        probs = MPCTensor(torch.Tensor(int(1e6)).fill_(0.2))
+        probs = MPCTensor(torch.Tensor(int(1e4)).fill_(0.2))
         randvec = probs.bernoulli().get_plain_text()
         frac_zero = float((randvec == 0).sum()) / randvec.nelement()
-        self.assertTrue(math.isclose(frac_zero, 0.8, rel_tol=1e-3, abs_tol=1e-3))
+        self.assertTrue(math.isclose(frac_zero, 0.8, rel_tol=1e-1, abs_tol=1e-1))
 
     def test_softmax(self):
         """Test softmax and log_softmax function"""
@@ -1519,10 +1519,12 @@ class TestMPC(object):
             (5, 5, 5, 5),
         ]
         for size in sizes:
-            tensor = get_random_test_tensor(size=size, is_float=True)
+            tensor = get_random_test_tensor(size=size, max_value=3, is_float=True)
             encrypted = MPCTensor(tensor)
-            for terms in range(1, 8):
-                coeffs = get_random_test_tensor(size=(terms,), is_float=True)
+            for terms in range(1, 5):
+                coeffs = get_random_test_tensor(
+                    size=(terms,), max_value=3, is_float=True
+                )
 
                 reference = torch.zeros(size=tensor.size())
                 for i, term in enumerate(coeffs.tolist()):
