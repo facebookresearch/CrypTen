@@ -193,7 +193,7 @@ class TestMPC(object):
 
     def test_prod(self):
         """Tests prod reduction on encrypted tensor."""
-        tensor = get_random_test_tensor(size=(5, 5), is_float=False)
+        tensor = get_random_test_tensor(size=(3, 3), max_value=3, is_float=False)
         encrypted = MPCTensor(tensor)
         self._check(encrypted.prod(), tensor.prod().float(), "prod failed")
 
@@ -574,7 +574,7 @@ class TestMPC(object):
                         mpc_result = tensor.gather(dim, out_decr)
                         torch_result = tensor.gather(dim, argmax_ref)
                         self.assertTrue(
-                            (mpc_result == torch_result).all().item(),
+                            torch.allclose(mpc_result, torch_result, rtol=1e-1),
                             "%s reduction failed" % comp,
                         )
 
@@ -589,10 +589,11 @@ class TestMPC(object):
                         out_decr = out_encr.get_plain_text()
                         self.assertTrue((out_decr.sum(dim=dim) == 1).all())
                         self.assertTrue(
-                            (
-                                out_decr.mul(tensor).sum(dim=dim, keepdim=keepdim)
-                                == val_ref
-                            ).all()
+                            torch.allclose(
+                                out_decr.mul(tensor).sum(dim=dim, keepdim=keepdim),
+                                val_ref,
+                                rtol=1e-1,
+                            )
                         )
 
     def test_argmax_argmin(self):
