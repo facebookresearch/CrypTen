@@ -193,11 +193,13 @@ class TestMPC(object):
 
     def test_prod(self):
         """Tests prod reduction on encrypted tensor."""
-        tensor = get_random_test_tensor(size=(5, 5), is_float=False)
+        tensor = get_random_test_tensor(size=(3, 3), max_value=3, is_float=False)
         encrypted = MPCTensor(tensor)
         self._check(encrypted.prod(), tensor.prod().float(), "prod failed")
 
-        for dim in [0, 1]:
+        tensor = get_random_test_tensor(size=(5, 5, 5), max_value=3, is_float=False)
+        encrypted = MPCTensor(tensor)
+        for dim in [0, 1, 2]:
             reference = tensor.prod(dim).float()
             encrypted_out = encrypted.prod(dim)
             self._check(encrypted_out, reference, "prod failed")

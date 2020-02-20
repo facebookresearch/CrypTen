@@ -181,11 +181,13 @@ class TestArithmetic(MultiProcessTestCase):
 
     def test_prod(self):
         """Tests prod reduction on encrypted tensor."""
-        # Increaing size to reduce relative error due to quantization
-        tensor = get_random_test_tensor(size=(5, 5, 5), is_float=False)
+        tensor = get_random_test_tensor(size=(3, 3), max_value=3, is_float=False)
         encrypted = ArithmeticSharedTensor(tensor)
         self._check(encrypted.prod(), tensor.prod().float(), "prod failed")
 
+        # test with dim argument
+        tensor = get_random_test_tensor(size=(5, 5, 5), max_value=3, is_float=False)
+        encrypted = ArithmeticSharedTensor(tensor)
         for dim in [0, 1, 2]:
             reference = tensor.prod(dim).float()
             encrypted_out = encrypted.prod(dim)
