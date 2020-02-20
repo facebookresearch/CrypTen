@@ -8,6 +8,7 @@
 __version__ = "0.1.0"
 
 import crypten.communicator as comm
+import crypten.encoder  # noqa: F401
 import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
 import torch

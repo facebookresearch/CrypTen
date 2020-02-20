@@ -7,7 +7,7 @@
 
 import crypten.communicator as comm
 import torch
-from crypten.encoder import FixedPointEncoder
+from crypten.encoder import get_default_encoder
 
 from ..ptype import ptype as Ptype
 from . import beaver
@@ -46,7 +46,7 @@ def _B2A(binary_tensor, precision=None, bits=None):
             multiplier = multiplier.unsqueeze(1)
         arithmetic_tensor = arithmetic_bits.mul_(multiplier).sum(0)
 
-    arithmetic_tensor.encoder = FixedPointEncoder(precision_bits=precision)
+    arithmetic_tensor.encoder = get_default_encoder()(precision_bits=precision)
     scale = arithmetic_tensor.encoder._scale // binary_tensor.encoder._scale
     arithmetic_tensor *= scale
     return arithmetic_tensor

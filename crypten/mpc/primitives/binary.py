@@ -13,7 +13,7 @@ import crypten.communicator as comm
 import torch
 from crypten.common.rng import generate_kbit_random_tensor
 from crypten.cryptensor import CrypTensor
-from crypten.encoder import FixedPointEncoder
+from crypten.encoder import get_default_encoder
 
 from . import beaver, circuit
 
@@ -39,7 +39,7 @@ class BinarySharedTensor(CrypTensor):
         ), "invalid tensor source"
 
         #  Assume 0 bits of precision unless encoder is set outside of init
-        self.encoder = FixedPointEncoder(precision_bits=0)
+        self.encoder = get_default_encoder()(precision_bits=0)
         if tensor is not None:
             tensor = self.encoder.encode(tensor)
             size = tensor.size()
@@ -59,7 +59,7 @@ class BinarySharedTensor(CrypTensor):
         """Generate a BinarySharedTensor from a share from each party"""
         result = BinarySharedTensor(src=SENTINEL)
         result.share = share
-        result.encoder = FixedPointEncoder(precision_bits=0)
+        result.encoder = get_default_encoder()(precision_bits=0)
         return result
 
     @staticmethod

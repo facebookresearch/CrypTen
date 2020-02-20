@@ -14,7 +14,7 @@ import torch
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 from crypten.cryptensor import CrypTensor
-from crypten.encoder import FixedPointEncoder
+from crypten.encoder import get_default_encoder
 
 from . import beaver
 
@@ -40,7 +40,7 @@ class ArithmeticSharedTensor(CrypTensor):
             isinstance(src, int) and src >= 0 and src < comm.get().get_world_size()
         ), "invalid tensor source"
 
-        self.encoder = FixedPointEncoder(precision_bits=precision)
+        self.encoder = get_default_encoder()(precision_bits=precision)
         if tensor is not None:
             if is_int_tensor(tensor) and precision != 0:
                 tensor = tensor.float()
@@ -72,7 +72,7 @@ class ArithmeticSharedTensor(CrypTensor):
         """Generate an ArithmeticSharedTensor from a share from each party"""
         result = ArithmeticSharedTensor(src=SENTINEL)
         result.share = share
-        result.encoder = FixedPointEncoder(precision_bits=precision)
+        result.encoder = get_default_encoder()(precision_bits=precision)
         return result
 
     @staticmethod

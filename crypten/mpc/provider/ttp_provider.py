@@ -14,7 +14,7 @@ import torch
 import torch.distributed as dist
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.util import count_wraps
-from crypten.encoder import FixedPointEncoder
+from crypten.encoder import get_default_encoder
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 
@@ -301,7 +301,7 @@ class TTPServer:
 
     def rand(self, *sizes, encoder=None):
         if encoder is None:
-            encoder = FixedPointEncoder()  # use default precision
+            encoder = get_default_encoder()()  # use default precision
 
         r = encoder.encode(torch.rand(*sizes))
         r = r - self._get_additive_PRSS(sizes, remove_rank=True)

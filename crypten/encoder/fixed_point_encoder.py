@@ -7,23 +7,8 @@
 
 import numpy as np
 import torch
-
-from .common.tensor_types import is_float_tensor, is_int_tensor
-from .cryptensor import CrypTensor
-
-
-def nearest_integer_division(tensor, integer):
-    """Performs division of integer tensor, rounding to nearest integer."""
-    assert integer > 0, "only supports positive divisors"
-    assert is_int_tensor(tensor), "unsupported type: %s" % type(tensor)
-
-    lez = (tensor < 0).long()
-    pos_remainder = (1 - lez) * tensor % integer
-    neg_remainder = lez * ((integer - tensor) % integer)
-    remainder = pos_remainder + neg_remainder
-    quotient = tensor / integer
-    correction = (2 * remainder > integer).long()
-    return quotient + tensor.sign() * correction
+from crypten.cryptensor import CrypTensor
+from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 
 
 class FixedPointEncoder:
@@ -57,22 +42,15 @@ class FixedPointEncoder:
         else:
             raise TypeError("Unknown tensor type: %s." % type(x))
 
-    def decode(self, tensor):
+    def decode(self, tensor, dtype=torch.float32):
         """Helper function that decodes from scaled tensor"""
-        if tensor is None:
-            return None
         assert is_int_tensor(tensor), "input must be a LongTensor"
+
+        result = tensor.to(dtype)
         if self._scale > 1:
-            correction = (tensor < 0).long()
-            dividend = tensor / self._scale - correction
-            remainder = tensor % self._scale
-            remainder += (remainder == 0).long() * self._scale * correction
+            result /= self._scale
 
-            tensor = dividend.float() + remainder.float() / self._scale
-        else:
-            tensor = nearest_integer_division(tensor, self._scale)
-
-        return tensor
+        return result
 
     @property
     def scale(self):
@@ -86,10 +64,3 @@ class FixedPointEncoder:
             and precision_bits < 64
         ), "precision must be a positive integer less than 64"
         cls.__default_precision_bits = precision_bits
-
-
-def set_default_precision(precision_bits):
-    assert (
-        isinstance(precision_bits, int) and precision_bits >= 0 and precision_bits < 64
-    ), "precision must be a positive integer less than 64"
-    FixedPointEncoder.set_default_precision(precision_bits)

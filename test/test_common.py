@@ -11,7 +11,7 @@ import unittest
 import crypten
 import torch
 from crypten.common.util import chebyshev_series
-from crypten.encoder import FixedPointEncoder, nearest_integer_division
+from crypten.encoder import FixedPointEncoder
 
 
 def get_test_tensor(max_value=10, float=False):
@@ -65,28 +65,6 @@ class TestCommon(unittest.TestCase):
             tensor = torch.zeros(5, dtype=dtype).random_()
             decoded = fpe.decode(fpe.encode(tensor)).type(dtype)
             self._check(decoded, tensor, "Encoding/decoding a %s failed." % dtype)
-
-    def test_nearest_integer_division(self):
-        # test without scaling:
-        scale = 1
-        reference = [[-26, -25, -7, -5, -4, -1, 0, 1, 3, 4, 5, 7, 25, 26]]
-        tensor = torch.LongTensor(reference)
-        result = nearest_integer_division(tensor, scale)
-        self._check(
-            torch.LongTensor(result.tolist()),
-            torch.LongTensor(reference),
-            "Nearest integer division failed.",
-        )
-
-        # test with scaling:
-        scale = 4
-        reference = [[-6, -6, -2, -1, -1, 0, 0, 0, 1, 1, 1, 2, 6, 6]]
-        result = nearest_integer_division(tensor, scale)
-        self._check(
-            torch.LongTensor(result.tolist()),
-            torch.LongTensor(reference),
-            "Nearest integer division failed.",
-        )
 
     def test_chebyshev_series(self):
         """Checks coefficients returned by chebyshev_series are correct"""
