@@ -2,6 +2,16 @@
 We want to make contributing to this project as easy and transparent as
 possible.
 
+## Development Installation
+
+1. Activate virtualenv with Python >= 3.7
+2. Install Numpy and PyTorch Nightly
+```bash
+pip install numpy
+pip install --pre torch torchvision -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+```
+3. From your fork of the repo: `pip install -e .`
+
 ## Pull Requests
 We actively welcome your pull requests.
 

@@ -2,14 +2,14 @@ version: 2.1
 
 setup_venv: &setup_venv
   name: Sets up the virtualenv
-  no_output_timeout: 5h
+  no_output_timeout: 1h
   command: |
     python3 -m venv ~/crypten-test
     . ~/crypten-test/bin/activate
     pip3 install --upgrade pip
-    pip3 install numpy
-    pip3 install torch==1.4.0+cpu torchvision==0.5.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
-    pip3 install onnx tensorboard future
+    pip3 install onnx==1.6.0 tensorboard
+    pip3 install torch==1.5.0.dev20200220+cpu torchvision==0.6.0.dev20200220+cpu -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+
 
 # -------------------------------------------------------------------------------------
 # Jobs
@@ -23,14 +23,7 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Sets up the virtualenv
-          command: |
-            python3 -m venv ~/crypten-test
-            . ~/crypten-test/bin/activate
-            pip3 install --upgrade pip
-            pip3 install numpy
-            pip3 install torch==1.4.0+cpu torchvision==0.5.0+cpu -f https://download.pytorch.org/whl/torch_stable.html
-            pip3 install onnx tensorboard future
+          <<: *setup_venv
       - run:
           name: Unit tests
           no_output_timeout: 1h
