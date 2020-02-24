@@ -101,20 +101,21 @@ jobs:
             . ~/crypten-test/bin/activate
             PYTHONPATH=. python3 examples/mpc_cifar/launcher.py
 
-  runcifartests1:
-    docker:
-      - image: circleci/python:3.7.4-buster
-    resource_class: 2xlarge+
-    working_directory: ~/CrypTen
-    steps:
-      - checkout
-      - run:
-          <<: *setup_venv
-      - run:
-          name: CIFAR example
-          command: |
-            . ~/crypten-test/bin/activate
-            PYTHONPATH=. python3 examples/mpc_cifar/launcher.py --multiprocess
+# Commented out due to 5 hour limit
+#  runcifartests1:
+#    docker:
+#      - image: circleci/python:3.7.4-buster
+#    resource_class: 2xlarge+
+#    working_directory: ~/CrypTen
+#    steps:
+#      - checkout
+#      - run:
+#          <<: *setup_venv
+#      - run:
+#          name: CIFAR example
+#          command: |
+#            . ~/crypten-test/bin/activate
+#            PYTHONPATH=. python3 examples/mpc_cifar/launcher.py --multiprocess
 
   runcifartests2:
     docker:
@@ -198,7 +199,8 @@ workflows:
                 - master
     jobs:
       - runcifartests0
-      - runcifartests1
+# Commenting out due to 5 hour limit
+#     - runcifartests1
       - runcifartests2
       - runcifartests3
       - runcifartests4
