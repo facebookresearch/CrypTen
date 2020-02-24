@@ -43,7 +43,8 @@ class TestNN(object):
             test_passed = (tensor == reference).all().item() == 1
         if not test_passed:
             logging.info(msg)
-            logging.info("Result = %s;\nreference = %s" % (tensor, reference))
+            logging.info("Result %s" % tensor)
+            logging.info("Result - Reference = %s" % (tensor - reference))
         self.assertTrue(test_passed, msg=msg)
 
     def _compute_reference_parameters(self, init_name, reference, model, learning_rate):
