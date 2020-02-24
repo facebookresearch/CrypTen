@@ -19,14 +19,21 @@ import collections
 import functools
 import os
 import timeit
+from collections import namedtuple
 
 import crypten
+import numpy as np
 import pandas as pd
 import torch
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
 
-from . import models
+
+try:
+    from . import models
+except ImportError:
+    # direct import if relative fails
+    import models
 
 
 def time_me(func=None, n_loops=10):
@@ -43,12 +50,15 @@ def time_me(func=None, n_loops=10):
 
     @functools.wraps(func)
     def timing_wrapper(*args, **kwargs):
-        start = timeit.default_timer()
         return_val = func(*args, **kwargs)
-        for _ in range(n_loops - 1):
+        times = []
+        for _ in range(n_loops):
+            start = timeit.default_timer()
             func(*args, **kwargs)
-        avg_runtime = (timeit.default_timer() - start) / n_loops
-        return avg_runtime, return_val
+            times.append(timeit.default_timer() - start)
+        avg_runtime = np.sum(times) / n_loops
+        std_runtime = np.std(times)
+        return avg_runtime, std_runtime, return_val
 
     return timing_wrapper
 
@@ -60,9 +70,9 @@ class FuncBenchmarks:
         tensor_size (int or tuple): size of tensor for benchmarking runtimes
     """
 
-    EXACT = ["add", "mul", "matmul"]
+    BINARY = ["add", "sub", "mul", "matmul", "gt", "lt", "eq"]
 
-    APPROXIMATIONS = [
+    UNARY = [
         "sigmoid",
         "relu",
         "tanh",
@@ -72,6 +82,8 @@ class FuncBenchmarks:
         "cos",
         "sin",
         "sum",
+        "mean",
+        "neg",
     ]
 
     def __init__(self, tensor_size=(100, 100)):
@@ -97,31 +109,40 @@ class FuncBenchmarks:
         x, y = torch.rand(self.tensor_size), torch.rand(self.tensor_size)
         x_enc, y_enc = crypten.cryptensor(x), crypten.cryptensor(y)
 
+        Runtime = namedtuple("Runtime", "avg std")
         runtimes_plain_text, runtimes_crypten = [], []
 
-        for func in FuncBenchmarks.APPROXIMATIONS + FuncBenchmarks.EXACT:
+        for func in FuncBenchmarks.UNARY + FuncBenchmarks.BINARY:
             second_operand, second_operand_enc = None, None
-            if func in FuncBenchmarks.EXACT:
+            if func in FuncBenchmarks.BINARY:
                 second_operand, second_operand_enc = y, y_enc
 
-            runtime_plain_text, _ = FuncBenchmarks.time_func(x, func, y=second_operand)
-            runtimes_plain_text.append(runtime_plain_text)
+            avg_runtime, std_runtime, _ = FuncBenchmarks.time_func(
+                x, func, y=second_operand
+            )
+            runtime = Runtime(avg_runtime, std_runtime)
+            runtimes_plain_text.append(runtime)
 
-            runtime_crypten, _ = FuncBenchmarks.time_func(
+            avg_runtime, std_runtime, _ = FuncBenchmarks.time_func(
                 x_enc, func, y=second_operand_enc
             )
-            runtimes_crypten.append(runtime_crypten)
+            runtime = Runtime(avg_runtime, std_runtime)
+            runtimes_crypten.append(runtime)
 
         return runtimes_plain_text, runtimes_crypten
 
     @staticmethod
     def calc_abs_error(ref, out):
         """Computes absolute error of encrypted output"""
+        if ref.dtype == torch.bool:
+            return (out == ref).sum().numpy()
         return torch.abs(out - ref).numpy()
 
     @staticmethod
     def calc_relative_error(ref, out):
         """Computes relative error of encrypted output"""
+        if ref.dtype == torch.bool:
+            return ((out == ref).sum() / ref.nelement()).numpy()
         errors = torch.abs((out - ref) / ref)
         # remove inf due to division by tiny numbers
         return errors[errors != float("inf")].numpy()
@@ -132,34 +153,47 @@ class FuncBenchmarks:
         y = torch.rand(x.shape)
         x_enc, y_enc = crypten.cryptensor(x), crypten.cryptensor(y)
         abs_errors, relative_errors = [], []
+        abs_errors_std, relative_errors_std = [], []
 
-        for func in FuncBenchmarks.APPROXIMATIONS + FuncBenchmarks.EXACT:
-            if func in FuncBenchmarks.APPROXIMATIONS:
+        for func in FuncBenchmarks.UNARY + FuncBenchmarks.BINARY:
+            if func in FuncBenchmarks.UNARY:
                 ref, out_enc = getattr(x, func)(), getattr(x_enc, func)()
             else:
                 ref, out_enc = getattr(x, func)(y), getattr(x_enc, func)(y_enc)
             out = out_enc.get_plain_text()
-            abs_errors.append(FuncBenchmarks.calc_abs_error(ref, out).sum())
-            relative_errors.append(FuncBenchmarks.calc_relative_error(ref, out).sum())
 
-        return abs_errors, relative_errors
+            abs_error = FuncBenchmarks.calc_abs_error(ref, out)
+            abs_errors.append(abs_error.sum())
+            abs_errors_std.append(abs_error.std())
+
+            relative_error = FuncBenchmarks.calc_relative_error(ref, out)
+            relative_errors.append(relative_error.sum())
+            relative_errors_std.append(relative_error.std())
+
+        return abs_errors, abs_errors_std, relative_errors, relative_errors_std
 
     def save(self, path):
-        self.df.to_csv(os.join(path, "func_benchmarks.csv", index=False))
+        self.df.to_csv(os.path.join(path, "func_benchmarks.csv"), index=False)
 
     def run(self):
         """Runs and stores benchmarks in self.df"""
         crypten.init()
         runtimes_plain_text, runtimes_crypten = self.get_runtimes()
 
-        abs_errors, relative_errors = self.get_errors()
+        abs_errors, abs_errors_std, relative_errors, relative_errors_std = (
+            self.get_errors()
+        )
         self.df = pd.DataFrame.from_dict(
             {
-                "function": FuncBenchmarks.APPROXIMATIONS + FuncBenchmarks.EXACT,
-                "runtime plain text": runtimes_plain_text,
-                "runtime crypten": runtimes_crypten,
+                "function": FuncBenchmarks.UNARY + FuncBenchmarks.BINARY,
+                "runtime plain text": [r.avg for r in runtimes_plain_text],
+                "runtime plain text std": [r.std for r in runtimes_plain_text],
+                "runtime crypten": [r.avg for r in runtimes_crypten],
+                "runtime crypten std": [r.std for r in runtimes_crypten],
                 "abs error": abs_errors,
+                "abs error std": abs_errors_std,
                 "relative error": relative_errors,
+                "relative error std": relative_errors_std,
             }
         )
 
@@ -191,7 +225,7 @@ class ModelBenchmarks:
         ),
     ]
 
-    def __init__(self, n_samples=1000, n_features=20, epochs=50, lr_rate=0.1):
+    def __init__(self, n_samples=5000, n_features=20, epochs=50, lr_rate=0.1):
         self.n_samples = n_samples
         self.n_features = n_features
         self.epochs = epochs
@@ -301,14 +335,14 @@ class ModelBenchmarks:
 
         for model in ModelBenchmarks.MODELS:
             model_plain = model.plain(self.n_features)
-            _, model_plain = self.train(model_plain)
+            _, _, model_plain = self.train(model_plain)
             accuracy = ModelBenchmarks.calc_accuracy(
                 model_plain(self.x_test), self.y_test
             )
             accuracies.append(accuracy)
 
             model_crypten = model.crypten(self.n_features)
-            _, model_crypten = self.train_crypten(model_crypten)
+            _, _, model_crypten = self.train_crypten(model_crypten)
             output = model_crypten(self.x_test_enc).get_plain_text()
             accuracy = ModelBenchmarks.calc_accuracy(output, self.y_test)
             accuracies_crypten.append(accuracy)
@@ -316,22 +350,23 @@ class ModelBenchmarks:
         return accuracies, accuracies_crypten
 
     def save(self, path):
-        self.df.to_csv(os.join(path, "model_benchmarks.csv", index=False))
+        self.df.to_csv(os.path.join(path, "model_benchmarks.csv"), index=False)
 
     def run(self):
         """Runs and stores benchmarks in self.df"""
         times_per_epoch, times_per_epoch_crypten = self.time_training()
         accuracies, accuracies_crypten = self.evaluate()
         model_names = [model.name for model in ModelBenchmarks.MODELS]
+        n_rows = len(times_per_epoch)
         self.df = pd.DataFrame.from_dict(
             {
-                "model": model_names,
-                "time per epoch plain text": times_per_epoch,
-                "time per epoch crypten": times_per_epoch_crypten,
-                "accuracy plain text": accuracies,
-                "accuracy crypten": accuracies_crypten,
+                "model": model_names + model_names,
+                "seconds per epoch": times_per_epoch + times_per_epoch_crypten,
+                "is plain text": [True] * n_rows + [False] * n_rows,
+                "accuracy": accuracies + accuracies_crypten,
             }
         )
+        self.df = self.df.sort_values(by="model")
 
 
 def parse_path():
