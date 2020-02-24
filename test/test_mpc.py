@@ -42,7 +42,7 @@ class TestMPC(object):
         test_passed = test_passed.gt(0).all().item() == 1
         if not test_passed:
             logging.info(msg)
-            logging.info("Result = %s;\nreference = %s" % (tensor, reference))
+            logging.info("Result - Reference = %s" % (tensor - reference))
         self.assertTrue(test_passed, msg=msg)
 
     def _check_tuple(self, encrypted_tuple, reference, msg, tolerance=None):

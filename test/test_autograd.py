@@ -48,7 +48,7 @@ class TestAutograd(object):
             test_passed = (tensor == reference).all().item() == 1
         if not test_passed:
             logging.info(msg)
-            logging.info("Result = %s;\nreference = %s" % (tensor, reference))
+            logging.info("Result - Reference = %s" % (tensor - reference))
         self.assertTrue(test_passed, msg=msg)
 
     def test_non_differentiable_marking(self):

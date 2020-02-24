@@ -69,7 +69,7 @@ class TestGradients(object):
         test_passed = test_passed.gt(0).all().item() == 1
         if not test_passed:
             logging.info(msg)
-            logging.info("Result = %s;\nreference = %s" % (tensor, reference))
+            logging.info("Result - Reference = %s" % (tensor - reference))
         self.assertTrue(test_passed, msg=msg)
 
     def _check_forward_backward(
@@ -507,9 +507,10 @@ class TestGradients(object):
                             )
 
     def test_dropout(self):
-        """Tests forward and backward passes for dropout"""
+        """Tests forward dropout"""
         # Create a separate test for dropout since it cannot use the
         # regular forward function
+        # There's no need to check backwards since PyTorch backwards fails
         all_prob_values = [x * 0.2 for x in range(0, 5)]
         for dropout_fn in ["dropout", "_feature_dropout", "dropout2d", "dropout3d"]:
             for prob in all_prob_values:
@@ -541,27 +542,6 @@ class TestGradients(object):
                             "dropout failed with size {}, use_zeros {}, and "
                             "probability {}".format(size, use_zeros, prob),
                         )
-
-                    # Check backward pass
-                    grad_output = get_random_test_tensor(
-                        max_value=2, size=reference.size(), is_float=True
-                    )
-                    grad_output_encr = crypten.cryptensor(grad_output)
-
-                    # Do not check backward if pytorch backward fails
-                    try:
-                        reference.backward(grad_output)
-                    except RuntimeError:
-                        logging.info("skipped")
-                        continue
-                    encr_tensor_out.backward(grad_output_encr)
-
-                    self._check(
-                        encr_tensor.grad,
-                        input.grad,
-                        "dropout failed in backward with size {}, use_zeros {} and "
-                        "probability {}".format(size, use_zeros, prob),
-                    )
 
     def test_batchnorm(self):
         """
