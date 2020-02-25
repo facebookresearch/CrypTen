@@ -1187,6 +1187,56 @@ class AutogradMaxPool2D(AutogradFunction):
         )
 
 
+@register_function("conv1d")
+class AutogradConv1D(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input, padding=0, stride=1):
+        input, kernel = input
+        ctx.save_multiple_for_backward((input, kernel, padding, stride))
+        return input.conv1d(kernel, padding=padding, stride=stride)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # get input, kernel, and sizes:
+        input, kernel, padding, stride = ctx.saved_tensors
+        batch_size = input.size(0)
+        out_channels, in_channels, kernel_size = kernel.size()
+        assert input.size(1) == in_channels, "wrong number of input channels"
+        assert grad_output.size(1) == out_channels, "wrong number of output channels"
+        assert grad_output.size(0) == batch_size, "wrong batch size"
+
+        # compute gradient with respect to input:
+        output_padding = torch.nn.grad._grad_input_padding(
+            grad_output, input.size(), (stride,), (padding,), (kernel_size,)
+        )
+        grad_input = grad_output.conv_transpose1d(
+            kernel, stride=stride, padding=padding, output_padding=output_padding
+        )
+
+        # compute gradient with respect to kernel:
+        grad_output = grad_output.repeat(1, in_channels, 1)
+        grad_output = grad_output.view(
+            grad_output.size(0) * grad_output.size(1), 1, grad_output.size(2)
+        )
+        input = input.view(1, input.size(0) * input.size(1), input.size(2))
+        grad_kernel = input.conv1d(
+            grad_output,
+            padding=padding,
+            dilation=stride,
+            groups=in_channels * batch_size,
+        )
+        grad_kernel = grad_kernel.view(
+            batch_size, grad_kernel.size(1) // batch_size, grad_kernel.size(2)
+        )
+        grad_kernel = (
+            grad_kernel.sum(dim=0)
+            .view(in_channels, out_channels, grad_kernel.size(2))
+            .transpose(0, 1)
+            .narrow(2, 0, kernel_size)
+        )
+        return (grad_input, grad_kernel)
+
+
 @register_function("conv2d")
 class AutogradConv2D(AutogradFunction):
     @staticmethod

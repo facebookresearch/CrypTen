@@ -195,7 +195,9 @@ class ArithmeticSharedTensor(CrypTensor):
             "sub",
             "mul",
             "matmul",
+            "conv1d",
             "conv2d",
+            "conv_transpose1d",
             "conv_transpose2d",
         ], f"Provided op `{op}` is not a supported arithmetic function"
 
@@ -220,14 +222,14 @@ class ArithmeticSharedTensor(CrypTensor):
                     result.share = torch.broadcast_tensors(result.share, y)[0]
             elif op == "mul_":  # ['mul_']
                 result.share = result.share.mul_(y)
-            else:  # ['mul', 'matmul', 'conv2d', 'conv_transpose2d']
+            else:  # ['mul', 'matmul', 'convNd', 'conv_transposeNd']
                 result.share = getattr(torch, op)(result.share, y, *args, **kwargs)
         elif private:
             if additive_func:  # ['add', 'sub', 'add_', 'sub_']
                 result.share = getattr(result.share, op)(y.share)
-            else:  # ['mul', 'matmul', 'conv2d', 'conv_transpose2d']
+            else:  # ['mul', 'matmul', 'convNd', 'conv_transposeNd']
                 # NOTE: 'mul_' calls 'mul' here
-                # Must copy _tensor.data here to support 'mul_' being inplace
+                # Must copy share.data here to support 'mul_' being inplace
                 result.share.data = getattr(beaver, op)(
                     result, y, *args, **kwargs
                 ).share.data
@@ -385,9 +387,17 @@ class ArithmeticSharedTensor(CrypTensor):
         divisor = reduce(lambda x, y: x * y, size)
         return result.div(divisor)
 
+    def conv1d(self, kernel, **kwargs):
+        """Perform a 1D convolution using the given kernel"""
+        return self._arithmetic_function(kernel, "conv1d", **kwargs)
+
     def conv2d(self, kernel, **kwargs):
         """Perform a 2D convolution using the given kernel"""
         return self._arithmetic_function(kernel, "conv2d", **kwargs)
+
+    def conv_transpose1d(self, kernel, **kwargs):
+        """Perform a 1D transpose convolution (deconvolution) using the given kernel"""
+        return self._arithmetic_function(kernel, "conv_transpose1d", **kwargs)
 
     def conv_transpose2d(self, kernel, **kwargs):
         """Perform a 2D transpose convolution (deconvolution) using the given kernel"""

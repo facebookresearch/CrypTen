@@ -323,6 +323,35 @@ class TestGradients(object):
                 for dim1 in range(tensor.dim()):
                     self._check_forward_backward("transpose", tensor, dim0, dim1)
 
+    def test_conv1d(self):
+        """Test convolution of encrypted tensor with public/private tensors."""
+        signal_sizes = [5, 16]
+        nchannels = [1, 5]
+        nbatches = [1, 3, 5]
+
+        kernel_sizes = [1, 2, 3]
+        paddings = [0, 1]
+        strides = [1, 2]
+        for signal_size, in_channels, batches in itertools.product(
+            signal_sizes, nchannels, nbatches
+        ):
+
+            # sample input:
+            size = (batches, in_channels, signal_size)
+            signal = get_random_test_tensor(size=size, is_float=True)
+
+            for kernel_size, out_channels in itertools.product(kernel_sizes, nchannels):
+
+                # Sample kernel
+                kernel_size = (out_channels, in_channels, kernel_size)
+                kernel = get_random_test_tensor(size=kernel_size, is_float=True)
+
+                for padding in paddings:
+                    for stride in strides:
+                        self._check_forward_backward(
+                            "conv1d", signal, kernel, stride=stride, padding=padding
+                        )
+
     def test_conv2d(self):
         """Test convolution of encrypted tensor with public/private tensors."""
         image_sizes = [(5, 5), (16, 7)]

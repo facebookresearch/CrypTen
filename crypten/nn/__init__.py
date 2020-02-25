@@ -24,6 +24,7 @@ from .module import (
     ConstantPad1d,
     ConstantPad2d,
     ConstantPad3d,
+    Conv1d,
     Conv2d,
     Dropout,
     Dropout2d,
@@ -75,6 +76,7 @@ __all__ = [
     "ConstantPad1d",
     "ConstantPad2d",
     "ConstantPad3d",
+    "Conv1d",
     "Conv2d",
     "CrossEntropyLoss",
     "Dropout",
@@ -108,7 +110,6 @@ ONNX_TO_CRYPTEN = {
     "AveragePool": AvgPool2d,
     "BatchNormalization": _BatchNorm,
     "Concat": Concat,
-    "Conv": Conv2d,
     "Constant": Constant,
     "Dropout": Dropout,
     "Dropout2d": Dropout2d,
@@ -206,11 +207,6 @@ def from_onnx(onnx_string_or_file):
     # create graph by looping over nodes:
     crypten_model = Graph(input_names[0], output_names[0])
     for node in onnx_model.graph.node:
-        # get operator type:
-        if node.op_type not in ONNX_TO_CRYPTEN:
-            raise ValueError("CrypTen does not support op %s." % node.op_type)
-        cls = ONNX_TO_CRYPTEN[node.op_type]
-
         # retrieve inputs, outputs, attributes, and parameters for this node:
         node_output_name = [name for name in node.output][0]
         node_input_names = [name for name in node.input]  # includes parameters
@@ -226,12 +222,26 @@ def from_onnx(onnx_string_or_file):
         ]
         attributes = {attr.name: get_attribute_value(attr) for attr in node.attribute}
 
+        # get operator type:
+        if node.op_type == "Conv":
+            dims = len(attributes["kernel_shape"])
+            if dims == 1:
+                cls = Conv1d
+            elif dims == 2:
+                cls = Conv2d
+            else:
+                raise ValueError("CrypTen does not support op Conv%dd." % dims)
+        else:
+            if node.op_type not in ONNX_TO_CRYPTEN:
+                raise ValueError("CrypTen does not support op %s." % node.op_type)
+            cls = ONNX_TO_CRYPTEN[node.op_type]
+
         # add CrypTen module to graph:
         crypten_module = cls.from_onnx(parameters=parameters, attributes=attributes)
         crypten_model.add_module(node_output_name, crypten_module, node_input_names)
 
     # return model (or module when there is only one module):
-    num_modules = len([_ for _ in crypten_model.modules()])
+    num_modules = len(list(crypten_model.modules()))
     if num_modules == 1:
         for crypten_module in crypten_model.modules():
             return crypten_module
