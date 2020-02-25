@@ -433,29 +433,70 @@ class TestArithmetic(MultiProcessTestCase):
                     encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
 
-    def test_conv(self):
+    def test_conv1d(self):
         """Test convolution of encrypted tensor with public/private tensors."""
-        for kernel_type in [lambda x: x, ArithmeticSharedTensor]:
-            for matrix_width in range(2, 5):
-                for kernel_width in range(1, matrix_width):
-                    for padding in range(kernel_width // 2 + 1):
-                        matrix_size = (5, matrix_width)
-                        matrix = get_random_test_tensor(size=matrix_size, is_float=True)
+        for func_name in ["conv1d", "conv_transpose1d"]:
+            for kernel_type in [lambda x: x, ArithmeticSharedTensor]:
+                for signal_width in range(2, 5):
+                    for kernel_width in range(1, signal_width):
+                        for padding in range(kernel_width // 2 + 1):
+                            signal = get_random_test_tensor(
+                                size=(signal_width,), is_float=True
+                            )
+                            kernel = get_random_test_tensor(
+                                size=(kernel_width,), is_float=True
+                            )
 
-                        kernel_size = (kernel_width, kernel_width)
-                        kernel = get_random_test_tensor(size=kernel_size, is_float=True)
+                            # TODO: Test different minibatch and channel sizes
+                            signal = signal.unsqueeze(0).unsqueeze(0)
+                            kernel = kernel.unsqueeze(0).unsqueeze(0)
 
-                        matrix = matrix.unsqueeze(0).unsqueeze(0)
-                        kernel = kernel.unsqueeze(0).unsqueeze(0)
+                            reference = getattr(F, func_name)(
+                                signal, kernel, padding=padding
+                            )
+                            encrypted_signal = ArithmeticSharedTensor(signal)
+                            encrypted_kernel = kernel_type(kernel)
+                            encrypted_conv = getattr(encrypted_signal, func_name)(
+                                encrypted_kernel, padding=padding
+                            )
 
-                        reference = F.conv2d(matrix, kernel, padding=padding)
-                        encrypted_matrix = ArithmeticSharedTensor(matrix)
-                        encrypted_kernel = kernel_type(kernel)
-                        encrypted_conv = encrypted_matrix.conv2d(
-                            encrypted_kernel, padding=padding
-                        )
+                            self._check(
+                                encrypted_conv, reference, f"{func_name} failed"
+                            )
 
-                        self._check(encrypted_conv, reference, "conv2d failed")
+    def test_conv2d(self):
+        """Test convolution of encrypted tensor with public/private tensors."""
+        for func_name in ["conv2d", "conv_transpose2d"]:
+            for kernel_type in [lambda x: x, ArithmeticSharedTensor]:
+                for matrix_width in range(2, 5):
+                    for kernel_width in range(1, matrix_width):
+                        for padding in range(kernel_width // 2 + 1):
+                            matrix_size = (5, matrix_width)
+                            matrix = get_random_test_tensor(
+                                size=matrix_size, is_float=True
+                            )
+
+                            kernel_size = (kernel_width, kernel_width)
+                            kernel = get_random_test_tensor(
+                                size=kernel_size, is_float=True
+                            )
+
+                            # TODO: Test different minibatch and channel sizes
+                            matrix = matrix.unsqueeze(0).unsqueeze(0)
+                            kernel = kernel.unsqueeze(0).unsqueeze(0)
+
+                            reference = getattr(F, func_name)(
+                                matrix, kernel, padding=padding
+                            )
+                            encrypted_matrix = ArithmeticSharedTensor(matrix)
+                            encrypted_kernel = kernel_type(kernel)
+                            encrypted_conv = getattr(encrypted_matrix, func_name)(
+                                encrypted_kernel, padding=padding
+                            )
+
+                            self._check(
+                                encrypted_conv, reference, f"{func_name} failed"
+                            )
 
     def test_pooling(self):
         """Test avgPool of encrypted tensor."""

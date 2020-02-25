@@ -19,11 +19,19 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
     3. Open ([epsilon] = [x] - [a]) and ([delta] = [y] - [b])
     4. Return [z] = [c] + (epsilon * [b]) + ([a] * delta) + (epsilon * delta)
     """
-    assert op in ["mul", "matmul", "conv2d", "conv_transpose2d"]
+    assert op in [
+        "mul",
+        "matmul",
+        "conv1d",
+        "conv2d",
+        "conv_transpose1d",
+        "conv_transpose2d",
+    ]
 
     provider = crypten.mpc.get_default_provider()
     a, b, c = provider.generate_additive_triple(x.size(), y.size(), op, *args, **kwargs)
 
+    # TODO: Make these calls async or use NestedTensors to minimize rounds.
     # Stack to vectorize reveal if possible
     if x.size() == y.size():
         from .arithmetic import ArithmeticSharedTensor
@@ -36,7 +44,6 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
         delta = (y - b).reveal()
 
     # z = c + (a * delta) + (epsilon * b) + epsilon * delta
-    # TODO: Implement crypten.mul / crypten.matmul / crypten.conv{_transpose}2d
     c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
     c += getattr(a, op)(delta, *args, **kwargs)
     c += getattr(torch, op)(epsilon, delta, *args, **kwargs)
@@ -52,8 +59,16 @@ def matmul(x, y):
     return __beaver_protocol("matmul", x, y)
 
 
+def conv1d(x, y, **kwargs):
+    return __beaver_protocol("conv1d", x, y, **kwargs)
+
+
 def conv2d(x, y, **kwargs):
     return __beaver_protocol("conv2d", x, y, **kwargs)
+
+
+def conv_transpose1d(x, y, **kwargs):
+    return __beaver_protocol("conv_transpose1d", x, y, **kwargs)
 
 
 def conv_transpose2d(x, y, **kwargs):
