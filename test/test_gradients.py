@@ -19,8 +19,8 @@ from test.multiprocess_test_case import (
 import crypten
 import torch
 import torch.nn.functional as F
-from crypten.autograd_cryptensor import AutogradContext, AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
+from crypten.gradients import AutogradContext
 
 
 # Sizes for tensor operations
@@ -45,7 +45,7 @@ SIZES = [
 
 class TestGradients(object):
     """
-        This class tests all functions of AutogradCrypTensor.
+    This class tests all autograd functions implemented in gradients.py.
     """
 
     def setUp(self):
@@ -91,7 +91,7 @@ class TestGradients(object):
 
         input = input_tensor.clone()
         input.requires_grad = True
-        input_encr = AutogradCrypTensor(crypten.cryptensor(input), requires_grad=True)
+        input_encr = crypten.cryptensor(input, requires_grad=True)
 
         for private in [False, True]:
             input.grad = None
@@ -133,13 +133,13 @@ class TestGradients(object):
 
         Args:
             args (list of torch.tensors): contains arguments
-            make_private (bool): encrypt args using AutogradCrypTensor
+            make_private (bool): encrypt args using CrypTensor
         """
         args_zero_grad = []
 
         for arg in args:
             if is_float_tensor(arg) and make_private:
-                arg = AutogradCrypTensor(crypten.cryptensor(arg), requires_grad=True)
+                arg = crypten.cryptensor(arg, requires_grad=True)
             elif is_float_tensor(arg):
                 arg.requires_grad = True
                 arg.grad = None
@@ -218,7 +218,7 @@ class TestGradients(object):
                 for dim in range(dims):
                     for keepdim in [False, True]:
                         self._check_forward_backward(
-                            reduction, tensor, dim=dim, keepdim=keepdim
+                            reduction, tensor, dim, keepdim=keepdim
                         )
 
     def test_matmul(self):
@@ -421,9 +421,7 @@ class TestGradients(object):
         for size in SIZES:
             tensor = get_random_test_tensor(size=size, is_float=True)
             tensor.requires_grad = True
-            tensor_encr = AutogradCrypTensor(
-                crypten.cryptensor(tensor), requires_grad=True
-            )
+            tensor_encr = crypten.cryptensor(tensor, requires_grad=True)
 
             out = tensor.pow(2)
             out_encr = tensor_encr.square()
@@ -506,7 +504,7 @@ class TestGradients(object):
                             for _ in range(num_tensors)
                         ]
                         encrypted_tensors = [
-                            AutogradCrypTensor(crypten.cryptensor(t)) for t in tensors
+                            crypten.cryptensor(t, requires_grad=True) for t in tensors
                         ]
                         for i in range(len(tensors)):
                             tensors[i].grad = None
@@ -556,9 +554,7 @@ class TestGradients(object):
                             ]
                             tensor[index] = 0.0
 
-                        encr_tensor = AutogradCrypTensor(
-                            crypten.cryptensor(tensor), requires_grad=True
-                        )
+                        encr_tensor = crypten.cryptensor(tensor, requires_grad=True)
                         encr_tensor_out = getattr(encr_tensor, dropout_fn)(p=prob)
                         dropout_tensor = encr_tensor_out.get_plain_text()
                         # Check the scaling for non-zero elements
@@ -609,12 +605,14 @@ class TestGradients(object):
                     tensor, running_mean, running_var, weight=weight, bias=bias
                 )
 
-                encrypted_input = AutogradCrypTensor(encrypted_input)
+                encrypted_input.requires_grad = True
                 ctx = AutogradContext()
                 batch_norm_fn = crypten.gradients.get_grad_fn("batchnorm")
                 encrypted_out = batch_norm_fn.forward(
                     ctx,
-                    (encrypted_input, weight, bias),
+                    encrypted_input,
+                    weight,
+                    bias,
                     training=is_trainning,
                     running_mean=enc_running_mean,
                     running_var=enc_running_var,
@@ -686,9 +684,7 @@ class TestGradients(object):
 
                 # forward
                 tensor.requires_grad = True
-                tensor_encr = AutogradCrypTensor(
-                    crypten.cryptensor(tensor), requires_grad=True
-                )
+                tensor_encr = crypten.cryptensor(tensor, requires_grad=True)
                 reference = getattr(torch.nn.functional, loss)(tensor, target)
                 out_encr = getattr(tensor_encr, loss)(
                     target_encr, skip_forward=skip_forward
@@ -751,9 +747,7 @@ class TestGradients(object):
                 index = torch.tensor(index).reshape(tensor.shape)
 
                 tensor.requires_grad = True
-                tensor_encr = AutogradCrypTensor(
-                    crypten.cryptensor(tensor), requires_grad=True
-                )
+                tensor_encr = crypten.cryptensor(tensor, requires_grad=True)
 
                 if func == "gather":
                     reference = getattr(tensor, func)(dim, index)
@@ -839,9 +833,7 @@ class TestGradients(object):
             # ensure base is positive for pos_pow
             tensor = get_random_test_tensor(is_float=True, max_value=2) + 4
             tensor.requires_grad = True
-            tensor_encr = AutogradCrypTensor(
-                crypten.cryptensor(tensor), requires_grad=True
-            )
+            tensor_encr = crypten.cryptensor(tensor, requires_grad=True)
 
             reference = tensor.pow(power)
             out_encr = tensor_encr.pos_pow(power)

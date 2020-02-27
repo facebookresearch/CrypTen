@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from ..autograd_cryptensor import AutogradCrypTensor
 from .module import Module
 
 
@@ -45,9 +44,6 @@ class MSELoss(_Loss):
     """
 
     def forward(self, x, y):
-        assert all(
-            isinstance(val, AutogradCrypTensor) for val in [y, x]
-        ), "inputs must be AutogradCrypTensors"
         assert x.size() == y.size(), "input and target must have the same size"
         return (x - y).square().mean()
 
@@ -68,9 +64,6 @@ class L1Loss(_Loss):
     """
 
     def forward(self, x, y):
-        assert all(
-            isinstance(val, AutogradCrypTensor) for val in [y, x]
-        ), "inputs must be AutogradCrypTensors"
         assert x.size() == y.size(), "input and target must have the same size"
         return (x - y).abs().mean()
 
@@ -95,9 +88,6 @@ class BCELoss(_Loss):
     """
 
     def forward(self, x, y):
-        assert all(
-            isinstance(val, AutogradCrypTensor) for val in [y, x]
-        ), "inputs must be AutogradCrypTensors"
         assert x.size() == y.size(), "input and target must have the same size"
         return x.binary_cross_entropy(y, skip_forward=self.skip_forward)
 
@@ -132,9 +122,6 @@ class CrossEntropyLoss(_Loss):
     """
 
     def forward(self, x, y):
-        assert all(
-            isinstance(val, AutogradCrypTensor) for val in [y, x]
-        ), "inputs must be AutogradCrypTensors"
         assert x.size() == y.size(), "input and target must have the same size"
         return x.cross_entropy(y, skip_forward=self.skip_forward)
 
@@ -154,8 +141,5 @@ class BCEWithLogitsLoss(_Loss):
     """
 
     def forward(self, x, y):
-        assert all(
-            isinstance(val, AutogradCrypTensor) for val in [y, x]
-        ), "inputs must be AutogradCrypTensors"
         assert x.size() == y.size(), "input and target must have the same size"
         return x.binary_cross_entropy_with_logits(y, skip_forward=self.skip_forward)

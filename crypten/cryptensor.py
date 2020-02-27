@@ -5,19 +5,292 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from contextlib import contextmanager
 
-class CrypTensor(object):
+import torch
+
+from .gradients import AutogradContext, get_grad_fn
+
+
+def _find_all_cryptensors(inputs):
     """
-        Encrypted tensor type that is private and cannot be shown to the outside world.
+    Recursively find all CrypTensors in an input list, tuple, set, or dict.
     """
+    cryptensors = []
+    for input in inputs:
+        if isinstance(input, CrypTensor):
+            cryptensors.append(input)
+        elif isinstance(input, (list, tuple, set)):
+            cryptensors.extend(_find_all_cryptensors(input))
+        elif isinstance(input, dict):
+            for value in input.values():
+                cryptensors.extend(_find_all_cryptensors(value))
+    return cryptensors
+
+
+class CrypTensorMetaclass(type):
+    """
+    Metaclass for CrypTensor that ensures autograd is invoked for calls to
+    static methods such as `crypten.cat` and `crypten.stack`.
+    """
+
+    def __getattribute__(cls, name):
+        if name in ["cat", "stack"]:
+            dummy = cls(None)
+            dummy.__IS_DUMMY__ = True
+            return cls.__getattribute__(dummy, name)
+        return type.__getattribute__(cls, name)
+
+
+class CrypTensor(object, metaclass=CrypTensorMetaclass):
+    """
+    Abstract implementation of encrypted tensor type. Every subclass of `CrypTensor`
+    must implement the methods defined here. The actual tensor data should live in
+    an instance attribute called `_tensor`. When implemented, the `CrypTensor`
+    provides a full autograd implementation to the user.
+    """
+
+    # attributes that should not be dispatched to underlying tensor:
+    PROTECTED_ATTRIBUTES = [
+        "__dict__",
+        "requires_grad",
+        "grad",
+        "grad_fn",
+        "grad_computed",
+        "parents",
+        "children",
+        "ctx",
+        "backward",
+        "detach",
+        "detach_",
+        "_reset_gradients",
+    ]
+
+    # mapping of Python built-in methods to CrypTensor methods:
+    PYTHON_BUILTIN = {
+        "__abs__": "abs",
+        "__neg__": "neg",
+        "__pow__": "pow",
+        "__add__": "add",
+        "__radd__": "add",
+        "__sub__": "sub",
+        "__rsub__": "__rsub__",
+        "__mul__": "mul",
+        "__rmul__": "mul",
+        "__div__": "div",
+        "__truediv__": "div",
+        "__rtruediv__": "__rtruediv__",
+        "__matmul__": "matmul",
+        "__imatmul__": "matmul",  # not in-place, matching PyTorch
+    }
+    # TODO: Automatically register all these functions in CrypTensor?
+
+    AUTOGRAD_ENABLED = True
+
+    @staticmethod
+    @contextmanager
+    def no_grad():
+        """
+        Context manager that disables Crypten's autograd.
+        """
+        prior_value = CrypTensor.AUTOGRAD_ENABLED
+        CrypTensor.set_grad_enabled(False)
+        yield
+        CrypTensor.set_grad_enabled(prior_value)
+
+    @staticmethod
+    @contextmanager
+    def enable_grad():
+        """
+        Context manager that enables Crypten's autograd.
+        """
+        prior_value = CrypTensor.AUTOGRAD_ENABLED
+        CrypTensor.set_grad_enabled(True)
+        yield
+        CrypTensor.set_grad_enabled(prior_value)
+
+    @staticmethod
+    def set_grad_enabled(mode):
+        """
+        Enables (`mode = True`) or disables (`mode = False`) Crypten's autograd.
+        """
+        CrypTensor.AUTOGRAD_ENABLED = mode
+
+    def __init__(self, requires_grad=False):
+        """
+        Creates a new `CrypTensor` object. The `requires_grad` flag determines
+        if computations on the created tensor are logged on the autograd tape.
+
+        NOTE: This constructor cannot be called directly. It is only be called
+        via `super()` from classes that implement the `CrypTensor` abstraction.
+        """
+        self.requires_grad = requires_grad  # whether tensors needs gradient
+        self._reset_gradients()
+
+    def __new__(cls, *args, **kwargs):
+        # TODO: Add test that confirms CrypTensor cannot be instantiated.
+        if cls is CrypTensor:
+            raise TypeError("CrypTensor class cannot be instantiated directly.")
+        return object.__new__(cls)
 
     @staticmethod
     def new(*args, **kwargs):
         """
-        Creates a new CrypTensor of same type.
+        Static method that creates a new `CrypTensor` of same type.
         """
         raise NotImplementedError("new is not implemented")
 
+    def _reset_gradients(self):
+        """Resets gradient information in tensor."""
+        self.grad = None  # gradient itself
+        self.grad_fn = None  # functions to call for gradient
+        self.grad_computed = False  # whether gradient already computed
+        self.parents = []  # parents of node in graph
+        self.children = []  # children of node in graph
+        self.ctx = AutogradContext()  # contexts for AutogradFunctions
+
+    def backward(self, grad_input=None, top_node=True):
+        """
+        Backpropagates gradient through the computation graph. The function
+        only maintains the gradients in leaf nodes of the graph.
+        """
+
+        if self.requires_grad:
+            with CrypTensor.no_grad():  # disable autograd for backward pass
+
+                # if we are in a leaf or if not all parents have backpropagated:
+                parents_done = all(parent.grad_computed for parent in self.parents)
+                if len(self.children) == 0 or (not top_node and not parents_done):
+
+                    # unsqueeze or squeeze grad_input dimensions if needed:
+                    if (
+                        grad_input.size() != self.size()
+                        and grad_input.nelement() == self.nelement()
+                    ):
+                        grad_input = grad_input.view(self.size())
+
+                    # when you are done, store or accumulate gradient:
+                    if self.grad is None:
+                        self.grad = grad_input  # store gradient...
+                    else:
+                        self.grad.add_(grad_input)  # ... or accumulate gradient...
+                    return  # ... and do not proceed.
+
+                # TODO: Remove the default grad_input value currently set to all_ones
+                # if undefined, set gradient input to all ones:
+                if grad_input is None:
+                    grad_input = self.new(torch.ones(self.size()))
+
+                # check that we can actually backpropagate:
+                if self.grad_fn is None:
+                    raise ValueError("Cannot call backward() before forward().")
+                if self.grad_fn is None:
+                    raise NotImplementedError(
+                        "Gradient for {} not implemented.".format(self.grad_fn)
+                    )
+
+                # perform backpropagation:
+                grad = self.grad_fn.backward(self.ctx, grad_input)
+                self.grad_computed = True  # mark gradient as computed
+                differentiable_children = [
+                    x for x in self.children if self.ctx.is_differentiable(x)
+                ]
+                self.ctx.reset()  # free up memory used for context
+
+                # call backward function on children:
+                if not isinstance(grad, (list, tuple)):
+                    grad = (grad,)
+                assert len(differentiable_children) <= len(
+                    grad
+                ), "number of gradients to backpropagate does not match number of children"
+                for idx, child in enumerate(differentiable_children):
+                    child.backward(grad_input=grad[idx], top_node=False)
+                    # TODO: Confirm that indexing over grad is okay.
+
+                # clean up gradients except in leaf nodes:
+                if len(differentiable_children) > 0:
+                    self.grad = None
+
+                # remove node from graph:
+                self.parents = []
+                self.children = []
+
+    def detach_(self):
+        """Detaches tensor from the autograd graph (in-place), making it a leaf."""
+        self.requires_grad = False
+        return self
+
+    def detach(self):
+        """Detaches tensor from the autograd graph, making it a leaf."""
+        clone = self.clone()
+        clone.requires_grad = False
+        return clone
+
+    def __getattribute__(self, name):
+        """
+        Makes sure that any function call on the tensor gets recorded in order
+        to facilitate gradient computation using autograd.
+        """
+        if name in CrypTensor.PROTECTED_ATTRIBUTES or not CrypTensor.AUTOGRAD_ENABLED:
+            return object.__getattribute__(self, name)
+        else:
+            # replace Python built-in methods with corresponding method name:
+            name = CrypTensor.PYTHON_BUILTIN.get(name, name)
+
+            # identify the AutogradFunction corresponding to the function name:
+            grad_fn = get_grad_fn(name)
+
+            # dispatch calls to size(), etc. without going through AutoGradFunction:
+            if grad_fn is None:
+                return object.__getattribute__(self, name)
+
+            def autograd_forward(*args, **kwargs):
+                """Forward function that stores data for autograd in result."""
+
+                # determine if self is a dummy object (the case for staticmethods):
+                is_dummy = getattr(self, "__IS_DUMMY__", False)
+
+                # mark gradient as not computed:
+                self.grad_computed = False
+
+                # only CrypTensors can be children:
+                tensor_args = _find_all_cryptensors(args)
+                children = tensor_args if is_dummy else [self, *tensor_args]
+
+                # identify whether result requires gradient:
+                requires_grad = any(child.requires_grad for child in children)
+
+                # prepare inputs and context for forward call:
+                ctx = AutogradContext()
+                if not is_dummy:
+                    args = [self] + list(args)
+
+                # apply correct autograd function:
+                with CrypTensor.no_grad():
+                    result = grad_fn.forward(ctx, *args, **kwargs)
+                if not isinstance(result, tuple):  # output may be tensor or tuple
+                    result = (result,)
+                    remove_tuple = True
+                else:
+                    remove_tuple = False
+
+                # wrap results and maintain references to children and context:
+                for res in result:
+                    res.requires_grad = requires_grad and ctx.is_differentiable(res)
+                    if res.requires_grad:
+                        res.children = children
+                        res.grad_fn = grad_fn
+                        res.ctx = ctx
+                    self.parents.append(res)
+
+                # return result:
+                if remove_tuple:
+                    result = result[0]
+                return result
+
+            return autograd_forward
+
+    # below are all the functions that subclasses of CrypTensor should implement:
     def abs(self):
         raise NotImplementedError("abs is not implemented")
 
@@ -36,15 +309,13 @@ class CrypTensor(object):
     def pow_(self):
         raise NotImplementedError("pow_ is not implemented")
 
-    def __init__(self):
-        raise NotImplementedError("Cannot instantiate an CrypTensor")
-
     def get_plain_text(self):
         """Decrypts the encrypted tensor."""
         raise NotImplementedError("get_plain_text is not implemented")
 
     def shallow_copy(self):
-        """Creates a shallow_copy of a tensor"""
+        """Creates a shallow copy of the CrypTensor."""
+        # TODO: Rename this to __copy__()?
         raise NotImplementedError("shallow_copy is not implemented")
 
     def add_(self, tensor):
@@ -421,7 +692,7 @@ class CrypTensor(object):
         batched input is a 2D tensor :math:`\text{input}[i, j]`) of the input tensor).
         Each channel will be zeroed out independently on every forward call with
         probability :attr:`p` using samples from a Bernoulli distribution.
-        
+
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
@@ -699,6 +970,21 @@ class CrypTensor(object):
             other (Tensor): the source elements to scatter and add
         """
         raise NotImplementedError("scatter_add_ is not implemented")
+
+    # static methods:
+    @staticmethod
+    def cat(tensors, dim=0):
+        """
+        Concatenates a list of `CrypTensor`s along dimension `dim`.
+        """
+        raise NotImplementedError("cat is not implemented")
+
+    @staticmethod
+    def stack(tensors, dim=0):
+        """
+        Stacks a list of `CrypTensor`s along dimension `dim`.
+        """
+        raise NotImplementedError("stack is not implemented")
 
     # Regular functions:
     def clone(self):

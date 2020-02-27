@@ -115,10 +115,9 @@ pip install -r requirements.examples.txt
    network.
 7. `Tutorial_6_CrypTen_on_AWS_instances.ipynb` - shows how to use `scrips/aws_launcher.py`
    to launch our examples on AWS. It can also work with your code written in CrypTen.
-8. `Tutorial_7_Training_an_Encrypted_Neural_Network.ipynb` - introduces `AutogradCrypTensor`,
-   a wrapper that adds automatic differentiation functionality to `CrypTensor`. This
-   allows you to train neural networks in CrypTen. We expect to move this functionality
-   into the `CrypTensor` object in a future release.
+8. `Tutorial_7_Training_an_Encrypted_Neural_Network.ipynb` - introduces the
+   automatic differentiation functionality of `CrypTensor`. This functionality
+   makes it easy to train neural networks in CrypTen.
 
 
 ## Documentation

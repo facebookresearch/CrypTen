@@ -22,7 +22,7 @@ SENTINEL = -1
 
 
 # MPC tensor where shares are XOR-sharings.
-class BinarySharedTensor(CrypTensor):
+class BinarySharedTensor(object):
     """
         Encrypted tensor object that uses binary sharing to perform computations.
 
@@ -316,6 +316,7 @@ class BinarySharedTensor(CrypTensor):
         return result.scatter_(self, dim, index, src)
 
     # Bitwise operators
+    __add__ = add
     __lshift__ = lshift
     __rshift__ = rshift
 
@@ -324,6 +325,7 @@ class BinarySharedTensor(CrypTensor):
     __irshift__ = rshift_
 
     # Reversed boolean operations
+    __radd__ = __add__
     __rxor__ = __xor__
     __rand__ = __and__
     __ror__ = __or__

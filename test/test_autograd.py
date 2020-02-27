@@ -13,9 +13,8 @@ from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_te
 import crypten
 import crypten.gradients as gradients
 import torch
-from crypten.autograd_cryptensor import AutogradContext, AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
-from crypten.gradients import AutogradFunction
+from crypten.gradients import AutogradContext, AutogradFunction
 
 
 class TestAutograd(object):
@@ -78,13 +77,14 @@ class TestAutograd(object):
                 )
             ctx.reset()
 
-        # test behavior of AutogradCrypTensor:
-        input = AutogradCrypTensor(inputs[0])
+        # test behavior of autograd in CrypTensor:
+        input = inputs[0]
+        input.requires_grad = True
         reference = [True, True, False]
         for func_name in ["min", "max"]:
             outputs = [None] * 3
             outputs[0] = getattr(input, func_name)()
-            outputs[1], outputs[2] = getattr(input, func_name)(dim=0)
+            outputs[1], outputs[2] = getattr(input, func_name)(0)
             for idx, output in enumerate(outputs):
                 self.assertEqual(
                     output.requires_grad,
@@ -94,7 +94,7 @@ class TestAutograd(object):
 
         # behavior of max_pool2d in which indices are returned:
         input = get_random_test_tensor(size=(1, 3, 8, 8), is_float=True)
-        input = AutogradCrypTensor(crypten.cryptensor(input))
+        input = crypten.cryptensor(input, requires_grad=True)
         reference = [True, True, False]
         outputs = [None] * 3
         outputs[0] = input.max_pool2d(2, return_indices=False)
@@ -149,7 +149,7 @@ class TestAutograd(object):
             # test forward
             ctx = AutogradContext()
             grad_fn_take = gradients.get_grad_fn("take")
-            encr_output = grad_fn_take.forward(ctx, encr_inputs)
+            encr_output = grad_fn_take.forward(ctx, *encr_inputs)
             self._check(encr_output, ref_forward, "take forward failed: dimension set")
 
             # test backward:
@@ -178,8 +178,8 @@ class TestAutograd(object):
             input_size = (12, 5)
             input1 = get_random_test_tensor(size=input_size, is_float=True)
             input2 = get_random_test_tensor(size=input_size, is_float=True)
-            input1 = AutogradCrypTensor(crypten.cryptensor(input1))
-            input2 = AutogradCrypTensor(crypten.cryptensor(input2))
+            input1 = crypten.cryptensor(input1, requires_grad=True)
+            input2 = crypten.cryptensor(input2, requires_grad=True)
 
             # perform forward computation with detach in the middle:
             intermediate = input1.add(1.0)
@@ -229,7 +229,7 @@ class TestAutograd(object):
             # get input tensors:
             input = get_random_test_tensor(size=(12, 5), is_float=True)
             input.requires_grad = True
-            encr_input = AutogradCrypTensor(crypten.cryptensor(input))
+            encr_input = crypten.cryptensor(input, requires_grad=True)
 
             # perform multiple forward computations on input that get combined:
             output, encr_output = test_case(input, encr_input)
@@ -254,7 +254,7 @@ class TestAutograd(object):
             # get input tensors:
             input = get_random_test_tensor(size=(12, 5), is_float=True)
             input.requires_grad = True
-            encr_input = AutogradCrypTensor(crypten.cryptensor(input))
+            encr_input = crypten.cryptensor(input, requires_grad=True)
 
             # perform forward-backward pass:
             output = getattr(input, func_name)(input).sum()
@@ -290,7 +290,8 @@ class TestAutograd(object):
             # get autograd variables:
             for input in inputs:
                 input.requires_grad = True
-            encr_inputs = [AutogradCrypTensor(encr_input) for encr_input in encr_inputs]
+            for encr_input in encr_inputs:
+                encr_input.requires_grad = True
 
             # perform forward pass, logging all intermediate outputs:
             outputs, encr_outputs = [inputs], [encr_inputs]
@@ -332,7 +333,7 @@ class TestAutograd(object):
         # create test case:
         input = get_random_test_tensor(size=(12, 5), is_float=True)
         input.requires_grad = True
-        encr_input = AutogradCrypTensor(crypten.cryptensor(input))
+        encr_input = crypten.cryptensor(input, requires_grad=True)
 
         # re-use the same input multiple times:
         for _ in range(7):

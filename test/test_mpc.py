@@ -619,11 +619,11 @@ class TestMPC(object):
 
                 for dim in range(tensor.dim()):
                     for keepdim in [False, True]:
-                        reference = getattr(tensor, comp)(dim=dim, keepdim=keepdim)
+                        reference = getattr(tensor, comp)(dim, keepdim=keepdim)
 
                         # Test with one_hot = False
                         encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim=dim, keepdim=keepdim, one_hot=False
+                            dim, keepdim=keepdim, one_hot=False
                         )
 
                         # Check max / min values are correct
@@ -651,17 +651,17 @@ class TestMPC(object):
 
                         # Test indices with one_hot = True
                         encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim=dim, keepdim=keepdim, one_hot=True
+                            dim, keepdim=keepdim, one_hot=True
                         )
 
                         # Check argmax results
                         val_ref = reference[0]
                         out_encr = encrypted_out[1]
                         out_decr = out_encr.get_plain_text()
-                        self.assertTrue((out_decr.sum(dim=dim) == 1).all())
+                        self.assertTrue((out_decr.sum(dim) == 1).all())
                         self.assertTrue(
                             (
-                                out_decr.mul(tensor).sum(dim=dim, keepdim=keepdim)
+                                out_decr.mul(tensor).sum(dim, keepdim=keepdim)
                                 == val_ref
                             ).all()
                         )
@@ -714,11 +714,11 @@ class TestMPC(object):
                 for dim in range(tensor.dim()):
                     for keepdim in [False, True]:
                         # Compute one-hot argmax/min reference in plaintext
-                        values, indices = getattr(tensor, cmp)(dim=dim, keepdim=keepdim)
+                        values, indices = getattr(tensor, cmp)(dim, keepdim=keepdim)
 
                         # test with one_hot = False
                         encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim=dim, keepdim=keepdim, one_hot=False
+                            dim, keepdim=keepdim, one_hot=False
                         )
 
                         # Must index into tensor since ties are broken randomly
@@ -734,16 +734,16 @@ class TestMPC(object):
 
                         # test with one_hot = True
                         encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim=dim, keepdim=keepdim, one_hot=True
+                            dim, keepdim=keepdim, one_hot=True
                         )
                         decrypted_out = encrypted_out.get_plain_text()
 
                         if not keepdim:
                             values = values.unsqueeze(dim)
                         one_hot_indices = tensor.eq(values).float()
-                        self.assertTrue(decrypted_out.sum(dim=dim).eq(1).all())
+                        self.assertTrue(decrypted_out.sum(dim).eq(1).all())
                         self.assertTrue(
-                            decrypted_out.mul(one_hot_indices).sum(dim=dim).eq(1).all()
+                            decrypted_out.mul(one_hot_indices).sum(dim).eq(1).all()
                         )
 
     def test_abs_sign(self):

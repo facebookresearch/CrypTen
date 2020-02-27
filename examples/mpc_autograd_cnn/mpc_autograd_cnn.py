@@ -12,7 +12,6 @@ import crypten.communicator as comm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from crypten.autograd_cryptensor import AutogradCrypTensor
 from examples.util import NoopContextManager
 from torchvision import datasets, transforms
 
@@ -97,10 +96,11 @@ def train_encrypted(
             # define the start and end of the training mini-batch
             start, end = j, min(j + batch_size, num_samples)
 
-            # construct AutogradCrypTensors out of training examples
-            x_train = AutogradCrypTensor(x_encrypted[start:end])
+            # switch on autograd for training examples
+            x_train = x_encrypted[start:end]
+            x_train.requires_grad = True
             y_one_hot = label_eye[y_encrypted[start:end]]
-            y_train = AutogradCrypTensor(crypten.cryptensor(y_one_hot))
+            y_train = crypten.cryptensor(y_one_hot, requires_grad=True)
 
             # perform forward pass:
             output = encrypted_model(x_train)

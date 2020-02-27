@@ -92,7 +92,6 @@ encrypted data on multiple AWS instances. See :doc:`aws`.
 
     crypten.CrypTensor <cryptensor>
     crypten.MPCTensor <mpctensor>
-    crypten.AutogradCrypTensor <autogradcryptensor>
     crypten.nn <nn>
 
 Indices and tables
