@@ -757,7 +757,7 @@ class MPCTensor(CrypTensor):
         # Compute terms of polynomial using exponentially growing tree
         terms = crypten.stack([self, self.square()])
         while terms.size(0) < coeffs.size(0):
-            highest_term = terms[-1:].expand(terms.size())
+            highest_term = terms.index_select(0, torch.tensor(terms.size(0) - 1))
             new_terms = getattr(terms, func)(highest_term)
             terms = crypten.cat([terms, new_terms])
 
