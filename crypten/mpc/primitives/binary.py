@@ -145,6 +145,7 @@ class BinarySharedTensor(object):
     def __and__(self, y):
         """Bitwise AND operator (element-wise)"""
         result = self.clone()
+        # TODO: Remove explicit broadcasts to allow smaller beaver triples
         if isinstance(y, BinarySharedTensor):
             broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
             result.share = broadcast_tensors[0].clone()

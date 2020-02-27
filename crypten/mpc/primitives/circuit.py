@@ -26,21 +26,10 @@ __MASKS = torch.LongTensor(
     ]
 )
 
-
-def __fan(mask, iter):
-    """Fans out bitmask from input to output at `iter` stage of the tree
-
-    See arrows in Fig. 1 (right) of
-    Catrina, O. "Improved Primitives for Secure Multiparty Integer Computation"
-    """
-    multiplier = (1 << (2 ** iter + 1)) - 2
-    if isinstance(mask, (int, float)) or torch.is_tensor(mask):
-        return mask * multiplier
-
-    # Otherwise assume BinarySharedTensor
-    result = mask.clone()
-    result._tensor *= multiplier
-    return result
+# Cache other masks and constants to skip computation during each call
+__LOG_BITS = int(math.log2(torch.iinfo(torch.long).bits))
+__MULTIPLIERS = torch.tensor([(1 << (2 ** iter + 1)) - 2 for iter in range(__LOG_BITS)])
+__OUT_MASKS = __MASKS * __MULTIPLIERS
 
 
 def __SPK_circuit(S, P):
@@ -58,26 +47,27 @@ def __SPK_circuit(S, P):
     """
     from .binary import BinarySharedTensor
 
-    log_bits = int(math.log2(torch.iinfo(torch.long).bits))
-    for i in range(log_bits):
-        in_mask = __MASKS[i]
-        out_mask = __fan(in_mask, i)
-        not_out_mask = out_mask ^ -1
+    # Vectorize private AND calls to reduce rounds:
+    SP = BinarySharedTensor.stack([S, P])
+
+    # fmt: off
+    # Tree reduction circuit
+    for i in range(__LOG_BITS):
+        in_mask = __MASKS[i]                # Start of arrows
+        out_mask = __OUT_MASKS[i]           # End of arrows
+        not_out_mask = out_mask ^ -1        # Not (end of arrows)
 
         # Set up S0, S1, P0, and P1
-        P0 = P & out_mask
-        P1 = __fan(P & in_mask, i)
-        S1 = __fan(S & in_mask, i)
-
-        # Vectorize private AND calls to reduce rounds:
-        P0P0 = BinarySharedTensor.stack([P0, P0])
-        S1P1 = BinarySharedTensor.stack([S1, P1])
-        update = P0P0 & S1P1
+        P0 = SP[1] & out_mask               # Mask P0 from P
+        S1P1 = SP & in_mask                 # Mask S1P1 from SP
+        S1P1._tensor *= __MULTIPLIERS[i]    # Fan out S1P1 along arrows
 
         # Update S and P
-        S ^= update[0]  # S ^= (P0 & S1)
-        P = (P & not_out_mask) ^ update[1]  # P1 = P0 & P1
-    return S, P
+        update = P0 & S1P1                  # S0 ^= P0 & S1, P0 = P0 & P1
+        SP[1] &= not_out_mask
+        SP ^= update
+    # fmt: on
+    return SP[0], SP[1]
 
 
 def add(x, y):
