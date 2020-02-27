@@ -18,6 +18,12 @@ from .cryptensor import CrypTensor
 from .mpc import ptype
 
 
+# functions controlling autograd:
+no_grad = CrypTensor.no_grad
+enable_grad = CrypTensor.enable_grad
+set_grad_enabled = CrypTensor.set_grad_enabled
+
+
 def init():
     comm._init(use_threads=False, init_ttp=crypten.mpc.ttp_required())
     if comm.get().get_rank() < comm.get().get_world_size():
@@ -42,6 +48,7 @@ def is_initialized():
 # the different private type attributes of an mpc encrypted tensor
 arithmetic = ptype.arithmetic
 binary = ptype.binary
+# TODO: The above can be removed?
 
 
 def print_communication_stats():
@@ -376,18 +383,10 @@ def cat(tensors, dim=0):
     tensor_types = [get_cryptensor_type(t) for t in tensors]
     assert all(
         ttype == tensor_types[0] for ttype in tensor_types
-    ), "cannot stack CrypTensors with different underlying types"
+    ), "cannot concatenate CrypTensors with different underlying types"
     if len(tensors) == 1:
         return tensors[0]
-
-    from .autograd_cryptensor import AutogradCrypTensor
-
-    if any(isinstance(t, AutogradCrypTensor) for t in tensors):
-        if not isinstance(tensors[0], AutogradCrypTensor):
-            tensors[0] = AutogradCrypTensor(tensors[0], requires_grad=False)
-        return tensors[0].cat(*tensors[1:], dim=dim)
-    else:
-        return type(tensors[0]).cat(tensors, dim=dim)
+    return type(tensors[0]).cat(tensors, dim=dim)
 
 
 def stack(tensors, dim=0):
@@ -403,15 +402,7 @@ def stack(tensors, dim=0):
     ), "cannot stack CrypTensors with different underlying types"
     if len(tensors) == 1:
         return tensors[0].unsqueeze(dim)
-
-    from .autograd_cryptensor import AutogradCrypTensor
-
-    if any(isinstance(t, AutogradCrypTensor) for t in tensors):
-        if not isinstance(tensors[0], AutogradCrypTensor):
-            tensors[0] = AutogradCrypTensor(tensors[0], requires_grad=False)
-        return tensors[0].stack(*tensors[1:], dim=dim)
-    else:
-        return type(tensors[0]).stack(tensors, dim=dim)
+    return type(tensors[0]).stack(tensors, dim=dim)
 
 
 def rand(*sizes, cryptensor_type=None):
@@ -433,4 +424,15 @@ def bernoulli(tensor, cryptensor_type=None):
 
 
 # expose classes and functions in package:
-__all__ = ["CrypTensor", "debug", "init", "init_thread", "mpc", "nn", "uninit"]
+__all__ = [
+    "CrypTensor",
+    "no_grad",
+    "enable_grad",
+    "set_grad_enabled",
+    "debug",
+    "init",
+    "init_thread",
+    "mpc",
+    "nn",
+    "uninit",
+]

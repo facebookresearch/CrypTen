@@ -9,7 +9,6 @@ from collections import OrderedDict
 
 import crypten
 import torch.nn
-from crypten.autograd_cryptensor import AutogradCrypTensor
 
 
 class Module:
@@ -34,22 +33,6 @@ class Module:
     def forward(self, *args):
         """Perform forward pass on model."""
         raise NotImplementedError("forward not implemented")
-
-    def __getattribute__(self, name):
-        """
-        Makes sure that forward calls on a Module always receive an
-        AutogradCrypTensor as input.
-        """
-        if name != "forward":  # no-op for any function that is not forward()
-            return object.__getattribute__(self, name)
-        else:  # make sure input to forward() is AutogradCrypTensor
-
-            def wrapped_forward(*args):
-                """Forward function that wraps CrypTensors in AutogradCrypTensor."""
-                args = _to_autograd(args)
-                return object.__getattribute__(self, "forward")(*args)
-
-            return wrapped_forward
 
     def __call__(self, input):
         return self.forward(input)
@@ -91,7 +74,7 @@ class Module:
             param.requires_grad = requires_grad
             self._parameters[name] = param
         else:  # encryped model
-            self._parameters[name] = AutogradCrypTensor(
+            self._parameters[name] = crypten.cryptensor(
                 param, requires_grad=requires_grad
             )
         setattr(self, name, param)
@@ -124,9 +107,10 @@ class Module:
     def update_parameters(self, learning_rate):
         """Performs gradient step on parameters."""
         assert self.training, "module not in training mode"
-        for param in self.parameters():
-            if param.grad is not None:
-                param.tensor.sub_(param.grad.mul(learning_rate))
+        with crypten.no_grad():
+            for param in self.parameters():
+                if param.grad is not None:
+                    param.sub_(param.grad.mul(learning_rate))
 
     def register_buffer(self, name, buffer):
         """
@@ -176,9 +160,8 @@ class Module:
                 if mode:  # encrypt parameter
                     self.set_parameter(
                         name,
-                        AutogradCrypTensor(
-                            crypten.cryptensor(param, **{"src": src}),
-                            requires_grad=requires_grad,
+                        crypten.cryptensor(
+                            param, **{"src": src}, requires_grad=requires_grad
                         ),
                     )
                 else:  # decrypt parameter
@@ -190,10 +173,7 @@ class Module:
                 if mode:  # encrypt buffer
                     self.set_buffer(
                         name,
-                        AutogradCrypTensor(
-                            crypten.cryptensor(buffer, **{"src": src}),
-                            requires_grad=False,
-                        ),
+                        crypten.cryptensor(buffer, **{"src": src}, requires_grad=False),
                     )
                 else:  # decrypt buffer
                     self.set_buffer(name, buffer.get_plain_text())
@@ -436,7 +416,7 @@ class ReduceSum(Module):
         self.keepdim = keepdim
 
     def forward(self, input):
-        return input.sum(dim=self.dim, keepdim=self.keepdim)
+        return input.sum(self.dim, keepdim=self.keepdim)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
@@ -1428,7 +1408,7 @@ class GlobalAveragePool(Module):
         # sum over all but batch dimension:
         result = input.shallow_copy()
         for dim in range(2, input.dim()):
-            result = result.sum(dim=dim, keepdim=True)
+            result = result.sum(dim, keepdim=True)
 
         # return average value:
         first_two_dims = input.size(0) * input.size(1)
@@ -1521,33 +1501,3 @@ def _all_the_same(items):
     Checks whether all values in a list are the same.
     """
     return all(items[0] == item for item in items)
-
-
-def _to_autograd(args):
-    """
-    Recursively converts inputs to AutogradCrypTensors.
-    """
-
-    # convert tuples to lists to allow changes:
-    convert_to_tuple = False
-    if isinstance(args, tuple):
-        args = list(args)
-        convert_to_tuple = True
-
-    # wrap all input tensors in AutogradCrypTensor:
-    for idx in range(len(args)):
-        if isinstance(args[idx], (list, tuple)):  # input may be list of tensors
-            args[idx] = _to_autograd(args[idx])
-        elif isinstance(args[idx], AutogradCrypTensor) or args[idx] is None:
-            pass
-        elif isinstance(args[idx], crypten.CrypTensor):
-            args[idx] = AutogradCrypTensor(args[idx])
-        else:
-            raise ValueError(
-                "Cannot convert type {} to AutogradCrypTensor.".format(type(args[idx]))
-            )
-
-    # return:
-    if convert_to_tuple:
-        args = tuple(args)
-    return args

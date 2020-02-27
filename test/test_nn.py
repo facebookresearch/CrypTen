@@ -17,7 +17,6 @@ from test.multiprocess_test_case import (
 import crypten
 import crypten.communicator as comm
 import torch
-from crypten.autograd_cryptensor import AutogradCrypTensor
 from crypten.common.tensor_types import is_float_tensor
 
 
@@ -105,15 +104,14 @@ class TestNN(object):
         prob_list = [0.2 * x for x in range(1, 5)]
         for module_name in ["Dropout", "Dropout2d", "Dropout3d"]:
             for prob in prob_list:
-                for wrap in [True, False]:
+                for compute_gradients in [True, False]:
                     # generate inputs:
                     input = get_random_test_tensor(
                         size=input_size, is_float=True, ex_zero=True
                     )
                     input.requires_grad = True
                     encr_input = crypten.cryptensor(input)
-                    if wrap:
-                        encr_input = AutogradCrypTensor(encr_input)
+                    encr_input.requires_grad = compute_gradients
 
                     # create PyTorch module:
                     module = getattr(torch.nn, module_name)(prob)
@@ -159,7 +157,7 @@ class TestNN(object):
                     ref_grad = plaintext_output.where(plaintext_output == 0, all_ones)
                     ref_grad_input = ref_grad / (1 - prob)
                     encr_output.backward()
-                    if wrap:  # you cannot get input gradients on MPCTensor inputs
+                    if compute_gradients:
                         self._check(
                             encr_input.grad,
                             ref_grad_input,
@@ -351,7 +349,7 @@ class TestNN(object):
 
         # loop over all modules:
         for module_name in module_args.keys():
-            for wrap in [True, False]:
+            for compute_gradients in [True, False]:
 
                 # generate inputs:
                 input = get_random_test_tensor(
@@ -359,8 +357,7 @@ class TestNN(object):
                 )
                 input.requires_grad = True
                 encr_input = crypten.cryptensor(input)
-                if wrap:
-                    encr_input = AutogradCrypTensor(encr_input)
+                encr_input.requires_grad = compute_gradients
 
                 # create PyTorch module:
                 module = getattr(torch.nn, module_name)(*module_args[module_name])
@@ -412,14 +409,14 @@ class TestNN(object):
                 # test backward pass:
                 reference.backward(torch.ones(reference.size()))
                 encr_output.backward()
-                if wrap:  # you cannot get input gradients on MPCTensor inputs
+                if compute_gradients:
                     self._check(
                         encr_input.grad,
                         input.grad,
                         "%s backward on input failed" % module_name,
                     )
                 else:
-                    self.assertFalse(hasattr(encr_input, "grad"))
+                    self.assertIsNone(encr_input.grad)
                 for name, param in module.named_parameters():
                     encr_param = getattr(encr_module, name)
                     self._check(
@@ -435,7 +432,7 @@ class TestNN(object):
 
         # try networks of different depth:
         for num_layers in range(1, 6):
-            for wrap in [True, False]:
+            for compute_gradients in [True, False]:
 
                 # construct sequential container:
                 input_size = (3, 10)
@@ -458,8 +455,7 @@ class TestNN(object):
                 # construct test input and run through sequential container:
                 input = get_random_test_tensor(size=input_size, is_float=True)
                 encr_input = crypten.cryptensor(input)
-                if wrap:
-                    encr_input = AutogradCrypTensor(encr_input)
+                encr_input.requires_grad = compute_gradients
                 encr_output = sequential(encr_input)
 
                 # compute reference output:
@@ -475,14 +471,13 @@ class TestNN(object):
         """
         Tests crypten.nn.Graph module.
         """
-        for wrap in [True, False]:
+        for compute_gradients in [True, False]:
 
             # define test case:
             input_size = (3, 10)
             input = get_random_test_tensor(size=input_size, is_float=True)
             encr_input = crypten.cryptensor(input)
-            if wrap:
-                encr_input = AutogradCrypTensor(encr_input)
+            encr_input.requires_grad = compute_gradients
 
             # test residual block with subsequent linear layer:
             graph = crypten.nn.Graph("input", "output")
@@ -538,12 +533,11 @@ class TestNN(object):
                     )
                     self._check(encrypted_loss, loss, "%s failed" % loss_name)
 
-                encrypted_input = AutogradCrypTensor(
-                    encrypted_input, requires_grad=True
-                )
+                encrypted_input.requires_grad = True
+                encrypted_input.grad = None
                 encrypted_loss = getattr(crypten.nn, loss_name)(
                     skip_forward=skip_forward
-                )(encrypted_input, AutogradCrypTensor(encrypted_target))
+                )(encrypted_input, encrypted_target)
                 if not skip_forward:
                     self._check(encrypted_loss, loss, "%s failed" % loss_name)
 
@@ -572,8 +566,10 @@ class TestNN(object):
             encrypted_input, encrypted_target
         )
         self._check(encrypted_loss, loss, "cross-entropy loss failed")
+        encrypted_input.requires_grad = True
+        encrypted_target.requires_grad = True
         encrypted_loss = crypten.nn.CrossEntropyLoss()(
-            AutogradCrypTensor(encrypted_input), AutogradCrypTensor(encrypted_target)
+            encrypted_input, encrypted_target
         )
         self._check(encrypted_loss, loss, "cross-entropy loss failed")
 
@@ -627,7 +623,7 @@ class TestNN(object):
 
         # perform training iterations:
         for _ in range(10):
-            for wrap in [True, False]:
+            for compute_gradients in [True, False]:
 
                 # get training sample:
                 input = get_random_test_tensor(
@@ -638,9 +634,9 @@ class TestNN(object):
                 # encrypt training sample:
                 input = crypten.cryptensor(input)
                 target = crypten.cryptensor(target)
-                if wrap:
-                    input = AutogradCrypTensor(input)
-                    target = AutogradCrypTensor(target)
+                if compute_gradients:
+                    input.requires_grad = True
+                    target.requires_grad = True
 
                 # perform forward pass:
                 output = model(input)
@@ -686,7 +682,7 @@ class TestNN(object):
         y_one_hot = onehot(y_orig, num_targets=2)
 
         # encrypt training sample:
-        x_train = AutogradCrypTensor(crypten.cryptensor(x_orig))
+        x_train = crypten.cryptensor(x_orig, requires_grad=True)
         y_train = crypten.cryptensor(y_one_hot)
 
         for loss_name in ["BCELoss", "CrossEntropyLoss", "MSELoss"]:
@@ -783,7 +779,7 @@ class TestNN(object):
         y_one_hot = onehot(y_orig, num_targets=2)
 
         # encrypt training sample:
-        x_train = AutogradCrypTensor(crypten.cryptensor(x_orig))
+        x_train = crypten.cryptensor(x_orig, requires_grad=True)
         y_train = crypten.cryptensor(y_one_hot)
         dummy_input = torch.empty((1, 1, 28, 28))
 
@@ -863,7 +859,7 @@ class TestNN(object):
             for is_trainning in (True, False):
                 tensor = get_random_test_tensor(size=size, is_float=True)
                 tensor.requires_grad = True
-                encrypted_input = AutogradCrypTensor(crypten.cryptensor(tensor))
+                encrypted_input = crypten.cryptensor(tensor, requires_grad=True)
 
                 C = size[1]
                 weight = get_random_test_tensor(size=[C], max_value=1, is_float=True)

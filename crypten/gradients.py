@@ -37,22 +37,19 @@ def get_grad_fn(name):
     """
     Returns gradient function for the CrypTen function with the specified name.
     """
-    if name.endswith("_") and not name.endswith("__"):  # TODO: Make less hacky.
-        raise NotImplementedError("Autograd on in-place operations not supported.")
     if name in FUNCTION_REGISTRY:
         return FUNCTION_REGISTRY[name]
     else:
         return None
 
 
-def _ensure_tensors(inputs):
+def _ensure_tensor(input):
     """
     Converts scalars in inputs to correct tensor type.
     """
-    for idx in range(len(inputs)):
-        if isinstance(inputs[idx], (int, float)):
-            inputs[idx] = torch.tensor(inputs[idx])
-    return inputs
+    if isinstance(input, (int, float)):
+        input = torch.tensor(input)
+    return input
 
 
 def _inverse_broadcast(grad_output, input_size):
@@ -74,6 +71,38 @@ def _inverse_broadcast(grad_output, input_size):
         if input_size[dim] == 1 and grad_output.size(dim) > 1:
             grad_output = grad_output.sum(dim, keepdim=True)
     return grad_output
+
+
+class AutogradContext(object):
+    """
+    Object that can be used by AutogradFunction for saving context information.
+    """
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.context = []
+        self.non_differentiable = []
+
+    def save_for_backward(self, value):
+        self.context.append(value)
+
+    def save_multiple_for_backward(self, values):
+        for value in values:
+            self.save_for_backward(value)
+
+    def mark_non_differentiable(self, non_differentiable):
+        if not isinstance(non_differentiable, list):
+            non_differentiable = [non_differentiable]
+        self.non_differentiable.extend(id(x) for x in non_differentiable)
+
+    def is_differentiable(self, tensor):
+        return id(tensor) not in self.non_differentiable
+
+    @property
+    def saved_tensors(self):
+        return self.context
 
 
 class AutogradFunction(object):
@@ -108,8 +137,7 @@ class AutogradT(AutogradFunction):
 @register_function("transpose")
 class AutogradTranspose(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, dim1, dim2 = input
+    def forward(ctx, input, dim1, dim2):
         ctx.save_multiple_for_backward((dim1, dim2))
         return input.transpose(dim1, dim2)
 
@@ -122,8 +150,7 @@ class AutogradTranspose(AutogradFunction):
 @register_function("flip")
 class AutogradFlip(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, dims = input
+    def forward(ctx, input, dims):
         ctx.save_for_backward(dims)
         return input.flip(dims)
 
@@ -148,7 +175,8 @@ class AutogradClone(AutogradFunction):
 class AutogradCat(AutogradFunction):
     @staticmethod
     def forward(ctx, input, dim=0):
-        ctx.save_multiple_for_backward((dim, [t.size(dim) for t in input]))
+        split_sections = [t.size(dim) for t in input]
+        ctx.save_multiple_for_backward((dim, split_sections))
         return crypten.cat(input, dim=dim)
 
     @staticmethod
@@ -173,22 +201,20 @@ class AutogradStack(AutogradFunction):
 @register_function("view")
 class AutogradView(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, *size = input
-        ctx.save_for_backward(input)
+    def forward(ctx, input, *size):
+        ctx.save_for_backward(input.size())
         return input.view(*size)
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        return grad_output.view(input.size())
+        input_size, = ctx.saved_tensors
+        return grad_output.view(input_size)
 
 
 @register_function("reshape")
 class AutogradReshape(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, shape = input
+    def forward(ctx, input, shape):
         ctx.save_for_backward(input.size())
         return input.reshape(shape)
 
@@ -201,9 +227,9 @@ class AutogradReshape(AutogradFunction):
 @register_function("flatten")
 class AutogradFlatten(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
+    def forward(ctx, input, start_dim=0, end_dim=-1):
         ctx.save_for_backward(input.size())
-        return input.flatten()
+        return input.flatten(start_dim=start_dim, end_dim=end_dim)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -214,8 +240,7 @@ class AutogradFlatten(AutogradFunction):
 @register_function("narrow")
 class AutogradNarrow(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, dim, start, length = input
+    def forward(ctx, input, dim, start, length):
         ctx.save_multiple_for_backward((input.size(dim), dim, start, length))
         return input.narrow(dim, start, length)
 
@@ -237,21 +262,15 @@ class AutogradNarrow(AutogradFunction):
 @register_function("take")
 class AutogradTake(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        # support input without dimension to match PyTorch
-        if len(input) == 2:
-            input, index = input
-            dimension = None
-        else:
-            input, index, dimension = input
-        ctx.save_multiple_for_backward((input.size(), index, dimension))
-        return input.take(index, dimension)
+    def forward(ctx, input, index, dim=None):
+        ctx.save_multiple_for_backward((input.size(), index, dim))
+        return input.take(index, dim)
 
     @staticmethod
     def backward(ctx, grad_output):
-        size, index, dimension = ctx.saved_tensors
+        size, index, dim = ctx.saved_tensors
         grad = grad_output.new(torch.zeros(size))
-        if dimension is None:
+        if dim is None:
             grad_flat = grad.flatten()
             flat_index = index.flatten()
             grad_output_flat = grad_output.flatten()
@@ -260,17 +279,16 @@ class AutogradTake(AutogradFunction):
         else:
             flat_index = index.flatten()
             grad_output_flat = grad_output.flatten(
-                start_dim=dimension, end_dim=(dimension + index.dim() - 1)
+                start_dim=dim, end_dim=(dim + index.dim() - 1)
             )
-            grad.index_add_(dimension, flat_index, grad_output_flat)
+            grad.index_add_(dim, flat_index, grad_output_flat)
         return grad
 
 
 @register_function("gather")
 class AutogradGather(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, dim, index = input
+    def forward(ctx, input, dim, index):
         ctx.save_multiple_for_backward([input.size(), dim, index])
         return input.gather(dim, index)
 
@@ -283,8 +301,7 @@ class AutogradGather(AutogradFunction):
 @register_function("scatter")
 class AutogradScatter(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, dim, index, src = input
+    def forward(ctx, input, dim, index, src):
         output = input.scatter(dim, index, src)
         ctx.save_multiple_for_backward([dim, index])
         return output
@@ -292,7 +309,6 @@ class AutogradScatter(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         dim, index = ctx.saved_tensors
-
         size = grad_output.size()
         mask = torch.ones(size).scatter(dim, index, torch.zeros(size)).long()
         input_grad = grad_output.mul(mask)
@@ -303,10 +319,7 @@ class AutogradScatter(AutogradFunction):
 @register_function("roll")
 class AutogradRoll(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        if len(input) < 3:
-            input.append(None)
-        input, shifts, dims = input
+    def forward(ctx, input, shifts, dims=None):
         ctx.save_multiple_for_backward((shifts, dims))
         return input.roll(shifts, dims=dims)
 
@@ -334,14 +347,17 @@ class AutogradRoll(AutogradFunction):
 @register_function("squeeze")
 class AutogradSqueeze(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
+    def forward(ctx, *args, **kwargs):
 
         # preprocess inputs:
-        dim = None
-        if isinstance(input, (tuple, list)) and len(input) == 1:
-            input, = input  # no dimension to squeeze specified
-        elif isinstance(input, (tuple, list)):
-            input, dim = input  # dimension to squeeze specified
+        assert len(args) >= 1
+        if len(args) == 1:
+            input, = args  # no dimension to squeeze in args
+            dim = kwargs.get("dim", None)
+        else:
+            assert len(args) == 2
+            assert "dim" not in kwargs
+            input, dim = args  # dimension to squeeze in args
 
         # perform the actual squeeze:
         output = input.squeeze() if dim is None else input.squeeze(dim)
@@ -366,8 +382,7 @@ class AutogradSqueeze(AutogradFunction):
 @register_function("unsqueeze")
 class AutogradUnsqueeze(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, dim = input
+    def forward(ctx, input, dim):
         ctx.save_for_backward(dim)
         return input.unsqueeze(dim)
 
@@ -380,8 +395,7 @@ class AutogradUnsqueeze(AutogradFunction):
 @register_function("__getitem__")
 class AutogradGetItem(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, index = input
+    def forward(ctx, input, index):
         ctx.save_multiple_for_backward([input.size(), index])
         return input[index]
 
@@ -421,7 +435,16 @@ class AutogradReLU(AutogradFunction):
 @register_function("dropout")
 class AutogradDropout(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, p=0.5, inplace=False):
+    def forward(ctx, input, p=0.5, training=True, inplace=False):
+
+        # inference mode:
+        if not training:
+            if inplace:
+                return input
+            else:
+                return input.clone()
+
+        # training mode:
         cryptensor_type = crypten.get_cryptensor_type(input)
         rand_tensor = crypten.rand(input.size(), cryptensor_type=cryptensor_type)
         boolean_mask = rand_tensor > p
@@ -434,6 +457,8 @@ class AutogradDropout(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
+        if len(ctx.saved_tensors) == 0:
+            return grad_output  # forward pass was run in eval mode
         boolean_mask, p = ctx.saved_tensors
         return grad_output.mul(boolean_mask.div(1 - p))
 
@@ -441,7 +466,16 @@ class AutogradDropout(AutogradFunction):
 @register_function("_feature_dropout")
 class AutogradFeatureDropout(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, p=0.5, inplace=False):
+    def forward(ctx, input, p=0.5, training=True, inplace=False):
+
+        # inference mode:
+        if not training:
+            if inplace:
+                return input
+            else:
+                return input.clone()
+
+        # training mode:
         feature_dropout_size = input.size()[0:2]
         cryptensor_type = crypten.get_cryptensor_type(input)
         rand_tensor = crypten.rand(
@@ -462,6 +496,8 @@ class AutogradFeatureDropout(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
+        if len(ctx.saved_tensors) == 0:
+            return grad_output  # forward pass was run in eval mode
         boolean_mask, p = ctx.saved_tensors
         return grad_output.mul(boolean_mask.div(1 - p))
 
@@ -493,10 +529,11 @@ class AutogradTanh(AutogradFunction):
 @register_function("add")
 class AutogradAdd(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input = _ensure_tensors(input)
-        ctx.save_multiple_for_backward([input[0].size(), input[1].size()])
-        return input[0].add(input[1])
+    def forward(ctx, input, other):
+        input = _ensure_tensor(input)
+        other = _ensure_tensor(other)
+        ctx.save_multiple_for_backward([input.size(), other.size()])
+        return input.add(other)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -510,10 +547,11 @@ class AutogradAdd(AutogradFunction):
 @register_function("sub")
 class AutogradSub(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input = _ensure_tensors(input)
-        ctx.save_multiple_for_backward([input[0].size(), input[1].size()])
-        return input[0].sub(input[1])
+    def forward(ctx, input, other):
+        input = _ensure_tensor(input)
+        other = _ensure_tensor(other)
+        ctx.save_multiple_for_backward([input.size(), other.size()])
+        return input.sub(other)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -527,10 +565,11 @@ class AutogradSub(AutogradFunction):
 @register_function("__rsub__")
 class AutogradRSub(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input = _ensure_tensors(input)
-        ctx.save_multiple_for_backward([input[0].size(), input[1].size()])
-        return (-input[0]).add(input[1])
+    def forward(ctx, input, other):
+        input = _ensure_tensor(input)
+        other = _ensure_tensor(other)
+        ctx.save_multiple_for_backward([input.size(), other.size()])
+        return (-input).add(other)
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -544,15 +583,15 @@ class AutogradRSub(AutogradFunction):
 @register_function("mul")
 class AutogradMul(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input = _ensure_tensors(input)
-        ctx.save_for_backward(input)
-        return input[0].mul(input[1])
+    def forward(ctx, input, other):
+        input = _ensure_tensor(input)
+        other = _ensure_tensor(other)
+        ctx.save_multiple_for_backward([input, other])
+        return input.mul(other)
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        self_, other = input
+        self_, other = ctx.saved_tensors
         return (
             _inverse_broadcast(grad_output.mul(other), self_.size()),
             _inverse_broadcast(grad_output.mul(self_), other.size()),
@@ -562,14 +601,13 @@ class AutogradMul(AutogradFunction):
 @register_function("matmul")
 class AutogradMatMul(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        ctx.save_for_backward(input)
-        return input[0].matmul(input[1])
+    def forward(ctx, input, other):
+        ctx.save_multiple_for_backward([input, other])
+        return input.matmul(other)
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        self_, other = input
+        self_, other = ctx.saved_tensors
         return (
             _inverse_broadcast(
                 grad_output.matmul(other.transpose(-2, -1)), self_.size()
@@ -583,8 +621,7 @@ class AutogradMatMul(AutogradFunction):
 @register_function("div")
 class AutogradDiv(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, other = input
+    def forward(ctx, input, other):
         if crypten.is_encrypted_tensor(other):
             other_reciprocal = other.reciprocal()
             ctx.save_multiple_for_backward([input, other_reciprocal])
@@ -619,8 +656,7 @@ class AutogradDiv(AutogradFunction):
 @register_function("__rtruediv__")
 class AutogradRDiv(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, other = input
+    def forward(ctx, input, other):
         reciprocal = input.reciprocal()
         ctx.save_multiple_for_backward([reciprocal, other])
         return reciprocal.mul(other)
@@ -642,23 +678,20 @@ class AutogradRDiv(AutogradFunction):
 @register_function("pow")
 class AutogradPow(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        ctx.save_for_backward(input)
-        input, power = input
+    def forward(ctx, input, power):
+        ctx.save_multiple_for_backward([input, power])
         return input.pow(power)
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        input, power = input
+        input, power = ctx.saved_tensors
         return input.pow(power - 1.0).mul_(power).mul_(grad_output)
 
 
 @register_function("pos_pow")
 class AutogradPosPow(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, power = input
+    def forward(ctx, input, power):
         if isinstance(power, int) or (isinstance(power, float) and int(power) == power):
             ctx.save_multiple_for_backward([input, power])
             return input.pow(power)
@@ -747,28 +780,26 @@ class AutogradReciprocal(AutogradFunction):
 @register_function("dot")
 class AutogradDot(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        ctx.save_for_backward(input)
-        return input[0].dot(input[1])
+    def forward(ctx, input, other):
+        ctx.save_multiple_for_backward([input, other])
+        return input.dot(other)
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        self_, other = input
+        self_, other = ctx.saved_tensors
         return (grad_output.mul(other), grad_output.mul(self_))
 
 
 @register_function("ger")
 class AutogradGer(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        ctx.save_for_backward(input)
-        return input[0].ger(input[1])
+    def forward(ctx, input, other):
+        ctx.save_multiple_for_backward([input, other])
+        return input.ger(other)
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
-        input, other = input
+        input, other = ctx.saved_tensors
         return (grad_output.matmul(other), input.matmul(grad_output))
 
 
@@ -868,9 +899,22 @@ class AutogradNorm(AutogradFunction):
 @register_function("sum")
 class AutogradSum(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, dim=None, keepdim=False):
+    def forward(ctx, *args, **kwargs):
+
+        # preprocess inputs:
+        assert len(args) >= 1
+        if len(args) == 1:
+            input, = args  # no dimension to sum over in args
+            dim = kwargs.get("dim", None)
+        else:
+            assert len(args) == 2
+            assert "dim" not in kwargs
+            input, dim = args  # dimension to sum over in args
+        keepdim = kwargs.get("keepdim", False)
+
+        # compute sum:
         ctx.save_multiple_for_backward((input.size(), dim, keepdim))
-        return input.sum(dim=dim, keepdim=keepdim) if dim is not None else input.sum()
+        return input.sum(dim, keepdim=keepdim) if dim is not None else input.sum()
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -883,8 +927,7 @@ class AutogradSum(AutogradFunction):
 @register_function("cumsum")
 class AutogradCumsum(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, dim = input
+    def forward(ctx, input, dim):
         ctx.save_for_backward(dim)
         return input.cumsum(dim)
 
@@ -910,7 +953,20 @@ class AutogradTrace(AutogradFunction):
 @register_function("mean")
 class AutogradMean(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, dim=None, keepdim=False):
+    def forward(ctx, *args, **kwargs):
+
+        # preprocess inputs:
+        assert len(args) >= 1
+        if len(args) == 1:
+            input, = args  # no dimension to average over in args
+            dim = kwargs.get("dim", None)
+        else:
+            assert len(args) == 2
+            assert "dim" not in kwargs
+            input, dim = args  # dimension to average over in args
+        keepdim = kwargs.get("keepdim", False)
+
+        # compute mean:
         ctx.save_multiple_for_backward((input.size(), dim, keepdim))
         return input.mean(dim, keepdim=keepdim) if dim is not None else input.mean()
 
@@ -933,7 +989,20 @@ class AutogradMean(AutogradFunction):
 @register_function("var")
 class AutogradVariance(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, dim=None, keepdim=False):
+    def forward(ctx, *args, **kwargs):
+
+        # preprocess inputs:
+        assert len(args) >= 1
+        if len(args) == 1:
+            input, = args  # no dimension to compute variance over in args
+            dim = kwargs.get("dim", None)
+        else:
+            assert len(args) == 2
+            assert "dim" not in kwargs
+            input, dim = args  # dimension to compute variance over in args
+        keepdim = kwargs.get("keepdim", False)
+
+        # compute variance:
         ctx.save_multiple_for_backward((input, dim, keepdim))
         return input.var(dim, keepdim=keepdim) if dim is not None else input.var()
 
@@ -945,24 +1014,36 @@ class AutogradVariance(AutogradFunction):
         )
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
-        mean = input.mean() if dim is None else input.mean(dim=dim, keepdim=keepdim)
+        mean = input.mean() if dim is None else input.mean(dim, keepdim=keepdim)
         return (input - mean).mul(2.0).mul(grad_output).div(nelement)
 
 
 @register_function("min")
 class AutogradMin(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, dim=None, keepdim=False):
+    def forward(ctx, *args, **kwargs):
+
+        # preprocess inputs:
+        assert len(args) >= 1
+        if len(args) == 1:
+            input, = args  # no dimension to min over in args
+            dim = kwargs.get("dim", None)
+        else:
+            assert len(args) == 2
+            assert "dim" not in kwargs
+            input, dim = args  # dimension to min over in args
+        keepdim = kwargs.get("keepdim", False)
+        one_hot = kwargs.get("one_hot", True)
 
         # find minimum value (and corresponding argmin):
         if dim is None:
-            argmin = input.argmin(one_hot=True)
+            argmin = input.argmin(one_hot=one_hot)
             min = input.mul(argmin).sum()
         else:
-            min, argmin = input.min(dim=dim, keepdim=keepdim, one_hot=True)
+            min, argmin = input.min(dim, keepdim=keepdim, one_hot=one_hot)
 
         # save context and return:
-        ctx.save_multiple_for_backward((dim, keepdim, argmin))
+        ctx.save_multiple_for_backward((dim, keepdim, argmin, one_hot))
         if dim is None:
             return min
         else:
@@ -971,7 +1052,11 @@ class AutogradMin(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        dim, keepdim, argmin = ctx.saved_tensors
+        dim, keepdim, argmin, one_hot = ctx.saved_tensors
+        assert one_hot, (
+            "cannot backpropagate through min layer that does not"
+            "use one-hot representation because private indexing is unsupported"
+        )
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
         return grad_output.mul(argmin)
@@ -980,17 +1065,29 @@ class AutogradMin(AutogradFunction):
 @register_function("max")
 class AutogradMax(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, dim=None, keepdim=False):
+    def forward(ctx, *args, **kwargs):
+
+        # preprocess inputs:
+        assert len(args) >= 1
+        if len(args) == 1:
+            input, = args  # no dimension to max over in args
+            dim = kwargs.get("dim", None)
+        else:
+            assert len(args) == 2
+            assert "dim" not in kwargs
+            input, dim = args  # dimension to max over in args
+        keepdim = kwargs.get("keepdim", False)
+        one_hot = kwargs.get("one_hot", True)
 
         # find maximum value (and corresponding argmax):
         if dim is None:
-            argmax = input.argmax(one_hot=True)
+            argmax = input.argmax(one_hot=one_hot)
             max = input.mul(argmax).sum()
         else:
-            max, argmax = input.max(dim=dim, keepdim=keepdim, one_hot=True)
+            max, argmax = input.max(dim, keepdim=keepdim, one_hot=one_hot)
 
         # save context and return:
-        ctx.save_multiple_for_backward((dim, keepdim, argmax))
+        ctx.save_multiple_for_backward((dim, keepdim, argmax, one_hot))
         if dim is None:
             return max
         else:
@@ -999,7 +1096,11 @@ class AutogradMax(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        dim, keepdim, argmax = ctx.saved_tensors
+        dim, keepdim, argmax, one_hot = ctx.saved_tensors
+        assert one_hot, (
+            "cannot backpropagate through max layer that does not"
+            "use one-hot representation because private indexing is unsupported"
+        )
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
         return grad_output.mul(argmax)
@@ -1022,8 +1123,7 @@ class AutogradSigmoid(AutogradFunction):
 @register_function("softmax")
 class AutogradSoftmax(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, dim = input
+    def forward(ctx, input, dim):
         probs = input.softmax(dim)
         ctx.save_multiple_for_backward([probs, dim])
         return probs
@@ -1041,8 +1141,7 @@ class AutogradSoftmax(AutogradFunction):
 @register_function("log_softmax")
 class AutogradLogSoftmax(AutogradFunction):
     @staticmethod
-    def forward(ctx, input):
-        input, dim = input
+    def forward(ctx, input, dim):
         probs = input.log_softmax(dim)
         ctx.save_multiple_for_backward([probs, dim])
         return probs
@@ -1060,8 +1159,7 @@ class AutogradLogSoftmax(AutogradFunction):
 @register_function("pad")
 class AutogradPad(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, value=0.0, mode="constant"):
-        input, padding = input
+    def forward(ctx, input, padding, value=0.0, mode="constant"):
         ctx.save_for_backward(padding)
         output = input.pad(padding, value=value, mode=mode)
         return output
@@ -1080,10 +1178,9 @@ class AutogradPad(AutogradFunction):
 @register_function("avg_pool2d")
 class AutogradAvgPool2D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, padding=0, stride=None):
+    def forward(ctx, input, kernel_size, padding=0, stride=None):
 
         # preprocess inputs:
-        input, kernel_size = input
         if stride is None:
             stride = kernel_size
         if isinstance(stride, (int, float)):
@@ -1146,10 +1243,9 @@ class AutogradAvgPool2D(AutogradFunction):
 @register_function("max_pool2d")
 class AutogradMaxPool2D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, padding=0, stride=None, return_indices=False):
+    def forward(ctx, input, kernel_size, padding=0, stride=None, return_indices=False):
 
         # preprocess inputs:
-        input, kernel_size = input
         if stride is None:
             stride = kernel_size
         if isinstance(stride, (int, float)):
@@ -1190,8 +1286,7 @@ class AutogradMaxPool2D(AutogradFunction):
 @register_function("conv1d")
 class AutogradConv1D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, padding=0, stride=1):
-        input, kernel = input
+    def forward(ctx, input, kernel, padding=0, stride=1):
         ctx.save_multiple_for_backward((input, kernel, padding, stride))
         return input.conv1d(kernel, padding=padding, stride=stride)
 
@@ -1240,8 +1335,7 @@ class AutogradConv1D(AutogradFunction):
 @register_function("conv2d")
 class AutogradConv2D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, padding=0, stride=1):
-        input, kernel = input
+    def forward(ctx, input, kernel, padding=0, stride=1):
         if isinstance(stride, (int, float)):
             stride = (stride, stride)
         if isinstance(padding, (int, float)):
@@ -1293,7 +1387,7 @@ class AutogradConv2D(AutogradFunction):
             grad_kernel.size(3),
         )
         grad_kernel = (
-            grad_kernel.sum(dim=0)
+            grad_kernel.sum(0)
             .view(in_channels, out_channels, grad_kernel.size(2), grad_kernel.size(3))
             .transpose(0, 1)
         )
@@ -1307,7 +1401,9 @@ class AutogradBatchNorm(AutogradFunction):
     @staticmethod
     def forward(
         ctx,
-        input,
+        x,
+        weight,
+        bias,
         running_mean=None,
         running_var=None,
         training=False,
@@ -1341,7 +1437,6 @@ class AutogradBatchNorm(AutogradFunction):
 
         Returns: (weight * normalized input + bias) of shape `(N, C, +)`.
         """
-        x, weight, bias = input
 
         # determine dimensions over which means and variances are computed
         # for an input of shape (N, C, +), stats are computed over the C dimension
@@ -1354,8 +1449,8 @@ class AutogradBatchNorm(AutogradFunction):
 
         if training:
             # track batch statistics
-            mean = x.mean(dim=stats_dimensions)
-            variance = x.var(dim=stats_dimensions)
+            mean = x.mean(stats_dimensions)
+            variance = x.var(stats_dimensions)
 
             if running_mean is not None and running_var is not None:
                 running_var.set(running_var * (1.0 - momentum) + variance * momentum)
@@ -1414,10 +1509,10 @@ class AutogradBatchNorm(AutogradFunction):
         x_grad = grad_output * weight * inv_var
 
         weight_grad = grad_output.mul(x_norm)
-        weight_grad = weight_grad.sum(dim=stats_dimensions)
+        weight_grad = weight_grad.sum(stats_dimensions)
 
         bias_grad = grad_output.clone()
-        bias_grad = bias_grad.sum(dim=stats_dimensions)
+        bias_grad = bias_grad.sum(stats_dimensions)
 
         return (x_grad, weight_grad, bias_grad)
 
@@ -1425,13 +1520,11 @@ class AutogradBatchNorm(AutogradFunction):
 @register_function("binary_cross_entropy")
 class AutogradBinaryCrossEntropy(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, skip_forward=False):
-        pred, target = input
-        assert pred.size()
-        ctx.save_multiple_for_backward([pred, target])
+    def forward(ctx, pred, target, skip_forward=False):
         ctx.mark_non_differentiable(target)
+        ctx.save_multiple_for_backward([pred, target])
         if skip_forward:
-            return pred
+            return pred.clone()
 
         # Compute full forward pass
         log_pos, log_neg = crypten.stack([pred, 1.0 - pred]).log().unbind(dim=0)
@@ -1449,8 +1542,7 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
 @register_function("binary_cross_entropy_with_logits")
 class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, skip_forward=False):
-        logit, target = input
+    def forward(ctx, logit, target, skip_forward=False):
         sigmoid_out = logit.sigmoid()
         assert (
             sigmoid_out.size() == target.size()
@@ -1458,7 +1550,7 @@ class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
         ctx.mark_non_differentiable(target)
         ctx.save_multiple_for_backward([target, sigmoid_out])
         if skip_forward:
-            return sigmoid_out
+            return sigmoid_out  # TODO: Return None CrypTensor here?
 
         # Compute full forward pass
         log_pos, log_neg = (
@@ -1469,16 +1561,15 @@ class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        saved = ctx.saved_tensors
-        target, sigmoid_out = saved
+        target, sigmoid_out = ctx.saved_tensors
         return (sigmoid_out - target).div(target.nelement())
 
 
 @register_function("cross_entropy")
 class AutogradCrossEntropy(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, skip_forward=False):
-        pred, target = input  # NOTE: target is assumed to be one-hot vector.
+    def forward(ctx, pred, target, skip_forward=False):
+        # NOTE: target is assumed to be one-hot vector.
         softmax = pred.softmax(1)
         ctx.save_multiple_for_backward([softmax, target])
         ctx.mark_non_differentiable(target)

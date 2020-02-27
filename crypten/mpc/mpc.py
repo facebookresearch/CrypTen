@@ -12,7 +12,6 @@ import crypten
 import torch
 from crypten.common.util import pool_reshape
 
-from ..autograd_cryptensor import AutogradCrypTensor
 from ..cryptensor import CrypTensor
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
@@ -64,11 +63,20 @@ def _one_hot_to_index(tensor, dim, keepdim):
 
 
 class MPCTensor(CrypTensor):
-    def __init__(self, input, ptype=Ptype.arithmetic, *args, **kwargs):
-        if input is None:
-            return
+    def __init__(self, tensor, ptype=Ptype.arithmetic, *args, **kwargs):
+
+        # take required_grad from kwargs, input tensor, or set to False:
+        default = tensor.requires_grad if tensor is torch.is_tensor(tensor) else False
+        requires_grad = kwargs.pop("requires_grad", default)
+
+        # call CrypTensor constructor:
+        super().__init__(requires_grad=requires_grad)
+        if tensor is None:
+            return  # TODO: Can we remove this and do staticmethods differently?
+
+        # create the MPCTensor:
         tensor_name = ptype.to_tensor()
-        self._tensor = tensor_name(input, *args, **kwargs)
+        self._tensor = tensor_name(tensor, *args, **kwargs)
         self.ptype = ptype
 
     @staticmethod
@@ -78,8 +86,17 @@ class MPCTensor(CrypTensor):
         """
         return MPCTensor(*args, **kwargs)
 
+    def clone(self):
+        """Create a deep copy of the input tensor."""
+        # TODO: Rename this to __deepcopy__()?
+        result = MPCTensor(None)
+        result._tensor = self._tensor.clone()
+        result.ptype = self.ptype
+        return result
+
     def shallow_copy(self):
-        """Create a shallow copy of the input tensor"""
+        """Create a shallow copy of the input tensor."""
+        # TODO: Rename this to __copy__()?
         result = MPCTensor(None)
         result._tensor = self._tensor
         result.ptype = self.ptype
@@ -123,14 +140,15 @@ class MPCTensor(CrypTensor):
         """Returns a representation of the tensor useful for debugging."""
         from crypten.debug import debug_mode
 
+        if not hasattr(self, "_tensor"):
+            return f"MPCTensor(None)"
         share = self.share
         plain_text = self._tensor.get_plain_text() if debug_mode() else "HIDDEN"
         ptype = self.ptype
-        repr = (
+        return (
             f"MPCTensor(\n\t_tensor={share}\n"
             f"\tplain_text={plain_text}\n\tptype={ptype}\n)"
         )
-        return repr
 
     def __setitem__(self, index, value):
         """Set tensor values by index"""
@@ -213,6 +231,7 @@ class MPCTensor(CrypTensor):
         input tensor."""
         return self > MPCTensor.rand(self.size())
 
+    # TODO: It seems we can remove all Dropout implementations below?
     def dropout(self, p=0.5, training=True, inplace=False):
         r"""
         Randomly zeroes some of the elements of the input tensor with
@@ -225,7 +244,7 @@ class MPCTensor(CrypTensor):
                 Default: ``False``
         """
         assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
-        if training is False:
+        if not training:
             if inplace:
                 return self
             else:
@@ -281,7 +300,7 @@ class MPCTensor(CrypTensor):
         :math:`\text{input}[i, j]`)."""
         assert self.dim() >= 2, "feature dropout requires dimension to be at least 2"
         assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
-        if training is False:
+        if not training:
             if inplace:
                 return self
             else:
@@ -432,14 +451,14 @@ class MPCTensor(CrypTensor):
         # Use either prod or sum & comparison depending on size
         if row_length - 1 < torch.iinfo(torch.long).bits * 2:
             pairwise_comparisons = a.ge(b, _scale=False)
-            result = pairwise_comparisons.prod(dim=0)
+            result = pairwise_comparisons.prod(0)
             result.share *= self.encoder._scale
             result.encoder = self.encoder
         else:
             # Sum of columns with all 1s will have value equal to (length - 1).
             # Using ge() since it is slightly faster than eq()
             pairwise_comparisons = a.ge(b)
-            result = pairwise_comparisons.sum(dim=0).ge(row_length - 1)
+            result = pairwise_comparisons.sum(0).ge(row_length - 1)
         return result
 
         """
@@ -449,10 +468,11 @@ class MPCTensor(CrypTensor):
         """
 
     @mode(Ptype.arithmetic)
-    def argmax(self, dim=None, keepdim=False, one_hot=False):
+    def argmax(self, dim=None, keepdim=False, one_hot=True):
         """Returns the indices of the maximum value of all elements in the
         `input` tensor.
         """
+        # TODO: Make dim an arg.
         if self.dim() == 0:
             return MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
 
@@ -466,15 +486,17 @@ class MPCTensor(CrypTensor):
         return result if one_hot else _one_hot_to_index(result, dim, keepdim)
 
     @mode(Ptype.arithmetic)
-    def argmin(self, dim=None, keepdim=False, one_hot=False):
+    def argmin(self, dim=None, keepdim=False, one_hot=True):
         """Returns the indices of the minimum value of all elements in the
         `input` tensor.
         """
+        # TODO: Make dim an arg.
         return (-self).argmax(dim=dim, keepdim=keepdim, one_hot=one_hot)
 
     @mode(Ptype.arithmetic)
-    def max(self, dim=None, keepdim=False, one_hot=False):
+    def max(self, dim=None, keepdim=False, one_hot=True):
         """Returns the maximum value of all elements in the input tensor."""
+        # TODO: Make dim an arg.
         if dim is None:
             argmax_result = self.argmax(one_hot=True)
             max_result = self.mul(argmax_result).sum()
@@ -488,8 +510,9 @@ class MPCTensor(CrypTensor):
                 return max_result, _one_hot_to_index(argmax_result, dim, keepdim)
 
     @mode(Ptype.arithmetic)
-    def min(self, dim=None, keepdim=False, one_hot=False):
+    def min(self, dim=None, keepdim=False, one_hot=True):
         """Returns the minimum value of all elements in the input tensor."""
+        # TODO: Make dim an arg.
         result = (-self).max(dim=dim, keepdim=keepdim, one_hot=one_hot)
         if dim is None:
             return -result
@@ -1185,9 +1208,7 @@ def _add_oop_unary_passthrough_function(name, preferred=None):
 def _add_oop_binary_passthrough_function(name, preferred=None):
     def ob_wrapper_function(self, value, *args, **kwargs):
         result = self.shallow_copy()
-        if isinstance(value, AutogradCrypTensor):
-            value = value._tensor
-        if isinstance(value, CrypTensor):
+        if isinstance(value, MPCTensor):
             value = value._tensor
         result._tensor = getattr(result._tensor, name)(value, *args, **kwargs)
         return result
@@ -1211,9 +1232,7 @@ def _add_inplace_unary_passthrough_function(name, preferred=None):
 
 def _add_inplace_binary_passthrough_function(name, preferred=None):
     def ib_wrapper_function(self, value, *args, **kwargs):
-        if isinstance(value, AutogradCrypTensor):
-            value = value._tensor
-        if isinstance(value, CrypTensor):
+        if isinstance(value, MPCTensor):
             value = value._tensor
         self._tensor = getattr(self._tensor, name)(value, *args, **kwargs)
         return self
@@ -1238,7 +1257,6 @@ for func_name, preferred_type in INPLACE_BINARY_FUNCTIONS.items():
 
 
 REGULAR_FUNCTIONS = [
-    "clone",
     "__getitem__",
     "index_select",
     "view",
@@ -1266,6 +1284,11 @@ PROPERTY_FUNCTIONS = ["__len__", "nelement", "dim", "size", "numel"]
 
 
 def _add_regular_function(function_name):
+    """
+    Adds function to `MPCTensor` that is applied directly on the underlying
+    `_tensor` attribute, and stores the result in the same attribute.
+    """
+
     def regular_func(self, *args, **kwargs):
         result = self.shallow_copy()
         result._tensor = getattr(result._tensor, function_name)(*args, **kwargs)
@@ -1275,6 +1298,11 @@ def _add_regular_function(function_name):
 
 
 def _add_property_function(function_name):
+    """
+    Adds function to `MPCTensor` that is applied directly on the underlying
+    `_tensor` attribute, and returns the result of that function.
+    """
+
     def property_func(self, *args, **kwargs):
         return getattr(self._tensor, function_name)(*args, **kwargs)
 

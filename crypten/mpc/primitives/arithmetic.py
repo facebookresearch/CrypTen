@@ -23,7 +23,7 @@ SENTINEL = -1
 
 
 # MPC tensor where shares additive-sharings.
-class ArithmeticSharedTensor(CrypTensor):
+class ArithmeticSharedTensor(object):
     """
         Encrypted tensor object that uses additive sharing to perform computations.
 
@@ -441,7 +441,7 @@ class ArithmeticSharedTensor(CrypTensor):
         value in index for dimension = dim.
         """
         public = isinstance(other, (int, float)) or torch.is_tensor(other)
-        private = isinstance(other, CrypTensor)
+        private = isinstance(other, ArithmeticSharedTensor)
         if public:
             if self.rank == 0:
                 self.share.scatter_add_(dim, index, self.encoder.encode(other))
@@ -567,6 +567,24 @@ class ArithmeticSharedTensor(CrypTensor):
         """
         result = self.clone()
         return result.scatter_(dim, index, src)
+
+    # overload operators:
+    __add__ = add
+    __iadd__ = add_
+    __radd__ = __add__
+    __sub__ = sub
+    __isub__ = sub_
+    __mul__ = mul
+    __imul__ = mul_
+    __rmul__ = __mul__
+    __div__ = div
+    __truediv__ = div
+    __itruediv__ = div_
+    __neg__ = neg
+
+    def __rsub__(self, tensor):
+        """Subtracts self from tensor."""
+        return -self + tensor
 
 
 REGULAR_FUNCTIONS = [
