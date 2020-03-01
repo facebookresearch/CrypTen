@@ -15,7 +15,6 @@ import torch
 # other imports:
 from . import debug
 from .cryptensor import CrypTensor
-from .mpc import ptype
 
 
 # functions controlling autograd:
@@ -43,12 +42,6 @@ def uninit():
 
 def is_initialized():
     return comm.is_initialized()
-
-
-# the different private type attributes of an mpc encrypted tensor
-arithmetic = ptype.arithmetic
-binary = ptype.binary
-# TODO: The above can be removed?
 
 
 def print_communication_stats():
