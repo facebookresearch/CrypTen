@@ -16,7 +16,7 @@ from crypten.encoder import FixedPointEncoder, nearest_integer_division
 
 def get_test_tensor(max_value=10, float=False):
     """Create simple test tensor."""
-    tensor = torch.LongTensor([value for value in range(max_value)])
+    tensor = torch.LongTensor(list(range(max_value)))
     if float:
         tensor = tensor.float()
     return tensor

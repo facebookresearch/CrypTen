@@ -61,8 +61,7 @@ class MSELoss(_Loss):
 
     where :math:`N` is the batch size, :math:`x` and :math:`y` are tensors of
     arbitrary shapes with a total of :math:`n` elements each.
-
-    """
+    """  # noqa: W605
 
     def forward(self, x, y):
         assert x.size() == y.size(), "input and target must have the same size"
@@ -82,7 +81,7 @@ class L1Loss(_Loss):
 
     where :math:`N` is the batch size, :math:`x` and :math:`y` are tensors of
     arbitrary shapes with a total of :math:`n` elements each.
-    """
+    """  # noqa: W605
 
     def forward(self, x, y):
         assert x.size() == y.size(), "input and target must have the same size"
@@ -106,7 +105,7 @@ class BCELoss(_Loss):
     This is used for measuring the error of a reconstruction in for example
     an auto-encoder. Note that the targets :math:`y` should be numbers
     between 0 and 1.
-    """
+    """  # noqa: W605
 
     def forward(self, x, y):
         assert x.size() == y.size(), "input and target must have the same size"
@@ -140,7 +139,7 @@ class CrossEntropyLoss(_Loss):
     Can also be used for higher dimension inputs, such as 2D images, by providing
     an input of size :math:`(N, C, d_1, d_2, ..., d_K)` with :math:`K \geq 1`,
     where :math:`K` is the number of dimensions, and a target of appropriate shape.
-    """
+    """  # noqa: W605
 
     def forward(self, x, y):
         assert x.size() == y.size(), "input and target must have the same size"
@@ -159,7 +158,7 @@ class BCEWithLogitsLoss(_Loss):
 
     This is used for measuring the error of a reconstruction in for example an
     auto-encoder. Note that the targets t[i] should be numbers between 0 and 1.
-    """
+    """  # noqa: W605
 
     def forward(self, x, y):
         assert x.size() == y.size(), "input and target must have the same size"
