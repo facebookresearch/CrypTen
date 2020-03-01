@@ -54,8 +54,8 @@ class DistributedCommunicator(Communicator):
                 world_size=total_ws,
                 rank=self.rank,
             )
-            self.ttp_group = dist.new_group([i for i in range(total_ws)])
-            self.main_group = dist.new_group([i for i in range(self.world_size)])
+            self.ttp_group = dist.new_group(list(range(total_ws)))
+            self.main_group = dist.new_group(list(range(self.world_size)))
             self.ttp_initialized = init_ttp
             logging.info("World size = %d" % self.world_size)
 
@@ -138,7 +138,7 @@ class DistributedCommunicator(Communicator):
             dist.scatter(tensor, [], src, group=self.main_group)
         else:
             tensor = scatter_list[self.get_rank()]
-            dist.scatter(tensor, [t for t in scatter_list], src, group=self.main_group)
+            dist.scatter(tensor, list(scatter_list), src, group=self.main_group)
         return tensor
 
     @_logging
