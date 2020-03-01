@@ -8,7 +8,7 @@
 from collections import OrderedDict
 
 import crypten
-import torch.nn
+import torch
 
 
 class Module:
@@ -30,12 +30,12 @@ class Module:
         """
         raise NotImplementedError("Call this function on a Module type.")
 
-    def forward(self, *args):
+    def forward(self, *args, **kwargs):
         """Perform forward pass on model."""
         raise NotImplementedError("forward not implemented")
 
-    def __call__(self, input):
-        return self.forward(input)
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
 
     def train(self, mode=True):
         """Sets the module in the specified training mode."""
@@ -107,10 +107,17 @@ class Module:
     def update_parameters(self, learning_rate):
         """Performs gradient step on parameters."""
         assert self.training, "module not in training mode"
-        with crypten.no_grad():
+        with crypten.no_grad(), torch.no_grad():
             for param in self.parameters():
-                if param.grad is not None:
-                    param.sub_(param.grad.mul(learning_rate))
+                if param.grad is None:
+                    continue
+                if not self.encrypted and isinstance(param.grad, crypten.CrypTensor):
+                    raise RuntimeError(
+                        "Cannot update parameters of unencrypted "
+                        "model using encrypted gradients. Encrypt "
+                        "model before updating parameters."
+                    )
+                param.sub_(param.grad.mul(learning_rate))
 
     def register_buffer(self, name, buffer):
         """
@@ -185,6 +192,28 @@ class Module:
     def decrypt(self):
         """Decrypts model."""
         return self.encrypt(mode=False)
+
+    def __getattribute__(self, name):
+        if name != "forward":
+            return object.__getattribute__(self, name)
+        else:
+
+            def forward_function(*args, **kwargs):
+                """Silently encrypt Torch inputs tensors if needed."""
+                if self.encrypted:
+                    args = list(args)
+                    for idx, arg in enumerate(args):
+                        if torch.is_tensor(arg):
+                            args[idx] = crypten.cryptensor(arg)
+                else:
+                    if any(isinstance(arg, crypten.CrypTensor) for arg in args):
+                        raise RuntimeError(
+                            "Cannot input CrypTensors into unencrypted model."
+                            "Encrypt the model before feeding it CrypTensors."
+                        )
+                return object.__getattribute__(self, name)(*tuple(args), **kwargs)
+
+            return forward_function
 
     def __getattr__(self, name):
         """Redefine __getattr__ so that any parameters, modules or buffers

@@ -95,8 +95,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         prior_value = CrypTensor.AUTOGRAD_ENABLED
         CrypTensor.set_grad_enabled(False)
-        yield
-        CrypTensor.set_grad_enabled(prior_value)
+        try:
+            yield
+        finally:
+            CrypTensor.set_grad_enabled(prior_value)
 
     @staticmethod
     @contextmanager
@@ -106,8 +108,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         prior_value = CrypTensor.AUTOGRAD_ENABLED
         CrypTensor.set_grad_enabled(True)
-        yield
-        CrypTensor.set_grad_enabled(prior_value)
+        try:
+            yield
+        finally:
+            CrypTensor.set_grad_enabled(prior_value)
 
     @staticmethod
     def set_grad_enabled(mode):
@@ -154,7 +158,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         Backpropagates gradient through the computation graph. The function
         only maintains the gradients in leaf nodes of the graph.
         """
-
         if self.requires_grad:
             with CrypTensor.no_grad():  # disable autograd for backward pass
 
@@ -184,10 +187,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 # check that we can actually backpropagate:
                 if self.grad_fn is None:
                     raise ValueError("Cannot call backward() before forward().")
-                if self.grad_fn is None:
-                    raise NotImplementedError(
-                        "Gradient for {} not implemented.".format(self.grad_fn)
-                    )
 
                 # perform backpropagation:
                 grad = self.grad_fn.backward(self.ctx, grad_input)
@@ -202,7 +201,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                     grad = (grad,)
                 assert len(differentiable_children) <= len(
                     grad
-                ), "number of gradients to backpropagate does not match number of children"
+                ), "number of gradients does not match number of children"
                 for idx, child in enumerate(differentiable_children):
                     child.backward(grad_input=grad[idx], top_node=False)
                     # TODO: Confirm that indexing over grad is okay.
