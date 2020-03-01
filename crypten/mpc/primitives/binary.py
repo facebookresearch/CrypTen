@@ -12,7 +12,6 @@ import crypten.communicator as comm
 # dependencies:
 import torch
 from crypten.common.rng import generate_kbit_random_tensor
-from crypten.cryptensor import CrypTensor
 from crypten.encoder import FixedPointEncoder
 
 from . import beaver, circuit
@@ -55,11 +54,11 @@ class BinarySharedTensor(object):
             self.share ^= tensor
 
     @staticmethod
-    def from_shares(share, src=0):
+    def from_shares(share, precision=None, src=0):
         """Generate a BinarySharedTensor from a share from each party"""
         result = BinarySharedTensor(src=SENTINEL)
         result.share = share
-        result.encoder = FixedPointEncoder(precision_bits=0)
+        result.encoder = FixedPointEncoder(precision_bits=precision)
         return result
 
     @staticmethod
@@ -249,7 +248,7 @@ class BinarySharedTensor(object):
         raise NotImplementedError("BinarySharedTensor trace not implemented")
 
     def reveal(self, dst=None):
-        """Get plaintext without any downscaling"""
+        """Decrypts the tensor without any downscaling."""
         if dst is None:
             shares = comm.get().all_gather(self.share)
         else:
@@ -257,7 +256,7 @@ class BinarySharedTensor(object):
         return reduce(lambda x, y: x ^ y, shares)
 
     def get_plain_text(self, dst=None):
-        """Decrypt the tensor"""
+        """Decrypts the tensor."""
         # Edge case where share becomes 0 sized (e.g. result of split)
         if self.nelement() < 1:
             return torch.empty(self.share.size())
