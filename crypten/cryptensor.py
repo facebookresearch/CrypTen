@@ -132,7 +132,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         self._reset_gradients()
 
     def __new__(cls, *args, **kwargs):
-        # TODO: Add test that confirms CrypTensor cannot be instantiated.
         if cls is CrypTensor:
             raise TypeError("CrypTensor class cannot be instantiated directly.")
         return object.__new__(cls)

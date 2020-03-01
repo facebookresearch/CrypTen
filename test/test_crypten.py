@@ -125,6 +125,14 @@ class TestCrypten(MultiProcessTestCase):
         self.assertTrue(getattr(tensor, "is_custom_type", False))
         self.assertEqual(crypten.get_cryptensor_type(tensor), cryptensor_name)
 
+    def test_cryptensor_instantiation(self):
+        """Tests that CrypTensors cannot be instantiated."""
+        tensor = get_random_test_tensor()
+        with self.assertRaises(TypeError):
+            encrypted_tensor = crypten.CrypTensor(tensor)
+        encrypted_tensor = crypten.mpc.MPCTensor(tensor)
+        self.assertIsInstance(encrypted_tensor, crypten.CrypTensor)
+
     def test_ptype(self):
         """Test that ptype attribute creates the correct type of encrypted tensor"""
         ptype_values = [crypten.arithmetic, crypten.binary]
