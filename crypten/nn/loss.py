@@ -5,6 +5,9 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import crypten
+import torch
+
 from .module import Module
 
 
@@ -20,11 +23,29 @@ class _Loss(Module):
         self.reduction = reduction
         self.skip_forward = skip_forward
 
-    def forward(self, x, y):
+    def forward(self, *args, **kwargs):
         raise NotImplementedError("forward not implemented")
 
-    def __call__(self, x, y):
-        return self.forward(x, y)
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
+    def __getattribute__(self, name):
+        if name != "forward":
+            return object.__getattribute__(self, name)
+        else:
+
+            def forward_function(*args, **kwargs):
+                """Silently encrypt Torch tensors if needed."""
+                if self.encrypted or any(
+                    isinstance(arg, crypten.CrypTensor) for arg in args
+                ):
+                    args = list(args)
+                    for idx, arg in enumerate(args):
+                        if torch.is_tensor(arg):
+                            args[idx] = crypten.cryptensor(arg)
+                return object.__getattribute__(self, name)(*tuple(args), **kwargs)
+
+            return forward_function
 
 
 class MSELoss(_Loss):
