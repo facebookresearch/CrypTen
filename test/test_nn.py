@@ -897,6 +897,54 @@ class TestNN(object):
                         f"{stat} momentum update in module incorrect",
                     )
 
+    def test_unencrypted_modules(self):
+        """Tests crypten.Modules without encrypting them."""
+
+        # generate input:
+        input_size = (32, 16)
+        output_size = (input_size[0], 8)
+        sample = get_random_test_tensor(size=input_size, is_float=True)
+        target = get_random_test_tensor(size=output_size, is_float=True)
+
+        # create model and criterion:
+        linear = crypten.nn.Linear(input_size[1], output_size[1])
+        criterion = crypten.nn.MSELoss()
+
+        # function running the actual test:
+        def _run_test(_sample, _target):
+
+            # forward pass fails when feeding encrypted input into unencrypted model:
+            linear.zero_grad()
+            if not linear.encrypted and not torch.is_tensor(_sample):
+                with self.assertRaises(RuntimeError):
+                    output = linear(_sample)
+                return
+
+            # forward pass succeeds in other cases:
+            output = linear(_sample)
+            loss = criterion(output, _target)
+            self.assertIsNotNone(loss)
+
+            # backward pass succeeds in other cases:
+            loss.backward()
+            for param in linear.parameters():
+                self.assertIsNotNone(param.grad)
+
+            # test parameter update:
+            original_params = [param.clone() for param in linear.parameters()]
+            linear.update_parameters(1.0)
+            for idx, param in enumerate(linear.parameters()):
+                diff = param.sub(original_params[idx]).abs().mean()
+                if isinstance(diff, crypten.CrypTensor):
+                    diff = diff.get_plain_text()
+                self.assertGreater(diff.item(), 1e-4)
+
+        # test both tensor types in models with and without encryption:
+        for encrypted in [False, True, False, True]:
+            linear.encrypt(mode=encrypted)
+            _run_test(sample, target)
+            _run_test(crypten.cryptensor(sample), crypten.cryptensor(target))
+
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestNN):
