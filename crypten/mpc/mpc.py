@@ -794,7 +794,7 @@ class MPCTensor(CrypTensor):
 
         Args:
             iterations (int): number of iterations for limit approximation
-        """
+        """  # noqa: W605
         result = 1 + self.div(2 ** iterations)
         for _ in range(iterations):
             result = result.square()
@@ -890,8 +890,7 @@ class MPCTensor(CrypTensor):
         `broadcastable`_.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
         result = self.clone()
         if isinstance(y, CrypTensor):
             result.share = torch.broadcast_tensors(result.share, y.share)[0].clone()

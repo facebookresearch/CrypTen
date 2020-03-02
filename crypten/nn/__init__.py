@@ -208,8 +208,8 @@ def from_onnx(onnx_string_or_file):
     crypten_model = Graph(input_names[0], output_names[0])
     for node in onnx_model.graph.node:
         # retrieve inputs, outputs, attributes, and parameters for this node:
-        node_output_name = [name for name in node.output][0]
-        node_input_names = [name for name in node.input]  # includes parameters
+        node_output_name = list(node.output)[0]
+        node_input_names = list(node.input)  # includes parameters
         parameters = {
             get_parameter_name(name): all_parameters[name]
             for name in node_input_names
