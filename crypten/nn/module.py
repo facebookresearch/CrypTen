@@ -85,6 +85,31 @@ class Module:
             raise ValueError("Parameter %s does not exist." % name)
         self._parameters[name] = param
         setattr(self, name, param)
+        # FIXME: Naming logic for get/set_parameters when recursing.
+
+    def set_parameter_from_shares(self, name, share, **kwargs):
+        """
+        Sets value of parameter in the module from shares. This functionality is
+        only for MPC-encrypted models.
+
+        Supported named arguments for `MPCTensor` parameters include the `precision`
+        of the encoder (default = `None`), the rank of the `src` (default = 0),
+        and the `ptype` of the shares (default = `crypten.mpc.arithmetic`).
+        """
+
+        # functionality is only supported when parameters are MPCTensors:
+        assert self.encrypted, "can only set parameters from shares in encrypted models"
+        if name not in self._parameters or not hasattr(self, name):
+            raise ValueError("Parameter %s does not exist." % name)
+        cls = type(self._parameters[name])
+        assert hasattr(
+            self._parameters[name], "from_shares"
+        ), "parameter type {} does not supporting setting from shares".format(cls)
+
+        # load parameters from shares:
+        self._parameters[name] = cls.from_shares(share, **kwargs)
+        setattr(self, name, self._parameters[name])
+        # FIXME: Naming logic for get/set_parameters when recursing.
 
     def parameters(self, recurse=True):
         """Iterator over parameters."""
@@ -98,6 +123,7 @@ class Module:
         if recurse:
             for module in self.modules():
                 yield from module.named_parameters(recurse=recurse)
+                # FIXME: Naming logic for get/set_parameters when recursing.
 
     def zero_grad(self):
         """Sets gradients of all parameters to zero."""

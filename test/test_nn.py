@@ -17,7 +17,9 @@ from test.multiprocess_test_case import (
 import crypten
 import crypten.communicator as comm
 import torch
+from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
+from crypten.encoder import FixedPointEncoder
 
 
 class TestNN(object):
@@ -72,6 +74,50 @@ class TestNN(object):
         # We don't want the main process (rank -1) to initialize the communicator
         if self.rank >= 0:
             crypten.init()
+
+    def test_from_shares(self):
+        """Tests crypten.nn.Module.set_parameter_from_shares() functionality."""
+
+        # create simple model:
+        input_size, output_size = 3, 10
+        model = crypten.nn.Linear(input_size, output_size)
+
+        # helper function that creates arithmetically shared tensor of some size:
+        def _generate_parameters(size):
+            num_parties = int(self.world_size)
+            reference = get_random_test_tensor(size=size, is_float=False)
+            zero_shares = generate_random_ring_element((num_parties, *size))
+            zero_shares = zero_shares - zero_shares.roll(1, dims=0)
+            shares = list(zero_shares.unbind(0))
+            shares[0] += reference
+            return shares, reference
+
+        # generate new set of parameters:
+        all_shares, all_references = {}, {}
+        for name, param in model.named_parameters():
+            shares, reference = _generate_parameters(param.size())
+            share = comm.get().scatter(shares, 0)
+            all_shares[name] = share
+            all_references[name] = reference
+
+        # cannot load parameters from share when model is not encrypted:
+        with self.assertRaises(AssertionError):
+            for name, share in all_shares.items():
+                model.set_parameter_from_shares(name, share)
+
+        # cannot load shares into non-existent parameters:
+        model.encrypt()
+        with self.assertRaises(ValueError):
+            model.set_parameter_from_shares("__DUMMY__", None)
+
+        # load parameter shares into model and check results:
+        for name, share in all_shares.items():
+            model.set_parameter_from_shares(name, share)
+        model.decrypt()
+        encoder = FixedPointEncoder()
+        for name, param in model.named_parameters():
+            reference = encoder.decode(all_references[name])
+            self.assertTrue(torch.allclose(param, reference))
 
     def test_global_avg_pool_module(self):
         """
