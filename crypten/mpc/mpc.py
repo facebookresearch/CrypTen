@@ -53,12 +53,12 @@ def _one_hot_to_index(tensor, dim, keepdim):
     """
     if dim is None:
         result = tensor.flatten()
-        result = result * torch.tensor([i for i in range(tensor.nelement())])
+        result = result * torch.tensor(list(range(tensor.nelement())))
         return result.sum()
     else:
         size = [1] * tensor.dim()
         size[dim] = tensor.size(dim)
-        result = tensor * torch.tensor([i for i in range(tensor.size(dim))]).view(size)
+        result = tensor * torch.tensor(list(range(tensor.size(dim)))).view(size)
         return result.sum(dim, keepdim=keepdim)
 
 
@@ -75,8 +75,8 @@ class MPCTensor(CrypTensor):
             return  # TODO: Can we remove this and do staticmethods differently?
 
         # create the MPCTensor:
-        tensor_name = ptype.to_tensor()
-        self._tensor = tensor_name(tensor, *args, **kwargs)
+        tensor_type = ptype.to_tensor()
+        self._tensor = tensor_type(tensor, *args, **kwargs)
         self.ptype = ptype
 
     @staticmethod
@@ -85,6 +85,14 @@ class MPCTensor(CrypTensor):
         Creates a new MPCTensor, passing all args and kwargs into the constructor.
         """
         return MPCTensor(*args, **kwargs)
+
+    @staticmethod
+    def from_shares(share, precision=None, src=0, ptype=Ptype.arithmetic):
+        result = MPCTensor(None)
+        from_shares = ptype.to_tensor().from_shares
+        result._tensor = from_shares(share, precision=precision, src=src)
+        result.ptype = ptype
+        return result
 
     def clone(self):
         """Create a deep copy of the input tensor."""
@@ -125,8 +133,12 @@ class MPCTensor(CrypTensor):
         return self.to(Ptype.binary)
 
     def get_plain_text(self, dst=None):
-        """Decrypts the tensor"""
+        """Decrypts the tensor."""
         return self._tensor.get_plain_text(dst=dst)
+
+    def reveal(self, dst=None):
+        """Decrypts the tensor without any downscaling."""
+        return self._tensor.reveal(dst=dst)
 
     def __bool__(self):
         """Override bool operator since encrypted tensors cannot evaluate"""
