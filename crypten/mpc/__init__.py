@@ -17,6 +17,9 @@ from .ptype import ptype
 
 __all__ = ["MPCTensor", "primitives", "provider", "ptype", "run_multiprocess"]
 
+# the different private type attributes of an mpc encrypted tensor
+arithmetic = ptype.arithmetic
+binary = ptype.binary
 
 # Set provider
 __SUPPORTED_PROVIDERS = {

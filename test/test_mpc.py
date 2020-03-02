@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
 from crypten.mpc import MPCTensor, ptype as Ptype
+from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 
 class TestMPC(object):
@@ -248,6 +249,15 @@ class TestMPC(object):
             reference = tensor.prod(dim).float()
             encrypted_out = encrypted.prod(dim)
             self._check(encrypted_out, reference, "prod failed")
+
+    def test_ptype(self):
+        """Test that ptype attribute creates the correct type of encrypted tensor"""
+        ptype_values = [crypten.mpc.arithmetic, crypten.mpc.binary]
+        tensor_types = [ArithmeticSharedTensor, BinarySharedTensor]
+        for i, curr_ptype in enumerate(ptype_values):
+            tensor = get_random_test_tensor(is_float=False)
+            encr_tensor = crypten.cryptensor(tensor, ptype=curr_ptype)
+            assert isinstance(encr_tensor._tensor, tensor_types[i]), "ptype test failed"
 
     def test_div(self):
         """Tests division of encrypted tensor by scalar and tensor."""
