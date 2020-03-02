@@ -5,13 +5,10 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import warnings
-
 import torch
 import torch.onnx.symbolic_helper as sym_help
 import torch.onnx.symbolic_registry as sym_registry
 from onnx import numpy_helper
-from torch.onnx import OperatorExportTypes
 
 
 def get_parameter_name(name):

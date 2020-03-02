@@ -854,7 +854,7 @@ class Linear(Module):
           additional dimensions and :math:`H_{in} = \text{in\_features}`
         - Output: :math:`(N, *, H_{out})` where all but the last dimension
           are the same shape as the input and :math:`H_{out} = \text{out\_features}`.
-    """
+    """  # noqa: W605
 
     def __init__(self, in_features, out_features, bias=True):
         super().__init__()
@@ -966,7 +966,7 @@ class Conv1d(Module):
 
     .. _link:
         https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
-    """
+    """  # noqa: W605
 
     def __init__(
         self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True
@@ -1370,8 +1370,8 @@ class AvgPool2d(_Pool2d):
         \sum_{n=0}^{kW-1} input(N_i, C_j, stride[0] \times h + m, stride[1]
         \times w + n)
 
-    If :attr:`padding` is non-zero, then the input is implicitly zero-padded on both sides
-    for :attr:`padding` number of points.
+    If :attr:`padding` is non-zero, then the input is implicitly zero-padded on
+    both sides for :attr:`padding` number of points.
 
     The parameters :attr:`kernel_size`, :attr:`stride`, :attr:`padding` can either be:
 

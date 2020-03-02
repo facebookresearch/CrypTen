@@ -336,8 +336,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             \text{{out_i}} = \text{{input_i}} + \text{{tensor}}
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
         raise NotImplementedError("add is not implemented")
 
     def __add__(self, tensor):
@@ -360,8 +359,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         `broadcastable`_ with the shape of :attr:`self`.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
         raise NotImplementedError("sub is not implemented")
 
     def __sub__(self, tensor):
@@ -393,8 +391,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         `broadcastable`_.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
         raise NotImplementedError("mul is not implemented")
 
     def __mul__(self, tensor):
@@ -426,8 +423,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             tensor (Tensor or float): the tensor or value in the denominator.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
         raise NotImplementedError("div is not implemented")
 
     def __div__(self, tensor):
@@ -469,8 +465,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
           2-dimensional, a 1 is prepended to its dimension for the purpose of
           the matrix multiply. After the matrix multiply, the
           prepended dimension is removed.
-        - If the first argument is 2-dimensional and the second argument is 1-dimensional,
-          the matrix-vector product is returned.
+        - If the first argument is 2-dimensional and the second argument is
+          1-dimensional, the matrix-vector product is returned.
         - If both arguments are at least 1-dimensional and at least one argument
           is N-dimensional (where N > 2), then a batched matrix multiply is returned.
           If the first argument is 1-dimensional, a 1 is prepended to its dimension
@@ -479,15 +475,15 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
           for the purpose of the batched matrix multiple and removed after.
           The non-matrix (i.e. batch) dimensions are broadcasted (and thus
           must be `broadcastable`_).  For example, if :attr:`self` is a
-          :math:`(j \times 1 \times n \times m)` tensor and :attr:`tensor` is a :math:`(k \times m \times p)`
-          tensor, :attr:`out` will be an :math:`(j \times k \times n \times p)` tensor.
+          :math:`(j \times 1 \times n \times m)` tensor and :attr:`tensor` is a
+          :math:`(k \times m \times p)` tensor, :attr:`out` will be an
+          :math:`(j \times k \times n \times p)` tensor.
 
         Arguments:
             tensor (Tensor): the tensor to be multiplied
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
         raise NotImplementedError("matmul is not implemented")
 
     def __matmul__(self, tensor):
@@ -545,12 +541,12 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
         If :attr:`keepdim` is True, the output tensor are of the same size as
         :attr:`self` except in the dimension :attr:`dim` where they are of size 1.
-        Otherwise, :attr:`dim` is squeezed, resulting in the output tensors having 1
-        fewer dimension than :attr:`self`.
+        Otherwise, :attr:`dim` is squeezed, resulting in the output tensors
+        having 1 fewer dimension than :attr:`self`.
 
-        If :attr:`one_hot` is True, the output tensor will have the same size as the
-        :attr:`self` and contain elements of value `1` on argmax indices (with random
-        tiebreaking) and value `0` on other indices.
+        If :attr:`one_hot` is True, the output tensor will have the same size as
+        the :attr:`self` and contain elements of value `1` on argmax indices
+        (with random tiebreaking) and value `0` on other indices.
         """
         raise NotImplementedError("argmax is not implemented")
 
@@ -565,12 +561,12 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
         If :attr:`keepdim` is True, the output tensor are of the same size as
         :attr:`self` except in the dimension :attr:`dim` where they are of size 1.
-        Otherwise, :attr:`dim` is squeezed, resulting in the output tensors having 1
-        fewer dimension than :attr:`self`.
+        Otherwise, :attr:`dim` is squeezed, resulting in the output tensors
+        having 1 fewer dimension than :attr:`self`.
 
-        If :attr:`one_hot` is True, the output tensor will have the same size as the
-        :attr:`self` and contain elements of value `1` on argmin indices (with random
-        tiebreaking) and value `0` on other indices.
+        If :attr:`one_hot` is True, the output tensor will have the same size as
+        the :attr:`self` and contain elements of value `1` on argmin indices
+        (with random tiebreaking) and value `0` on other indices.
         """
         raise NotImplementedError("argmin is not implemented")
 
@@ -579,13 +575,14 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
         If :attr:`dim` is specified, returns a tuple `(values, indices)` where
         `values` is the maximum value of each row of :attr:`self` in the
-        given dimension :attr:`dim`. And `indices` is the result of an :meth:`argmax` call with
-        the same keyword arguments (:attr:`dim`, :attr:`keepdim`, and :attr:`one_hot`)
+        given dimension :attr:`dim`. And `indices` is the result of an
+        :meth:`argmax` call with the same keyword arguments (:attr:`dim`,
+        :attr:`keepdim`, and :attr:`one_hot`)
 
         If :attr:`keepdim` is True, the output tensors are of the same size as
         :attr:`self` except in the dimension :attr:`dim` where they are of size 1.
-        Otherwise, :attr:`dim` is squeezed, resulting in the output tensors having 1
-        fewer dimension than :attr:`self`
+        Otherwise, :attr:`dim` is squeezed, resulting in the output tensors
+        having 1 fewer dimension than :attr:`self`.
         """
         raise NotImplementedError("max is not implemented")
 
@@ -594,13 +591,14 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
         If `dim` is sepcified, returns a tuple `(values, indices)` where
         `values` is the minimum value of each row of :attr:`self` tin the
-        given dimension :attr:`dim`. And :attr:`indices` is the result of an :meth:`argmin` call with
-        the same keyword arguments (:attr:`dim`, :attr:`keepdim`, and :attr:`one_hot`)
+        given dimension :attr:`dim`. And :attr:`indices` is the result of an
+        :meth:`argmin` call with the same keyword arguments (:attr:`dim`,
+        :attr:`keepdim`, and :attr:`one_hot`)
 
         If `keepdim` is True, the output tensors are of the same size as
         :attr:`self` except in the dimension :attr:`dim` where they are of size 1.
-        Otherwise, :attr:`dim` is squeezed, resulting in the output tensors having 1
-        fewer dimension than :attr:`self`
+        Otherwise, :attr:`dim` is squeezed, resulting in the output tensors
+        having 1 fewer dimension than :attr:`self`.
         """
         raise NotImplementedError("min is not implemented")
 
@@ -630,10 +628,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         along with the outputs.
 
         These indices will be returned as with dimensions equal to the
-        ``max_pool2d`` output dimensions plus the kernel dimensions. This is because
-        each returned index will be a one-hot kernel for each element of the
-        output that corresponds to the maximal block element of the corresponding
-        input block.
+        ``max_pool2d`` output dimensions plus the kernel dimensions. This is
+        because each returned index will be a one-hot kernel for each element of
+        the output that corresponds to the maximal block element of the
+        corresponding input block.
 
         A max pool with output tensor of size :math:`(i, j, k, l)` with kernel
         size :math:`m` and will return an index tensor of size
@@ -679,8 +677,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, will do this operation in-place. Default: ``False``
-
+            inplace: If set to ``True``, operation is in-place (default=``False``).
         """
         raise NotImplementedError("dropout is not implemented")
 
@@ -695,7 +692,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, will do this operation in-place. Default: ``False``
+            inplace: If set to ``True``, operation is in-place (default=``False``).
         """
         raise NotImplementedError("dropout2d is not implemented")
 
@@ -703,14 +700,14 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         r"""
         Randomly zero out entire channels (a channel is a 3D feature map,
         e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
-        batched input is a 3D tensor :math:`\text{input}[i, j]`) of the input tensor).
-        Each channel will be zeroed out independently on every forward call with
-        probability :attr:`p` using samples from a Bernoulli distribution.
+        batched input is a 3D tensor :math:`\text{input}[i, j]`) of the input
+        tensor). Each channel will be zeroed out independently on every forward
+        call with probability :attr:`p` using samples from a Bernoulli distribution.
 
         Args:
             p: probability of a channel to be zeroed. Default: 0.5
             training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, will do this operation in-place. Default: ``False``
+            inplace: If set to ``True``, operation is in-place (default=``False``)
         """
         raise NotImplementedError("dropout3d is not implemented")
 
@@ -781,8 +778,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             tensor (Tensor or float): the tensor or value to compare.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B509
         raise NotImplementedError("eq is not implemented")
 
     def __eq__(self, tensor):
@@ -803,8 +799,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             comparison is true.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B509
         raise NotImplementedError("ne is not implemented")
 
     def __ne__(self, tensor):
@@ -821,12 +816,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             tensor (Tensor or float): the tensor or value to compare
 
         Returns:
-            an encrypted boolean valued tensor containing a True at each location where
-            comparison is true
+            an encrypted boolean valued tensor containing a ``True`` at each
+            location where comparison is true
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B509
         raise NotImplementedError("ge is not implemented")
 
     def __ge__(self, tensor):
@@ -843,12 +837,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             tensor (Tensor or float): the tensor or value to compare.
 
         Returns:
-            an encrypted boolean valued tensor containing a True at each location where
-            comparison is true
+            an encrypted boolean valued tensor containing a True at each
+            location where comparison is true
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B509
         raise NotImplementedError("gt is not implemented")
 
     def __gt__(self, tensor):
@@ -865,12 +858,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             tensor (Tensor or float): the tensor or value to compare.
 
         Returns:
-            an encrypted boolean valued tensor containing a True at each location where
-            comparison is true
+            an encrypted boolean valued tensor containing a True at each
+            location where comparison is true
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B509
         raise NotImplementedError("le is not implemented")
 
     def __le__(self, tensor):
@@ -887,12 +879,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             tensor (Tensor or float): the tensor or value to compare.
 
         Returns:
-            an encrypted boolean valued tensor containing a True at each location where
-            comparison is true
+            an encrypted boolean valued tensor containing a True at each
+            location where comparison is true
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B509
         raise NotImplementedError("lt is not implemented")
 
     def __lt__(self, tensor):
@@ -911,8 +902,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """Accumulate the elements of :attr:`tensor` into
         :attr:`self` by adding to the indices in the order given in :attr:`index`
 
-        Example: if ``dim == 0`` and ``index[i] == j``,
-            then the ``i``\ th row of tensor is added to the ``j``\ th row of :attr:`self`
+        Example: if ``dim == 0`` and ``index[i] == j``, then the ``i``-th row
+        of tensor is added to the ``j``-th row of :attr:`self`
 
         Args:
             dim (int): dimension along which to index
@@ -925,8 +916,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """Accumulate the elements of :attr:`tensor` into
         :attr:`self` by adding to the indices in the order given in :attr:`index`
 
-        Example: if ``dim == 0`` and ``index[i] == j``,
-            then the ``i``\ th row of tensor is added to the ``j``\ th row of :attr:`self`
+        Example: if ``dim == 0`` and ``index[i] == j``, then the ``i``-th row
+        of tensor is added to the ``j``-th row of :attr:`self`
 
         Args:
             dim (int): dimension along which to index
@@ -936,8 +927,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         raise NotImplementedError("index_add_ is not implemented")
 
     def scatter_add(self, dim, index, other):
-        """Adds all values from the :attr:`other` into :attr:`self` at the indices
-        specified in :attr:`index`. This an out-of-place version of
+        """Adds all values from the :attr:`other` into :attr:`self` at the
+        indices specified in :attr:`index`. This an out-of-place version of
         :meth:`scatter_add_`. For each value in :attr:`other`, it is added to an
         index in :attr:`self` which is specified by its index in :attr:`other`
         for ``dimension != dim`` and by the corresponding
@@ -953,8 +944,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         raise NotImplementedError("scatter_add is not implemented")
 
     def scatter_add_(self, dim, index, other):
-        """Adds all values from the :attr:`other` into :attr:`self` at the indices
-        specified in :attr:`index`.
+        """Adds all values from the :attr:`other` into :attr:`self` at the
+        indices specified in :attr:`index`.
         For each value in :attr:`other`, it is added to an
         index in :attr:`self` which is specified by its index in :attr:`other`
         for ``dimension != dim`` and by the corresponding
@@ -1011,8 +1002,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
     def index_select(self, dim, index):
         """
-        Returns a new tensor which indexes the :attr:`self` tensor along dimension
-        :attr:`dim` using the entries in :attr:`index`.
+        Returns a new tensor which indexes the :attr:`self` tensor along
+        dimension :attr:`dim` using the entries in :attr:`index`.
 
         The returned tensor has the same number of dimensions as :attr:`self`
         The dimension :attr:`dim` has the same size as the length
@@ -1022,15 +1013,16 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
     def view(self, *shape):
         r"""
-        Returns a new encrypted tensor with the same data as the :attr:`self` tensor
-        but of a different shape.
+        Returns a new encrypted tensor with the same data as the :attr:`self`
+        tensor but of a different shape.
 
         The returned tensor shares the same data and must have the same number
-        of elements, but may have a different size. For a tensor to be viewed, the new
-        view size must be compatible with its original size and stride, i.e., each new
-        view dimension must either be a subspace of an original dimension, or only span
-        across original dimensions :math:`d, d+1, \dots, d+k` that satisfy the following
-        contiguity-like condition that :math:`\forall i = 0, \dots, k-1`,
+        of elements, but may have a different size. For a tensor to be viewed,
+        the new view size must be compatible with its original size and stride,
+        i.e., each new view dimension must either be a subspace of an original
+        dimension, or only span across original dimensions
+        :math:`d, d+1, \dots, d+k` that satisfy the following contiguity-like
+        condition that :math:`\forall i = 0, \dots, k-1`,
 
         .. math::
             \text{stride}[i] = \text{stride}[i+1] \times \text{size}[i+1]
@@ -1081,8 +1073,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         The returned tensor shares the same underlying data with :attr:`self`
 
         A :attr:`dim` value within the range `[-self.dim() - 1, self.dim() + 1)`
-        can be used. Negative :attr:`dim` will correspond to :meth:`unsqueeze` applied at
-        `dim = dim + self.dim() + 1`
+        can be used. Negative :attr:`dim` will correspond to :meth:`unsqueeze`
+        applied at `dim = dim + self.dim() + 1`.
 
         Args:
             dim (int): the index at which to insert the singleton dimension
@@ -1097,10 +1089,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         `(A \times 1 \times B \times C \times 1 \times D)(A×1×B×C×1×D)` then the
         returned tensor will be of shape: `(A \times B \times C \times D)(A×B×C×D)`.
 
-        When :attr:`dim` is given, a :meth:`squeeze` operation is done only in the given
-        dimension. If :attr:`self` is of shape: `(A \times 1 \times B)(A×1×B)` ,
-        `squeeze(self, 0)` leaves the tensor unchanged, but `squeeze(self, 1)`
-        will squeeze the tensor to the shape `(A \times B)(A×B)`
+        When :attr:`dim` is given, a :meth:`squeeze` operation is done only in
+        the given dimension. If :attr:`self` is of shape:
+        `(A \times 1 \times B)(A×1×B)`, `squeeze(self, 0)` leaves the tensor
+        unchanged, but `squeeze(self, 1)` will squeeze the tensor to the
+        shape `(A \times B)(A×B)`.
         """
         raise NotImplementedError("squeeze is not implemented")
 
@@ -1111,16 +1104,17 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         Unlike expand(), this function copies the tensor’s data.
 
         Args:
-            sizes (torch.Size or int...): The number of times to repeat this tensor along each
-                dimension
+            sizes (torch.Size or int...): The number of times to repeat this
+            tensor along each dimension
         """
         raise NotImplementedError("repeat is not implemented")
 
     def narrow(self, dim, start, length):
         """
         Returns a new tensor that is a narrowed version of :attr:`self`
-        The dimension :attr:`dim` is input from :attr:`start` to :attr:`start + length`.
-        The returned tensor and :attr:`self` share the same underlying storage.
+        The dimension :attr:`dim` is input from :attr:`start` to
+        :attr:`start + length`.  The returned tensor and :attr:`self` share the
+        same underlying storage.
         """
         raise NotImplementedError("narrow is not implemented")
 
@@ -1138,32 +1132,33 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
         Expanding a tensor does not allocate new memory, but only creates a new
         view on the existing tensor where a dimension of size one is expanded to
-        a larger size by setting the :attr:`stride` to 0. Any dimension of size 1 can
-        be expanded to an arbitrary value without allocating new memory.
+        a larger size by setting the :attr:`stride` to 0. Any dimension of size
+        1 can be expanded to an arbitrary value without allocating new memory.
         """
         raise NotImplementedError("expand is not implemented")
 
     def roll(self, shifts, dims=None):
         """
-        Roll :attr:`self` along the given dimensions :attr:`dims`. Elements that are shifted
-        beyond the last position are re-introduced at the first position. If a
-        dimension is not specified, the tensor will be flattened before rolling
-        and then restored to the original shape.
+        Roll :attr:`self` along the given dimensions :attr:`dims`. Elements that
+        are shifted beyond the last position are re-introduced at the first
+        position. If a dimension is not specified, the tensor will be flattened
+        before rolling and then restored to the original shape.
         """
         raise NotImplementedError("roll is not implemented")
 
     def unfold(self, dimension, size, step):
         """
-        Returns a tensor which contains all slices of size :attr:`size` from :attr:`self`
-        in the dimension :attr:`dimension`.
+        Returns a tensor which contains all slices of size :attr:`size` from
+        :attr:`self` in the dimension :attr:`dimension`.
 
         Step between two slices is given by :attr:`step`
 
-        If `sizedim` is the size of :attr:`dimension` for :attr:`self`, the size of
-        :attr:`dimension` in the returned tensor will be
+        If `sizedim` is the size of :attr:`dimension` for :attr:`self`, the size
+        of :attr:`dimension` in the returned tensor will be
         `(sizedim - size) / step + 1`.
 
-        An additional dimension of size :attr:`size` is appended in the returned tensor.
+        An additional dimension of size :attr:`size` is appended in the returned
+        tensor.
 
         Args:
             dimension (int): dimension in which unfolding happens
@@ -1174,11 +1169,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
     def take(self, index, dimension=None):
         """
-        Returns a new tensor with the elements of :attr:`input` at the given indices.
-        When the dimension is None, :attr:`self` tensor is treated as if it were
-        viewed as a 1D tensor, and the result takes the same shape as the indices.
-        When the dimension is an integer, the result take entries of tensor along a
-        dimension according to the :attr:`index`.
+        Returns a new tensor with the elements of :attr:`input` at the given
+        indices. When the dimension is None, :attr:`self` tensor is treated as
+        if it were viewed as a 1D tensor, and the result takes the same shape as
+        the indices. When the dimension is an integer, the result take entries
+        of tensor along a dimension according to the :attr:`index`.
         """
         raise NotImplementedError("take is not implemented")
 
@@ -1216,21 +1211,21 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         Returns the cumulative sum of elements of :attr:`self` in the dimension
         :attr:`dim`
 
-        For example, if :attr:`self` is a vector of size N, the result will also be
-        a vector of size N, with elements.
+        For example, if :attr:`self` is a vector of size N, the result will also
+        be a vector of size N, with elements.
 
         .. math::
             y_i = x_1 + x_2 + x_3 + \dots + x_i
 
         Args:
             dim  (int): the dimension to do the operation over
-        """
+        """  # noqa: W605
         raise NotImplementedError("cumsum is not implemented")
 
     def reshape(self, shape):
         """
-        Returns a tensor with the same data and number of elements as :attr:`self`
-        but with the specified :attr:`shape`
+        Returns a tensor with the same data and number of elements as
+        :attr:`self` but with the specified :attr:`shape`.
 
         Args:
             shape (tuple of ints or int...): the desired shape
@@ -1239,7 +1234,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
     def gather(self, dim, index):
         """
-        Gathers values along an axis specified by :attr:`dim`
+        Gathers values along an axis specified by :attr:`dim`.
 
         For a 3-D tensor the output is specified by:
             - out[i][j][k] = input[index[i][j][k]][j][k]  # if dim == 0
