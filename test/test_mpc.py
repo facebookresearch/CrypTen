@@ -13,10 +13,12 @@ import unittest
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
+import crypten.communicator as comm
 import torch
 import torch.nn.functional as F
+from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
-from crypten.mpc import MPCTensor, ptype
+from crypten.mpc import MPCTensor, ptype as Ptype
 
 
 class TestMPC(object):
@@ -54,8 +56,8 @@ class TestMPC(object):
 
     def test_repr(self):
         a = get_random_test_tensor(size=(1,))
-        arithmetic = MPCTensor(a, ptype=ptype.arithmetic)
-        binary = MPCTensor(a, ptype=ptype.binary)
+        arithmetic = MPCTensor(a, ptype=Ptype.arithmetic)
+        binary = MPCTensor(a, ptype=Ptype.binary)
 
         # Make sure these don't crash
         print(arithmetic)
@@ -63,6 +65,48 @@ class TestMPC(object):
 
         print(binary)
         repr(binary)
+
+    def test_from_shares(self):
+        """Tests MPCTensor.from_shares() functionality."""
+
+        # settings for test:
+        num_parties = int(self.world_size)
+        size = (5, 4)
+
+        def _generate_tensor(ptype):
+            reference = get_random_test_tensor(size=size, is_float=False)
+
+            # generate arithmetic sharing of reference tensor:
+            if ptype == Ptype.arithmetic:
+                zero_shares = generate_random_ring_element((num_parties, *size))
+                zero_shares = zero_shares - zero_shares.roll(1, dims=0)
+                shares = list(zero_shares.unbind(0))
+                shares[0] += reference
+
+            # generate binary sharing of reference tensor:
+            else:
+                zero_shares = generate_kbit_random_tensor((num_parties, *size))
+                zero_shares = zero_shares ^ zero_shares.roll(1, dims=0)
+                shares = list(zero_shares.unbind(0))
+                shares[0] ^= reference
+
+            # return shares and reference:
+            return shares, reference
+
+        # test both types:
+        for ptype in [Ptype.arithmetic, Ptype.binary]:
+
+            # generate shares, sync them between parties, and create tensor:
+            shares, reference = _generate_tensor(ptype)
+            share = comm.get().scatter(shares, 0)
+            encrypted_tensor = MPCTensor.from_shares(share, ptype=ptype)
+
+            # check resulting tensor:
+            self.assertIsInstance(encrypted_tensor, MPCTensor)
+            self.assertEqual(encrypted_tensor.ptype, ptype)
+            self.assertIsInstance(encrypted_tensor._tensor, ptype.to_tensor())
+            decrypted_tensor = encrypted_tensor.reveal()
+            self.assertTrue(torch.all(decrypted_tensor.eq(reference)))
 
     def test_share_attr(self):
         """Tests share attribute getter and setter"""
