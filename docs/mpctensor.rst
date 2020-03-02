@@ -5,8 +5,8 @@ An ``MPCTensor`` is a ``CrypTensor`` encrypted using the secure MPC protocol.
 In order to support the mathematical operations required by the ``MPCTensor``,
 CrypTen implements two kinds of secret-sharing protocols defined by ``ptype``:
 
-* ``crypten.arithmetic`` for arithmetic secret-sharing
-* ``crypten.binary`` for binary secret-sharing
+* ``crypten.mpc.arithmetic`` for arithmetic secret-sharing
+* ``crypten.mpc.binary`` for binary secret-sharing
 
 Arithmetic secret sharing forms the basis for most of the mathematical
 operations implemented by ``MPCTensor``.  Similarly, binary
@@ -18,11 +18,11 @@ secret-sharing protocol. For example:
 .. code-block:: python
 
   # arithmetic secret-shared tensors
-  x_enc = crypten.cryptensor([1.0, 2.0, 3.0], ptype=crypten.arithmetic)
+  x_enc = crypten.cryptensor([1.0, 2.0, 3.0], ptype=crypten.mpc.arithmetic)
   print("x_enc internal type:", x_enc.ptype)
 
   # binary secret-shared tensors
-  y_enc = crypten.cryptensor([1, 2, 1], ptype=crypten.binary)
+  y_enc = crypten.cryptensor([1, 2, 1], ptype=crypten.mpc.binary)
   print("y_enc internal type:", y_enc.ptype)
 
 
@@ -67,7 +67,7 @@ For example, two-party arithmetic secret-sharing:
 
   @mpc.run_multiprocess(world_size=2)
   def examine_arithmetic_shares():
-      x_enc = crypten.cryptensor([1, 2, 3], ptype=crypten.arithmetic)
+      x_enc = crypten.cryptensor([1, 2, 3], ptype=crypten.mpc.arithmetic)
 
       rank = comm.get().get_rank()
       print(f"Rank {rank}:\n {x_enc}")

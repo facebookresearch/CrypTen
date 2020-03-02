@@ -16,7 +16,6 @@ import crypten
 import torch
 import torch.nn.functional as F
 from crypten.common.tensor_types import is_float_tensor
-from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 from torch import nn
 
 
@@ -132,15 +131,6 @@ class TestCrypten(MultiProcessTestCase):
             encrypted_tensor = crypten.CrypTensor(tensor)
         encrypted_tensor = crypten.mpc.MPCTensor(tensor)
         self.assertIsInstance(encrypted_tensor, crypten.CrypTensor)
-
-    def test_ptype(self):
-        """Test that ptype attribute creates the correct type of encrypted tensor"""
-        ptype_values = [crypten.arithmetic, crypten.binary]
-        tensor_types = [ArithmeticSharedTensor, BinarySharedTensor]
-        for i, curr_ptype in enumerate(ptype_values):
-            tensor = get_random_test_tensor(is_float=False)
-            encr_tensor = crypten.cryptensor(tensor, ptype=curr_ptype)
-            assert isinstance(encr_tensor._tensor, tensor_types[i]), "ptype test failed"
 
     def test_save_load(self):
         """Test that crypten.save and crypten.load properly save and load tensors"""
