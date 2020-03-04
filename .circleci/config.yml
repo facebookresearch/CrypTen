@@ -7,7 +7,7 @@ setup_venv: &setup_venv
     python3 -m venv ~/crypten-test
     . ~/crypten-test/bin/activate
     pip3 install --upgrade pip
-    pip3 install onnx==1.6.0 tensorboard
+    pip3 install onnx==1.6.0 tensorboard parameterized
     pip3 install torch==1.5.0.dev20200220+cpu torchvision==0.6.0.dev20200220+cpu -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
 
 

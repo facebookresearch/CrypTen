@@ -21,6 +21,7 @@ import torch
 import torch.nn.functional as F
 from crypten.common.tensor_types import is_float_tensor
 from crypten.gradients import AutogradContext
+from parameterized import parameterized
 
 
 # Sizes for tensor operations
@@ -43,7 +44,7 @@ SIZES = [
 ]
 
 
-class TestGradients(object):
+class TestGradients:
     """
     This class tests all autograd functions implemented in gradients.py.
     """
@@ -323,20 +324,24 @@ class TestGradients(object):
                 for dim1 in range(tensor.dim()):
                     self._check_forward_backward("transpose", tensor, dim0, dim1)
 
-    def test_conv1d(self):
-        """Test convolution of encrypted tensor with public/private tensors."""
+    @staticmethod
+    def _conv1d_cases():
+        """Generates inputs tuples for test cases
+        Returns: list of parameters for test_conv1d test case
+        """
         signal_sizes = [5, 16]
-        nchannels = [1, 5]
         nbatches = [1, 3, 5]
+        return itertools.product(signal_sizes, nbatches)
 
+    @parameterized.expand(_conv1d_cases.__func__)
+    def test_conv1d(self, signal_size, batches):
+        """Test convolution of encrypted tensor with public/private tensors."""
+        nchannels = [1, 5]
         kernel_sizes = [1, 2, 3]
         paddings = [0, 1]
         strides = [1, 2]
-        for signal_size, in_channels, batches in itertools.product(
-            signal_sizes, nchannels, nbatches
-        ):
 
-            # sample input:
+        for in_channels in nchannels:
             size = (batches, in_channels, signal_size)
             signal = get_random_test_tensor(size=size, is_float=True)
 
@@ -352,26 +357,29 @@ class TestGradients(object):
                             "conv1d", signal, kernel, stride=stride, padding=padding
                         )
 
-    def test_conv2d(self):
-        """Test convolution of encrypted tensor with public/private tensors."""
+    @staticmethod
+    def _conv2d_cases():
+        """Generates inputs tuples for test cases
+        Returns: list of parameters for test_conv2d test case
+        """
         image_sizes = [(5, 5), (16, 7)]
-        nchannels = [1, 5]
         nbatches = [1, 3, 5]
+        return itertools.product(image_sizes, nbatches)
+
+    @parameterized.expand(_conv2d_cases.__func__)
+    def test_conv2d(self, image_size, batches):
+        """Test convolution of encrypted tensor with public/private tensors."""
 
         kernel_sizes = [(1, 1), (2, 2), (2, 3)]
         paddings = [0, 1, (0, 1)]
         strides = [1, 2, (1, 2)]
-        for image_size, in_channels, batches in itertools.product(
-            image_sizes, nchannels, nbatches
-        ):
+        nchannels = [1, 5]
 
-            # sample input:
+        for in_channels in nchannels:
             size = (batches, in_channels, *image_size)
             image = get_random_test_tensor(size=size, is_float=True)
 
             for kernel_size, out_channels in itertools.product(kernel_sizes, nchannels):
-
-                # Sample kernel
                 kernel_size = (out_channels, in_channels, *kernel_size)
                 kernel = get_random_test_tensor(size=kernel_size, is_float=True)
 
