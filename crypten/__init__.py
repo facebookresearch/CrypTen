@@ -223,13 +223,14 @@ def __validate_model(loaded_model, dummy_model):
     return valid
 
 
-def load(f, encrypted=False, dummy_model=None, src=0, **kwargs):
+def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
     """
     Loads an object saved with `torch.save()` or `crypten.save()`.
 
     Args:
         f: a file-like object (has to implement `read()`, `readline()`,
               `tell()`, and `seek()`), or a string containing a file name
+        preloaded: Use the preloaded value instead of loading a tensor/model from f.
         encrypted: Determines whether crypten should load an encrypted tensor
                       or a plaintext torch tensor.
         dummy_model: Takes a model architecture to fill with the loaded model
@@ -256,7 +257,10 @@ def load(f, encrypted=False, dummy_model=None, src=0, **kwargs):
 
         # source party
         if comm.get().get_rank() == src:
-            result = torch.load(f, **kwargs)
+            if preloaded is None:
+                result = torch.load(f, **kwargs)
+            else:
+                result = preloaded
 
             # file contains torch.tensor
             if torch.is_tensor(result):
