@@ -247,13 +247,29 @@ class BinarySharedTensor(object):
     def trace(self, *args, **kwargs):
         raise NotImplementedError("BinarySharedTensor trace not implemented")
 
-    def reveal(self, dst=None):
-        """Decrypts the tensor without any downscaling."""
+    @staticmethod
+    def reveal_batch(tensor_or_list, dst=None):
+        """Get (batched) plaintext without any downscaling"""
+        if isinstance(tensor_or_list, BinarySharedTensor):
+            return tensor_or_list.reveal(dst=dst)
+
+        assert isinstance(
+            tensor_or_list, list
+        ), f"Invalid input type into reveal {type(tensor_or_list)}"
+        shares = [tensor.share for tensor in tensor_or_list]
+        op = torch.distributed.ReduceOp.BXOR
         if dst is None:
-            shares = comm.get().all_gather(self.share)
+            return comm.get().all_reduce(shares, op=op, batched=True)
         else:
-            shares = comm.get().gather(self.share, dst=dst)
-        return reduce(lambda x, y: x ^ y, shares)
+            return comm.get().reduce(shares, dst=dst, op=op, batched=True)
+
+    def reveal(self, dst=None):
+        """Get plaintext without any downscaling"""
+        op = torch.distributed.ReduceOp.BXOR
+        if dst is None:
+            return comm.get().all_reduce(self.share, op=op)
+        else:
+            return comm.get().reduce(self.share, dst=dst, op=op)
 
     def get_plain_text(self, dst=None):
         """Decrypts the tensor."""

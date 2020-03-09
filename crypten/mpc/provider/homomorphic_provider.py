@@ -20,7 +20,7 @@ class HomomorphicProvider:
         raise NotImplementedError("HomomorphicProvider not implemented")
 
     @staticmethod
-    def generate_xor_triple(size):
+    def generate_xor_triple(size0, size1):
         """Generate xor triples of given size"""
         raise NotImplementedError("HomomorphicProvider not implemented")
 

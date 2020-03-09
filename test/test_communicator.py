@@ -141,6 +141,43 @@ class TestCommunicator:
     def test_get_rank(self):
         self.assertEqual(comm.get().get_rank(), self.rank)
 
+    def test_batched_all_reduce(self):
+        sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
+        tensors = [get_random_test_tensor(size=size) for size in sizes]
+
+        results = comm.get().all_reduce(tensors, batched=True)
+        self.assertTrue(isinstance(results, list))
+        for i, result in enumerate(results):
+            self.assertTrue((result == (tensors[i] * self.world_size)).all())
+
+    def test_batched_reduce(self):
+        sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
+        for rank in range(self.world_size):
+            tensors = [get_random_test_tensor(size=size) for size in sizes]
+            results = comm.get().reduce(tensors, rank, batched=True)
+
+            if rank == self.rank:
+                self.assertTrue(isinstance(results, list))
+                for i, result in enumerate(results):
+                    self.assertTrue((result == (tensors[i] * self.world_size)).all())
+                # NOTE: torch.distributed has undefined behavior for non-dst rank
+                # else:
+                #     self.assertTrue((result == tensor).all())
+
+    def test_batched_broadcast(self):
+        sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
+        for rank in range(self.world_size):
+            if self.rank == rank:
+                tensors = [torch.ones(size) for size in sizes]
+            else:
+                tensors = [torch.zeros(size) for size in sizes]
+
+            tensors = comm.get().broadcast(tensors, src=rank, batched=True)
+            self.assertTrue(isinstance(tensors, list))
+            for tensor in tensors:
+                self.assertTrue(torch.is_tensor(tensor))
+                self.assertTrue(tensor.eq(1).all())
+
 
 # TODO: Commenting this out until we figure out why `thread.join() hangs
 #       Perhaps the thread to be joined has somehow exited

@@ -138,23 +138,56 @@ class DistributedCommunicator(Communicator):
             dist.scatter(tensor, [], src, group=self.main_group)
         else:
             tensor = scatter_list[self.get_rank()]
-            dist.scatter(tensor, list(scatter_list), src, group=self.main_group)
+            dist.scatter(tensor, scatter_list, src, group=self.main_group)
         return tensor
 
     @_logging
-    def reduce(self, tensor, dst, op=ReduceOp.SUM):
-        """Reduces the tensor data across all parties."""
+    def reduce(self, input, dst, op=ReduceOp.SUM, batched=False):
+        """Reduces the input data across all parties."""
         assert dist.is_initialized(), "initialize the communicator first"
-        result = tensor.clone()
-        dist.reduce(result, dst, op=op, group=self.main_group)
+
+        if batched:
+            assert isinstance(input, list), "batched reduce input must be a list"
+            reqs = []
+            result = [x.clone() for x in input]
+            for tensor in result:
+                reqs.append(
+                    dist.reduce(
+                        tensor, dst, op=op, group=self.main_group, async_op=True
+                    )
+                )
+            for req in reqs:
+                req.wait()
+        else:
+            assert torch.is_tensor(
+                input
+            ), "unbatched input for reduce must be a torch tensor"
+            result = input.clone()
+            dist.reduce(result, dst, op=op, group=self.main_group)
+
         return result if dst == self.get_rank() else None
 
     @_logging
-    def all_reduce(self, tensor, op=ReduceOp.SUM):
-        """Reduces the tensor data across all parties; all get the final result."""
+    def all_reduce(self, input, op=ReduceOp.SUM, batched=False):
+        """Reduces the input data across all parties; all get the final result."""
         assert dist.is_initialized(), "initialize the communicator first"
-        result = tensor.clone()
-        dist.all_reduce(result, op=op, group=self.main_group)
+
+        if batched:
+            assert isinstance(input, list), "batched reduce input must be a list"
+            reqs = []
+            result = [x.clone() for x in input]
+            for tensor in result:
+                reqs.append(
+                    dist.all_reduce(tensor, op=op, group=self.main_group, async_op=True)
+                )
+            for req in reqs:
+                req.wait()
+        else:
+            assert torch.is_tensor(
+                input
+            ), "unbatched input for reduce must be a torch tensor"
+            result = input.clone()
+            dist.all_reduce(result, op=op, group=self.main_group)
         return result
 
     @_logging
@@ -181,11 +214,24 @@ class DistributedCommunicator(Communicator):
         return result
 
     @_logging
-    def broadcast(self, tensor, src):
+    def broadcast(self, input, src, batched=False):
         """Broadcasts the tensor to all parties."""
         assert dist.is_initialized(), "initialize the communicator first"
-        dist.broadcast(tensor, src, group=self.main_group)
-        return tensor
+        if batched:
+            assert isinstance(input, list), "batched reduce input must be a list"
+            reqs = []
+            for tensor in input:
+                reqs.append(
+                    dist.broadcast(tensor, src, group=self.main_group, async_op=True)
+                )
+            for req in reqs:
+                req.wait()
+        else:
+            assert torch.is_tensor(
+                input
+            ), "unbatched input for reduce must be a torch tensor"
+            dist.broadcast(input, src, group=self.main_group)
+        return input
 
     @_logging
     def barrier(self):
@@ -224,30 +270,6 @@ class DistributedCommunicator(Communicator):
         dist.irecv(data, src=src, group=group).wait()
         buf = data.numpy().tobytes()
         return pickle.loads(buf)
-
-    @_logging
-    def oblivious_transfer(self, value, sender, receiver):
-        """Performs a 1-out-of-2 Oblivious Transfer (OT) between the
-        `sender` and `receiver` parties.
-        """
-        rank = dist.rank()
-        if rank != sender and rank != receiver:
-            return None
-
-        # TODO: Make this transfer oblivious by implementing OT protocol
-        # WARNING: This is currently insecure since transfers are not oblivious.
-        if rank == sender:
-            assert isinstance(value, list), "OT sender must input a list of values"
-
-            # Receive index from receiver
-            index = self.recv_obj(receiver)
-            result = torch.where(index, value[0], value[1])
-            self.send_obj(result, receiver)
-            return None
-        else:
-            self.send_obj(value, sender)
-            result = self.recv_obj(sender)
-            return result
 
     def get_world_size(self):
         """Returns the size of the world."""

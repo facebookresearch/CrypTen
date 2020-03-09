@@ -31,17 +31,12 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
     provider = crypten.mpc.get_default_provider()
     a, b, c = provider.generate_additive_triple(x.size(), y.size(), op, *args, **kwargs)
 
-    # TODO: Make these calls async or use NestedTensors to minimize rounds.
-    # Stack to vectorize reveal if possible
-    if x.size() == y.size():
-        from .arithmetic import ArithmeticSharedTensor
+    # Vectorized reveal to reduce rounds of communication
+    from .arithmetic import ArithmeticSharedTensor
 
-        eps_del = ArithmeticSharedTensor.stack([x - a, y - b]).reveal()
-        epsilon = eps_del[0]
-        delta = eps_del[1]
-    else:
-        epsilon = (x - a).reveal()
-        delta = (y - b).reveal()
+    eps_del = ArithmeticSharedTensor.reveal_batch([x - a, y - b])
+    epsilon = eps_del[0]
+    delta = eps_del[1]
 
     # z = c + (a * delta) + (epsilon * b) + epsilon * delta
     c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
@@ -131,10 +126,10 @@ def AND(x, y):
     from .binary import BinarySharedTensor
 
     provider = crypten.mpc.get_default_provider()
-    a, b, c = provider.generate_binary_triple(x.size())
+    a, b, c = provider.generate_binary_triple(x.size(), y.size())
 
     # Stack to vectorize reveal
-    eps_del = BinarySharedTensor.stack([x ^ a, y ^ b]).reveal()
+    eps_del = BinarySharedTensor.reveal_batch([x ^ a, y ^ b])
     epsilon = eps_del[0]
     delta = eps_del[1]
 

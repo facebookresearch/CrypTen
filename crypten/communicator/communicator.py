@@ -140,9 +140,12 @@ def _logging(func):
         if self.is_verbose():
             if func.__name__ == "barrier":
                 self._log_communication(0, 1)
-            elif isinstance(args[0], (list, tuple)):  # N - 1 tensors communicated
+            elif func.__name__ == "scatter":  # N - 1 tensors communicated
                 self._log_communication(args[0][0].nelement() * (len(args[0]) - 1))
-            elif torch.is_tensor(args[0]):  # one tensor communicated
+            elif "batched" in kwargs and kwargs["batched"]:
+                nbytes = sum(x.nelement() for x in args[0])
+                self._log_communication(nbytes)
+            else:  # one tensor communicated
                 self._log_communication(args[0].nelement())
         return func(self, *args, **kwargs)
 

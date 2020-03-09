@@ -171,6 +171,21 @@ class ArithmeticSharedTensor(object):
         )
         return result
 
+    @staticmethod
+    def reveal_batch(tensor_or_list, dst=None):
+        """Get (batched) plaintext without any downscaling"""
+        if isinstance(tensor_or_list, ArithmeticSharedTensor):
+            return tensor_or_list.reveal(dst=dst)
+
+        assert isinstance(
+            tensor_or_list, list
+        ), f"Invalid input type into reveal {type(tensor_or_list)}"
+        shares = [tensor.share for tensor in tensor_or_list]
+        if dst is None:
+            return comm.get().all_reduce(shares, batched=True)
+        else:
+            return comm.get().reduce(shares, dst=dst, batched=True)
+
     def reveal(self, dst=None):
         """Decrypts the tensor without any downscaling."""
         tensor = self.share.clone()

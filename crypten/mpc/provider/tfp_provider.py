@@ -40,16 +40,17 @@ class TrustedFirstParty:
         return stacked[0], stacked[1]
 
     @staticmethod
-    def generate_binary_triple(size):
+    def generate_binary_triple(size0, size1):
         """Generate xor triples of given size"""
-        a = generate_kbit_random_tensor(size)
-        b = generate_kbit_random_tensor(size)
+        a = generate_kbit_random_tensor(size0)
+        b = generate_kbit_random_tensor(size1)
         c = a & b
 
-        # Stack to vectorize scatter function
-        abc = torch.stack([a, b, c])
-        abc = BinarySharedTensor(abc, src=0)
-        return abc[0], abc[1], abc[2]
+        a = BinarySharedTensor(a, src=0)
+        b = BinarySharedTensor(b, src=0)
+        c = BinarySharedTensor(c, src=0)
+
+        return a, b, c
 
     @staticmethod
     def wrap_rng(size):

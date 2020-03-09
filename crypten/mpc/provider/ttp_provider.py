@@ -63,17 +63,19 @@ class TrustedThirdParty:
         return r, r2
 
     @staticmethod
-    def generate_binary_triple(size):
+    def generate_binary_triple(size0, size1):
         """Generate binary triples of given size"""
         generator = TTPClient.get().generator
 
-        a = generate_kbit_random_tensor(size, generator=generator)
-        b = generate_kbit_random_tensor(size, generator=generator)
+        a = generate_kbit_random_tensor(size0, generator=generator)
+        b = generate_kbit_random_tensor(size1, generator=generator)
+
         if comm.get().get_rank() == 0:
             # Request c from TTP
-            c = TTPClient.get().ttp_request("binary", size)
+            c = TTPClient.get().ttp_request("binary", size0, size1)
         else:
-            c = generate_kbit_random_tensor(size, generator=generator)
+            size2 = torch.broadcast_tensors(a, b)[0].size()
+            c = generate_kbit_random_tensor(size2, generator=generator)
 
         # Stack to vectorize scatter function
         a = BinarySharedTensor.from_shares(a)
@@ -274,15 +276,15 @@ class TTPServer:
         r2 = r.mul(r)
         return r2 - self._get_additive_PRSS(size, remove_rank=True)
 
-    def binary(self, size):
+    def binary(self, size0, size1):
         # xor all shares of `a` and `b` to get plaintext `a` and `b`
-        a = self._get_binary_PRSS(size)
-        b = self._get_binary_PRSS(size)
+        a = self._get_binary_PRSS(size0)
+        b = self._get_binary_PRSS(size1)
 
         c = a & b
 
         # xor all other shares of `c` from plaintext value of `c` to get `c0`
-        c0 = c ^ self._get_binary_PRSS(size, remove_rank=True)
+        c0 = c ^ self._get_binary_PRSS(c.size(), remove_rank=True)
         return c0
 
     def wraps(self, size):
