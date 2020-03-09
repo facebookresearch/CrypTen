@@ -43,7 +43,7 @@ SIZES = [
 ]
 
 
-class TestGradients(object):
+class TestGradients:
     """
     This class tests all autograd functions implemented in gradients.py.
     """
@@ -329,26 +329,33 @@ class TestGradients(object):
                 for dim1 in range(tensor.dim()):
                     self._check_forward_backward("transpose", tensor, dim0, dim1)
 
-    def test_conv1d(self):
-        """Test convolution of encrypted tensor with public/private tensors."""
-        signal_sizes = [5, 16]
-        nchannels = [1, 5]
-        nbatches = [1, 3, 5]
+    def test_conv1d_smaller_signal_one_channel(self):
+        self._conv1d(5, 1)
 
+    def test_conv1d_smaller_signal_many_channels(self):
+        self._conv1d(5, 5)
+
+    def test_conv1d_larger_signal_one_channel(self):
+        self._conv1d(16, 1)
+
+    def test_conv1d_larger_signal_many_channels(self):
+        self._conv1d(16, 5)
+
+    def _conv1d(self, signal_size, in_channels):
+        """Test convolution of encrypted tensor with public/private tensors."""
+        nbatches = [1, 3]
+        nout_channels = [1, 5]
         kernel_sizes = [1, 2, 3]
         paddings = [0, 1]
         strides = [1, 2]
-        for signal_size, in_channels, batches in itertools.product(
-            signal_sizes, nchannels, nbatches
-        ):
 
-            # sample input:
+        for batches in nbatches:
             size = (batches, in_channels, signal_size)
             signal = get_random_test_tensor(size=size, is_float=True)
 
-            for kernel_size, out_channels in itertools.product(kernel_sizes, nchannels):
-
-                # Sample kernel
+            for kernel_size, out_channels in itertools.product(
+                kernel_sizes, nout_channels
+            ):
                 kernel_size = (out_channels, in_channels, kernel_size)
                 kernel = get_random_test_tensor(size=kernel_size, is_float=True)
 
@@ -358,26 +365,34 @@ class TestGradients(object):
                             "conv1d", signal, kernel, stride=stride, padding=padding
                         )
 
-    def test_conv2d(self):
-        """Test convolution of encrypted tensor with public/private tensors."""
-        image_sizes = [(5, 5), (16, 7)]
-        nchannels = [1, 5]
-        nbatches = [1, 3, 5]
+    def test_conv2d_square_image_one_channel(self):
+        self._conv2d((5, 5), 1)
 
+    def test_conv2d_square_image_many_channels(self):
+        self._conv2d((5, 5), 5)
+
+    def test_conv2d_rectangular_image_one_channel(self):
+        self._conv2d((16, 7), 1)
+
+    def test_conv2d_rectangular_image_many_channels(self):
+        self._conv2d((16, 7), 5)
+
+    def _conv2d(self, image_size, in_channels):
+        """Test convolution of encrypted tensor with public/private tensors."""
+
+        nbatches = [1, 3]
         kernel_sizes = [(1, 1), (2, 2), (2, 3)]
         paddings = [0, 1, (0, 1)]
         strides = [1, 2, (1, 2)]
-        for image_size, in_channels, batches in itertools.product(
-            image_sizes, nchannels, nbatches
-        ):
+        nout_channels = [1, 5]
 
-            # sample input:
+        for batches in nbatches:
             size = (batches, in_channels, *image_size)
             image = get_random_test_tensor(size=size, is_float=True)
 
-            for kernel_size, out_channels in itertools.product(kernel_sizes, nchannels):
-
-                # Sample kernel
+            for kernel_size, out_channels in itertools.product(
+                kernel_sizes, nout_channels
+            ):
                 kernel_size = (out_channels, in_channels, *kernel_size)
                 kernel = get_random_test_tensor(size=kernel_size, is_float=True)
 

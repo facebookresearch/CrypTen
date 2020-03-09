@@ -403,34 +403,36 @@ class TestMPC(object):
                     encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
 
-    def test_conv1d(self):
-        """Test convolution of encrypted tensor with public/private tensors."""
-        signal_sizes = [5, 32]
-        nbatches = [1, 3, 5]
-        ichannels = [1, 5]
+    def test_conv1d_smaller_signal_one_channel(self):
+        self._conv1d(5, 1)
 
+    def test_conv1d_smaller_signal_many_channels(self):
+        self._conv1d(5, 5)
+
+    def test_conv1d_larger_signal_one_channel(self):
+        self._conv1d(16, 1)
+
+    def test_conv1d_larger_signal_many_channels(self):
+        self._conv1d(16, 5)
+
+    def _conv1d(self, signal_size, in_channels):
+        """Test convolution of encrypted tensor with public/private tensors."""
+        nbatches = [1, 3]
         kernel_sizes = [1, 2, 3]
         ochannels = [1, 3, 6]
         paddings = [0, 1]
         strides = [1, 2]
+
         for func_name in ["conv1d", "conv_transpose1d"]:
             for kernel_type in [lambda x: x, MPCTensor]:
                 for (
-                    signal_size,
                     batches,
-                    in_channels,
                     kernel_size,
                     out_channels,
                     padding,
                     stride,
                 ) in itertools.product(
-                    signal_sizes,
-                    nbatches,
-                    ichannels,
-                    kernel_sizes,
-                    ochannels,
-                    paddings,
-                    strides,
+                    nbatches, kernel_sizes, ochannels, paddings, strides
                 ):
                     input_size = (batches, in_channels, signal_size)
                     signal = get_random_test_tensor(size=input_size, is_float=True)
@@ -452,34 +454,36 @@ class TestMPC(object):
 
                     self._check(encrypted_conv, reference, f"{func_name} failed")
 
-    def test_conv2d(self):
-        """Test convolution of encrypted tensor with public/private tensors."""
-        image_sizes = [(5, 5), (16, 7)]
-        nbatches = [1, 3, 5]
-        ichannels = [1, 5]
+    def test_conv2d_square_image_one_channel(self):
+        self._conv2d((5, 5), 1)
 
+    def test_conv2d_square_image_many_channels(self):
+        self._conv2d((5, 5), 5)
+
+    def test_conv2d_rectangular_image_one_channel(self):
+        self._conv2d((16, 7), 1)
+
+    def test_conv2d_rectangular_image_many_channels(self):
+        self._conv2d((16, 7), 5)
+
+    def _conv2d(self, image_size, in_channels):
+        """Test convolution of encrypted tensor with public/private tensors."""
+        nbatches = [1, 3]
         kernel_sizes = [(1, 1), (2, 2), (2, 3)]
         ochannels = [1, 3, 6]
         paddings = [0, 1, (0, 1)]
         strides = [1, 2, (1, 2)]
+
         for func_name in ["conv2d", "conv_transpose2d"]:
             for kernel_type in [lambda x: x, MPCTensor]:
                 for (
-                    image_size,
                     batches,
-                    in_channels,
                     kernel_size,
                     out_channels,
                     padding,
                     stride,
                 ) in itertools.product(
-                    image_sizes,
-                    nbatches,
-                    ichannels,
-                    kernel_sizes,
-                    ochannels,
-                    paddings,
-                    strides,
+                    nbatches, kernel_sizes, ochannels, paddings, strides
                 ):
 
                     # sample input:
