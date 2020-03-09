@@ -190,9 +190,7 @@ class TestGradients(object):
     def test_truediv(self):
         self._div_helper("__truediv__")
 
-    @unittest.skip("Skipping flaky test")
     def test_rtruediv(self):
-        # TODO: investigate flaky test
         self._div_helper("__rtruediv__")
 
     def _div_helper(self, func):
@@ -202,8 +200,16 @@ class TestGradients(object):
                 tensor2 = get_random_test_tensor(
                     min_value=0.5, size=size2, is_float=True
                 )  # do not divide by value very close to zero
-                self._check_forward_backward(func, tensor1, tensor2)
-            self._check_forward_backward(func, tensor1, 2.0)
+                if func == "__rtruediv__":
+                    # denominator is first argument for rtruediv
+                    self._check_forward_backward(func, tensor2, tensor1)
+                else:
+                    self._check_forward_backward(func, tensor1, tensor2)
+
+            if func == "__rtruediv__":
+                self._check_forward_backward(func, torch.tensor(2.0), tensor2)
+            else:
+                self._check_forward_backward(func, tensor1, 2.0)
 
     def test_reductions(self):
         """Tests reductions on tensors of various sizes."""
