@@ -70,6 +70,10 @@ class TestBenchmark(unittest.TestCase):
             msg="seconds per epoch should be greater than 0",
         )
         self.assertTrue(
+            all(model_benchmarks.df["inference time"] > 0),
+            msg="inference time should be greater than 0",
+        )
+        self.assertTrue(
             all(model_benchmarks.df["accuracy"] > 0)
             and all(model_benchmarks.df["accuracy"] < 1.0),
             msg="accuracy should be between 0 and 1.0",

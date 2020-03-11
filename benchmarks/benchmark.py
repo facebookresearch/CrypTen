@@ -10,6 +10,9 @@ Generate function and model benchmarks
 To Run:
 $ python benchmark.py
 
+# only function benchmarks
+$ python benchmark.py --only-functions True
+
 # save benchmarks to csv
 $ python benchmark.py -p ~/Downloads/
 """
@@ -412,6 +415,30 @@ class ModelBenchmarks:
 
         return runtimes, runtimes_enc
 
+    @time_me(n_loops=3)
+    def predict(self, model):
+        if isinstance(model, torch.nn.Module):
+            y = model(self.x)
+        else:
+            y = model(self.x_enc)
+        return y
+
+    def time_inference(self):
+        """Returns inference time for plain text and CrypTen"""
+        runtimes = []
+        runtimes_enc = []
+
+        for model in ModelBenchmarks.MODELS:
+            model_plain = model.plain(self.n_features)
+            runtime, _ = self.predict(model_plain)
+            runtimes.append(runtime)
+
+            model_enc = model.crypten(self.n_features).encrypt()
+            runtime_enc, _ = self.predict(model_enc)
+            runtimes_enc.append(runtime_enc)
+
+        return runtimes, runtimes_enc
+
     @staticmethod
     def calc_accuracy(output, y, threshold=0.5):
         """Computes percent accuracy
@@ -453,31 +480,33 @@ class ModelBenchmarks:
 
     def run(self):
         """Runs and stores benchmarks in self.df"""
-        runtimes, runtimes_enc = self.time_training()
+        training_runtimes, training_runtimes_enc = self.time_training()
+        inference_runtimes, inference_runtimes_enc = self.time_inference()
         accuracies, accuracies_crypten = self.evaluate()
         model_names = [model.name for model in ModelBenchmarks.MODELS]
 
-        all_runtimes = runtimes + runtimes_enc
-        epoch_mid = [r.mid / self.epochs for r in all_runtimes]
-        epoch_q1 = [r.q1 / self.epochs for r in all_runtimes]
-        epoch_q3 = [r.q3 / self.epochs for r in all_runtimes]
+        training_times_both = training_runtimes + training_runtimes_enc
+        inference_times_both = inference_runtimes + inference_runtimes_enc
 
-        n_rows = len(runtimes)
+        half_n_rows = len(training_runtimes)
         self.df = pd.DataFrame.from_dict(
             {
                 "model": model_names + model_names,
-                "seconds per epoch": epoch_mid,
-                "seconds per epoch q1": epoch_q1,
-                "seconds per epoch q3": epoch_q3,
-                "is plain text": [True] * n_rows + [False] * n_rows,
+                "seconds per epoch": [t.mid for t in training_times_both],
+                "seconds per epoch q1": [t.q1 for t in training_times_both],
+                "seconds per epoch q3": [t.q3 for t in training_times_both],
+                "inference time": [t.mid for t in inference_times_both],
+                "inference time q1": [t.q1 for t in inference_times_both],
+                "inference time q3": [t.q3 for t in inference_times_both],
+                "is plain text": [True] * half_n_rows + [False] * half_n_rows,
                 "accuracy": accuracies + accuracies_crypten,
             }
         )
         self.df = self.df.sort_values(by="model")
 
 
-def parse_path():
-    """Parses path from command line argument"""
+def get_args():
+    """Parses command line arguments"""
     parser = argparse.ArgumentParser(description="Benchmark Functions")
     parser.add_argument(
         "--path",
@@ -487,22 +516,35 @@ def parse_path():
         default=None,
         help="path to save function benchmarks",
     )
+    parser.add_argument(
+        "--only-functions",
+        "-f",
+        type=bool,
+        required=False,
+        default=False,
+        help="run only function benchmarks",
+    )
     args = parser.parse_args()
-    return args.path
+    return args
+
+
+def main():
+    """Runs benchmarks and saves if path is provided"""
+    args = get_args()
+    path, only_functions = args.path, args.only_functions
+    pd.set_option("display.precision", 3)
+
+    benchmark_classes = [FuncBenchmarks, ModelBenchmarks]
+
+    for benchmark_class in benchmark_classes:
+        benchmark = benchmark_class()
+        benchmark.run()
+        print(benchmark)
+        if path:
+            benchmark.save(path)
+        if only_functions:
+            break
 
 
 if __name__ == "__main__":
-    path = parse_path()
-    pd.set_option("display.precision", 3)
-
-    func_benchmarks = FuncBenchmarks()
-    func_benchmarks.run()
-    print(func_benchmarks)
-
-    model_benchmarks = ModelBenchmarks()
-    model_benchmarks.run()
-    print(model_benchmarks)
-
-    if path:
-        func_benchmarks.save(path)
-        model_benchmarks.save(path)
+    main()
