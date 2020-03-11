@@ -41,7 +41,7 @@ It is currently not production ready and its main use is as a research framework
 
 ## Installing CrypTen
 
-CrypTen currently runs on Linux and Mac with Python >= 3.7.
+CrypTen currently runs on Linux and Mac with Python 3.7.
 Windows **is not** supported. We also do not currently support computation on GPUs.
 
 
@@ -56,6 +56,11 @@ pip install -r requirements.examples.txt
 ```
 
 ## Examples
+To run the examples in the `examples` directory, you additionally need to clone the repo and
+
+```bash
+pip install -r requirements.examples.txt
+```
 
 We provide examples covering a range of models in the `examples` directory
 
@@ -78,7 +83,7 @@ You can check all example specific command line options by doing the following;
 shown here for `tfe_benchmarks`:
 
 ```bash
-    $ python3 examples/tfe_benchmarks/launcher.py --help
+python examples/tfe_benchmarks/launcher.py --help
 ```
 
 ## How CrypTen works

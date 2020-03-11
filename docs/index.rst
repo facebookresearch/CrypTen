@@ -26,19 +26,19 @@ For Linux or Mac
 
 .. code-block:: bash
 
-    $ conda create -n crypten-env python=3.7
-    $ conda activate crypten-env
-    $ conda install pytorch torchvision -c pytorch
-    $ git clone git@github.com:facebookresearch/CrypTen.git
-    $ cd CrypTen; pip install -e .
+    $ pip install crypten
 
-To check if your installation is working, you can run the unit tests as follows
+To check if your installation is working,
+you can run the unit tests by cloning the repo then
 
 .. code-block:: bash
 
     $ python3 -m unittest discover test
 
 We do not support Windows yet.
+For contributing to the latest development version, please see Contributing_.
+
+.. _Contributing: https://github.com/facebookresearch/CrypTen/blob/master/CONTRIBUTING.md
 
 Examples
 ========
