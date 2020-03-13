@@ -11,7 +11,8 @@ To Run:
 $ python benchmark.py
 
 # only function benchmarks
-$ python benchmark.py --only-functions True
+$ python benchmark.py --only-functions
+$ python benchmark.py --only-functions --world-size 2
 
 # save benchmarks to csv
 $ python benchmark.py -p ~/Downloads/
@@ -25,9 +26,11 @@ import timeit
 from collections import namedtuple
 
 import crypten
+import crypten.communicator as comm
 import numpy as np
 import pandas as pd
 import torch
+from examples import multiprocess_launcher
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
 
@@ -519,31 +522,59 @@ def get_args():
     parser.add_argument(
         "--only-functions",
         "-f",
-        type=bool,
         required=False,
         default=False,
+        action="store_true",
         help="run only function benchmarks",
+    )
+    parser.add_argument(
+        "--world-size",
+        "-w",
+        type=int,
+        required=False,
+        default=1,
+        help="world size for number of parties",
     )
     args = parser.parse_args()
     return args
 
 
+def multiprocess_caller(args):
+    """Runs multiparty benchmarks and prints/saves from source 0"""
+    for benchmark in args.benchmarks:
+        benchmark.run()
+        rank = comm.get().get_rank()
+        if rank == 0:
+            pd.set_option("display.precision", 3)
+            print(benchmark)
+            if args.path:
+                benchmark.save(args.path)
+
+
 def main():
     """Runs benchmarks and saves if path is provided"""
     args = get_args()
-    path, only_functions = args.path, args.only_functions
-    pd.set_option("display.precision", 3)
+    benchmarks = [FuncBenchmarks(), ModelBenchmarks()]
 
-    benchmark_classes = [FuncBenchmarks, ModelBenchmarks]
+    if args.only_functions:
+        benchmarks = [FuncBenchmarks()]
 
-    for benchmark_class in benchmark_classes:
-        benchmark = benchmark_class()
-        benchmark.run()
-        print(benchmark)
-        if path:
-            benchmark.save(path)
-        if only_functions:
-            break
+    if args.world_size > 1:
+        args.benchmarks = benchmarks
+        launcher = multiprocess_launcher.MultiProcessLauncher(
+            args.world_size, multiprocess_caller, fn_args=args
+        )
+        launcher.start()
+        launcher.join()
+        launcher.terminate()
+
+    else:
+        pd.set_option("display.precision", 3)
+        for benchmark in benchmarks:
+            benchmark.run()
+            print(benchmark)
+            if args.path:
+                benchmark.save(args.path)
 
 
 if __name__ == "__main__":
