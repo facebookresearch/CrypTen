@@ -216,7 +216,7 @@ def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
             specified, the source party will read the tensor from `f` and it
             will broadcast it to the other parties
     """
-    if dummy_model:
+    if dummy_model is not None:
         warnings.warn(
             "dummy_model is deprecated and no longer required", DeprecationWarning
         )

@@ -7,8 +7,6 @@
 
 import logging
 
-import torch
-
 
 class Communicator:
     """
@@ -85,6 +83,18 @@ class Communicator:
         function.
         """
         raise NotImplementedError("barrier is not implemented")
+
+    def send_obj(self, obj, dst):
+        """Sends the specified object to the destination `dst`."""
+        raise NotImplementedError("send_obj is not implemented")
+
+    def recv_obj(self, src):
+        """Receives a tensor from a source src."""
+        raise NotImplementedError("recv_obj is not implemented")
+
+    def broadcast_obj(self, obj, src):
+        """Broadcasts a given object to all parties."""
+        raise NotImplementedError("broadcast_obj is not implemented")
 
     def get_world_size(self):
         """Returns the size of the world."""

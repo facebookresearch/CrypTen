@@ -245,6 +245,7 @@ class DistributedCommunicator(Communicator):
 
     @_logging
     def send_obj(self, obj, dst, group=None):
+        """Sends the specified object to the destination `dst`."""
         if group is None:
             group = self.main_group
 
@@ -260,6 +261,7 @@ class DistributedCommunicator(Communicator):
 
     @_logging
     def recv_obj(self, src, group=None):
+        """Receives a tensor from a source `src`."""
         if group is None:
             group = self.main_group
 
@@ -273,6 +275,7 @@ class DistributedCommunicator(Communicator):
 
     @_logging
     def broadcast_obj(self, obj, src, group=None):
+        """Broadcasts a given object to all parties."""
         if group is None:
             group = self.main_group
 
