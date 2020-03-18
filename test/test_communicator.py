@@ -178,6 +178,23 @@ class TestCommunicator:
                 self.assertTrue(torch.is_tensor(tensor))
                 self.assertTrue(tensor.eq(1).all())
 
+    def test_send_recv_obj(self):
+        reference = {"a": 1, "b": 2, "c": 3}
+        for src in range(self.world_size):
+            if self.rank == src:
+                test_obj = reference
+                comm.get().send_obj(test_obj, 1 - self.rank)
+            else:
+                test_obj = comm.get().recv_obj(1 - self.rank)
+            self.assertEqual(test_obj, reference, "send/recv_obj failed")
+
+    def test_broadcast_obj(self):
+        reference = {"a": 1, "b": 2, "c": 3}
+        for src in range(self.world_size):
+            test_obj = reference if self.rank == src else None
+            test_obj = comm.get().broadcast_obj(test_obj, src)
+            self.assertEqual(test_obj, reference, "broadcast_obj failed")
+
 
 # TODO: Commenting this out until we figure out why `thread.join() hangs
 #       Perhaps the thread to be joined has somehow exited

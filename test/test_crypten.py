@@ -172,23 +172,13 @@ class TestCrypten(MultiProcessTestCase):
             for src in range(comm.get().get_world_size()):
                 crypten.save(test_model, filename, src=src)
 
-                dummy_model = model_type(200, 10)
-
-                result = crypten.load(filename, dummy_model=dummy_model, src=src)
+                result = crypten.load(filename, src=src)
                 if src == rank:
                     for param in result.parameters(recurse=True):
                         self.assertTrue(
                             param.eq(rank).all().item(), "Model load failed"
                         )
                 self.assertEqual(result.src, src)
-
-                failure_dummy_model = model_type(200, 11)
-                with self.assertRaises(
-                    AssertionError, msg="Expected load failure not raised"
-                ):
-                    result = crypten.load(
-                        filename, dummy_model=failure_dummy_model, src=src
-                    )
 
     def test_where(self):
         """Test that crypten.where properly conditions"""
