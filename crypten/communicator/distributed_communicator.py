@@ -266,10 +266,33 @@ class DistributedCommunicator(Communicator):
         size = torch.tensor(1, dtype=torch.int32)
         dist.irecv(size, src=src, group=group).wait()
 
-        data = torch.zeros(size=(size,), dtype=torch.int8)
+        data = torch.empty(size=(size,), dtype=torch.int8)
         dist.irecv(data, src=src, group=group).wait()
         buf = data.numpy().tobytes()
         return pickle.loads(buf)
+
+    @_logging
+    def broadcast_obj(self, obj, src, group=None):
+        if group is None:
+            group = self.main_group
+
+        if self.rank == src:
+            assert obj is not None, "src party must provide obj for broadcast"
+            buf = pickle.dumps(obj)
+            size = torch.tensor(len(buf), dtype=torch.int32)
+            arr = torch.from_numpy(numpy.frombuffer(buf, dtype=numpy.int8))
+
+            dist.broadcast(size, src, group=group)
+            dist.broadcast(arr, src, group=group)
+        else:
+            size = torch.tensor(1, dtype=torch.int32)
+            dist.broadcast(size, src, group=group)
+
+            data = torch.empty(size=(size,), dtype=torch.int8)
+            dist.broadcast(data, src, group=group)
+            buf = data.numpy().tobytes()
+            obj = pickle.loads(buf)
+        return obj
 
     def get_world_size(self):
         """Returns the size of the world."""
