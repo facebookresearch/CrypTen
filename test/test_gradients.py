@@ -816,7 +816,7 @@ class TestGradients:
 
     def test_cumsum(self):
         """Tests cumsum gradient"""
-        sizes = [(10,), (5, 10), (2, 5, 10)]
+        sizes = [(), (10,), (5, 10), (2, 5, 10)]
 
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)

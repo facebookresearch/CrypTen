@@ -364,9 +364,10 @@ class AutogradSqueeze(AutogradFunction):
 
         # keep correct dimensions for backward pass:
         if dim is None:
-            dims = [idx for idx, sz in enumerate(output.size()) if sz == 1]
+            dims = [idx for idx, sz in enumerate(input.size()) if sz == 1]
         else:
-            dims = [dim]
+            # Squeezeing non singleton dimensions is a no-op:
+            dims = [dim] if input.size(dim) == 1 else []
         ctx.save_for_backward(dims)
         return output
 
@@ -919,6 +920,11 @@ class AutogradSum(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         input_size, dim, keepdim = ctx.saved_tensors
+
+        # Handle special case where input is 0-dimensional
+        if len(input_size) == 0:
+            return grad_output
+
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
         return grad_output.mul(torch.ones(input_size))
@@ -1057,6 +1063,10 @@ class AutogradMin(AutogradFunction):
             "cannot backpropagate through min layer that does not"
             "use one-hot representation because private indexing is unsupported"
         )
+        # Handle special case where input is 0-dimensional
+        if len(argmin.size()) == 0:
+            return grad_output
+
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
         return grad_output.mul(argmin)
@@ -1101,6 +1111,10 @@ class AutogradMax(AutogradFunction):
             "cannot backpropagate through max layer that does not"
             "use one-hot representation because private indexing is unsupported"
         )
+        # Handle special case where input is 0-dimensional
+        if len(argmax.size()) == 0:
+            return grad_output
+
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
         return grad_output.mul(argmax)

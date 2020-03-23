@@ -164,13 +164,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 parents_done = all(parent.grad_computed for parent in self.parents)
                 if len(self.children) == 0 or (not top_node and not parents_done):
 
-                    # unsqueeze or squeeze grad_input dimensions if needed:
-                    if (
-                        grad_input.size() != self.size()
-                        and grad_input.nelement() == self.nelement()
-                    ):
-                        grad_input = grad_input.view(self.size())
-
                     # when you are done, store or accumulate gradient:
                     if self.grad is None:
                         self.grad = grad_input  # store gradient...
