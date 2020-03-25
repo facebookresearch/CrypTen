@@ -181,6 +181,10 @@ https://github.com/facebookresearch/CrypTen/blob/master/benchmarks/benchmark.py#
                             className="six columns",
                         ),
                         html.Div(
+                            [dcc.Graph(id="model-inference-time")],
+                            className="six columns",
+                        ),
+                        html.Div(
                             [dcc.Graph(id="model-accuracy")], className="six columns"
                         ),
                     ],
@@ -404,6 +408,30 @@ def update_training_time(selected_date):
         title="Model Training Time",
     )
     fig.update_layout(xaxis={"range": [0, filter_df["seconds per epoch"].max() * 1.1]})
+    fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
+    return fig
+
+
+@app.callback(Output("model-inference-time", "figure"), [Input("select_date", "value")])
+def update_training_time(selected_date):
+    filter_df = model_df[model_df["date"] == selected_date]
+    filter_df["type"] = np.where(filter_df["is plain text"], "Plain Text", "CrypTen")
+    fig = px.bar(
+        filter_df,
+        x="inference time",
+        text="inference time",
+        y="model",
+        color="type",
+        orientation="h",
+        barmode="group",
+        color_discrete_sequence=[blue, green],
+        template=template,
+        title="Model Inference Time",
+    )
+    fig.update_layout(
+        xaxis={"range": [0, filter_df["inference time"].max() * 1.1]},
+        xaxis_title="inference time in seconds",
+    )
     fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
     return fig
 
