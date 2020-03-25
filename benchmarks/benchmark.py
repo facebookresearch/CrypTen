@@ -35,6 +35,8 @@ except ImportError:
     # direct import if relative fails
     import models
 
+Runtime = namedtuple("Runtime", "mid q1 q3")
+
 
 def time_me(func=None, n_loops=10):
     """Decorator returning average runtime in seconds over n_loops
@@ -56,11 +58,11 @@ def time_me(func=None, n_loops=10):
             start = timeit.default_timer()
             func(*args, **kwargs)
             times.append(timeit.default_timer() - start)
-        avg_runtime = np.sum(times) / n_loops
+        mid_runtime = np.quantile(times, 0.5)
         q1_runtime = np.quantile(times, 0.25)
         q3_runtime = np.quantile(times, 0.75)
-        inner_quartile_range = q3_runtime - q1_runtime
-        return avg_runtime, inner_quartile_range, return_val
+        runtime = Runtime(mid_runtime, q1_runtime, q3_runtime)
+        return runtime, return_val
 
     return timing_wrapper
 
@@ -88,12 +90,15 @@ class FuncBenchmarks:
         "neg",
     ]
 
+    LAYERS = ["conv2d"]
+
     DOMAIN = torch.arange(start=0.01, end=100, step=0.01)
     # for exponential, sin, and cos
     TRUNCATED_DOMAIN = torch.arange(start=0.001, end=10, step=0.001)
 
     def __init__(self, tensor_size=(100, 100)):
         self.tensor_size = tensor_size
+        crypten.init()
         # dataframe for benchmarks
         self.df = None
 
@@ -108,6 +113,12 @@ class FuncBenchmarks:
         """Invokes func as a method of x"""
         if y is None:
             return getattr(x, func)()
+
+        if func in {"conv1d", "conv2d"}:
+            if torch.is_tensor(x):
+                return getattr(torch.nn.functional, func)(x, y)
+            return getattr(x, func)(y)
+
         return getattr(x, func)(y)
 
     def get_runtimes(self):
@@ -115,46 +126,92 @@ class FuncBenchmarks:
         x, y = torch.rand(self.tensor_size), torch.rand(self.tensor_size)
         x_enc, y_enc = crypten.cryptensor(x), crypten.cryptensor(y)
 
-        Runtime = namedtuple("Runtime", "avg iqr")
-        runtimes_plain_text, runtimes_crypten = [], []
+        runtimes, runtimes_enc = [], []
 
         for func in FuncBenchmarks.UNARY + FuncBenchmarks.BINARY:
             second_operand, second_operand_enc = None, None
             if func in FuncBenchmarks.BINARY:
                 second_operand, second_operand_enc = y, y_enc
 
-            avg_runtime, iqr_runtime, _ = FuncBenchmarks.time_func(
-                x, func, y=second_operand
-            )
-            runtime = Runtime(avg_runtime, iqr_runtime)
-            runtimes_plain_text.append(runtime)
+            runtime, _ = FuncBenchmarks.time_func(x, func, y=second_operand)
+            runtimes.append(runtime)
 
-            avg_runtime, iqr_runtime, _ = FuncBenchmarks.time_func(
-                x_enc, func, y=second_operand_enc
-            )
-            runtime = Runtime(avg_runtime, iqr_runtime)
-            runtimes_crypten.append(runtime)
+            runtime_enc, _ = FuncBenchmarks.time_func(x_enc, func, y=second_operand_enc)
+            runtimes_enc.append(runtime_enc)
 
-        return runtimes_plain_text, runtimes_crypten
+        # add layer runtimes
+        runtime_layers, runtime_layers_enc = self.get_layer_runtimes()
+        runtimes.extend(runtime_layers)
+        runtimes_enc.extend(runtime_layers_enc)
+
+        return runtimes, runtimes_enc
+
+    def get_layer_runtimes(self):
+        """Returns runtimes for layers"""
+
+        runtime_layers, runtime_layers_enc = [], []
+
+        for layer in FuncBenchmarks.LAYERS:
+            if layer == "conv1d":
+                x, x_enc, y, y_enc = self.random_conv1d_inputs()
+            elif layer == "conv2d":
+                x, x_enc, y, y_enc = self.random_conv2d_inputs()
+            else:
+                raise ValueError(f"{layer} not supported")
+
+            runtime, _ = FuncBenchmarks.time_func(x, layer, y=y)
+            runtime_enc, _ = FuncBenchmarks.time_func(x_enc, layer, y=y_enc)
+
+            runtime_layers.append(runtime)
+            runtime_layers_enc.append(runtime_enc)
+
+        return runtime_layers, runtime_layers_enc
+
+    def random_conv2d_inputs(self):
+        """Returns random input and weight tensors for 2d convolutions"""
+        filter_size = [size // 10 for size in self.tensor_size]
+        x_conv2d = torch.rand(1, 1, *self.tensor_size)
+        weight2d = torch.rand(1, 1, *filter_size)
+        x_conv2d_enc = crypten.cryptensor(x_conv2d)
+        weight2d_enc = crypten.cryptensor(weight2d)
+        return x_conv2d, x_conv2d_enc, weight2d, weight2d_enc
+
+    def random_conv1d_inputs(self):
+        """Returns random input and weight tensors for 1d convolutions"""
+        size = self.tensor_size[0]
+        filter_size = size // 10
+        (x_conv1d,) = torch.rand(1, 1, size)
+        weight1d = torch.rand(1, 1, filter_size)
+        x_conv1d_enc = crypten.cryptensor(x_conv1d)
+        weight1d_enc = crypten.cryptensor(weight1d)
+        return x_conv1d, x_conv1d_enc, weight1d, weight1d_enc
 
     @staticmethod
     def calc_abs_error(ref, out):
-        """Computes absolute error of encrypted output"""
+        """Computes total absolute error"""
         if ref.dtype == torch.bool:
-            return (out == ref).sum().numpy()
-        return torch.abs(out - ref).numpy()
+            errors = (out != ref).sum().numpy()
+            return errors
+        errors = torch.abs(out - ref).numpy()
+        return errors.sum()
 
     @staticmethod
     def calc_relative_error(ref, out):
-        """Computes relative error of encrypted output"""
+        """Computes average relative error"""
         if ref.dtype == torch.bool:
-            return ((out == ref).sum() / ref.nelement()).numpy()
+            errors = ((out != ref).sum() / ref.nelement()).numpy()
+            return errors
         errors = torch.abs((out - ref) / ref)
         # remove inf due to division by tiny numbers
-        return errors[errors != float("inf")].numpy()
+        errors = errors[errors != float("inf")].numpy()
+        return errors.mean()
 
-    def get_errors(self):
-        """Computes the total error of approximations"""
+    def call_function_on_domain(self, func):
+        """Call plain text and CrypTen function on given function
+        Uses DOMAIN, TRUNCATED_DOMAIN, or appropriate layer inputs
+
+        Returns: tuple of (plain text result, encrypted result)
+        """
         DOMAIN, TRUNCATED_DOMAIN = (
             FuncBenchmarks.DOMAIN,
             FuncBenchmarks.TRUNCATED_DOMAIN,
@@ -162,59 +219,78 @@ class FuncBenchmarks:
         y = torch.rand(DOMAIN.shape)
         DOMAIN_enc, y_enc = crypten.cryptensor(DOMAIN), crypten.cryptensor(y)
         TRUNCATED_DOMAIN_enc = crypten.cryptensor(TRUNCATED_DOMAIN)
-        abs_errors, relative_errors = [], []
-        abs_errors_iqr, relative_errors_iqr = [], []
 
-        for func in FuncBenchmarks.UNARY + FuncBenchmarks.BINARY:
-            if func in ["exp", "cos", "sin"]:
-                ref, out_enc = (
-                    getattr(TRUNCATED_DOMAIN, func)(),
-                    getattr(TRUNCATED_DOMAIN_enc, func)(),
-                )
-            elif func in FuncBenchmarks.UNARY:
-                ref, out_enc = getattr(DOMAIN, func)(), getattr(DOMAIN_enc, func)()
-            else:
-                ref, out_enc = (
-                    getattr(DOMAIN, func)(y),
-                    getattr(DOMAIN_enc, func)(y_enc),
-                )
+        if func in ["exp", "cos", "sin"]:
+            ref, out_enc = (
+                getattr(TRUNCATED_DOMAIN, func)(),
+                getattr(TRUNCATED_DOMAIN_enc, func)(),
+            )
+        elif func in FuncBenchmarks.UNARY:
+            ref, out_enc = getattr(DOMAIN, func)(), getattr(DOMAIN_enc, func)()
+        elif func in FuncBenchmarks.LAYERS:
+            ref, out_enc = self._call_layer(func)
+        elif func in FuncBenchmarks.BINARY:
+            ref, out_enc = (getattr(DOMAIN, func)(y), getattr(DOMAIN_enc, func)(y_enc))
+        else:
+            raise ValueError(f"{func} not supported")
+
+        return ref, out_enc
+
+    def get_errors(self):
+        """Computes the total error of approximations"""
+        abs_errors, relative_errors = [], []
+
+        functions = FuncBenchmarks.UNARY + FuncBenchmarks.BINARY
+        functions += FuncBenchmarks.LAYERS
+
+        for func in functions:
+            ref, out_enc = self.call_function_on_domain(func)
             out = out_enc.get_plain_text()
 
             abs_error = FuncBenchmarks.calc_abs_error(ref, out)
-            abs_errors.append(abs_error.sum())
-            abs_errors_iqr.append(
-                np.quantile(abs_error, 0.75) - np.quantile(abs_error, 0.25)
-            )
+            abs_errors.append(abs_error)
 
             relative_error = FuncBenchmarks.calc_relative_error(ref, out)
-            relative_errors.append(relative_error.sum())
-            iqr = np.quantile(relative_error, 0.75) - np.quantile(relative_error, 0.25)
-            relative_errors_iqr.append(iqr)
+            relative_errors.append(relative_error)
 
-        return abs_errors, abs_errors_iqr, relative_errors, relative_errors_iqr
+        return abs_errors, relative_errors
+
+    def _call_layer(self, layer):
+        """Call supported layers"""
+        if layer == "conv1d":
+            x, x_enc, y, y_enc = self.random_conv1d_inputs()
+        elif layer == "conv2d":
+            x, x_enc, y, y_enc = self.random_conv2d_inputs()
+        else:
+            raise ValueError(f"{layer} not supported")
+
+        ref = getattr(torch.nn.functional, layer)(x, y)
+        out_enc = getattr(x_enc, layer)(y_enc)
+
+        return ref, out_enc
 
     def save(self, path):
         self.df.to_csv(os.path.join(path, "func_benchmarks.csv"), index=False)
 
     def run(self):
         """Runs and stores benchmarks in self.df"""
-        crypten.init()
-        runtimes_plain_text, runtimes_crypten = self.get_runtimes()
+        runtimes, runtimes_enc = self.get_runtimes()
 
-        abs_errors, abs_errors_iqr, relative_errors, relative_errors_iqr = (
-            self.get_errors()
-        )
+        abs_errors, relative_errors = self.get_errors()
+
         self.df = pd.DataFrame.from_dict(
             {
-                "function": FuncBenchmarks.UNARY + FuncBenchmarks.BINARY,
-                "runtime plain text": [r.avg for r in runtimes_plain_text],
-                "runtime plain text IQR": [r.iqr for r in runtimes_plain_text],
-                "runtime crypten": [r.avg for r in runtimes_crypten],
-                "runtime crypten IQR": [r.iqr for r in runtimes_crypten],
-                "abs error": abs_errors,
-                "abs error IQR": abs_errors_iqr,
-                "relative error": relative_errors,
-                "relative error IQR": relative_errors_iqr,
+                "function": FuncBenchmarks.UNARY
+                + FuncBenchmarks.BINARY
+                + FuncBenchmarks.LAYERS,
+                "runtime": [r.mid for r in runtimes],
+                "runtime Q1": [r.q1 for r in runtimes],
+                "runtime Q3": [r.q3 for r in runtimes],
+                "runtime crypten": [r.mid for r in runtimes_enc],
+                "runtime crypten Q1": [r.q1 for r in runtimes_enc],
+                "runtime crypten Q3": [r.q3 for r in runtimes_enc],
+                "total abs error": abs_errors,
+                "average relative error": relative_errors,
             }
         )
 
@@ -292,6 +368,7 @@ class ModelBenchmarks:
     @time_me(n_loops=1)
     def train(self, model):
         """Trains PyTorch binary classifier"""
+        assert isinstance(model, torch.nn.Module), "must be a PyTorch model"
         criterion = torch.nn.BCELoss()
         optimizer = torch.optim.SGD(model.parameters(), lr=self.lr_rate)
 
@@ -307,6 +384,7 @@ class ModelBenchmarks:
     @time_me(n_loops=1)
     def train_crypten(self, model):
         """Trains crypten binary classifier"""
+        assert isinstance(model, crypten.nn.Module), "must be a CrypTen model"
         criterion = crypten.nn.BCELoss()
 
         for _ in range(self.epochs):
@@ -320,19 +398,19 @@ class ModelBenchmarks:
 
     def time_training(self):
         """Returns training time per epoch for plain text and CrypTen"""
-        times_per_epoch = []
-        times_per_epoch_crypten = []
+        runtimes = []
+        runtimes_enc = []
 
         for model in ModelBenchmarks.MODELS:
             model_plain = model.plain(self.n_features)
-            time_per_epoch = self.train(model_plain)[0] / self.epochs
-            times_per_epoch.append(time_per_epoch)
+            runtime, _ = self.train(model_plain)
+            runtimes.append(runtime)
 
-            model_crypten = model.crypten(self.n_features)
-            time_per_epoch_crypten = self.train_crypten(model_crypten)[0] / self.epochs
-            times_per_epoch_crypten.append(time_per_epoch_crypten)
+            model_enc = model.crypten(self.n_features).encrypt()
+            runtime_enc, _ = self.train_crypten(model_enc)
+            runtimes_enc.append(runtime_enc)
 
-        return times_per_epoch, times_per_epoch_crypten
+        return runtimes, runtimes_enc
 
     @staticmethod
     def calc_accuracy(output, y, threshold=0.5):
@@ -356,14 +434,14 @@ class ModelBenchmarks:
 
         for model in ModelBenchmarks.MODELS:
             model_plain = model.plain(self.n_features)
-            _, _, model_plain = self.train(model_plain)
+            _, model_plain = self.train(model_plain)
             accuracy = ModelBenchmarks.calc_accuracy(
                 model_plain(self.x_test), self.y_test
             )
             accuracies.append(accuracy)
 
-            model_crypten = model.crypten(self.n_features)
-            _, _, model_crypten = self.train_crypten(model_crypten)
+            model_crypten = model.crypten(self.n_features).encrypt()
+            _, model_crypten = self.train_crypten(model_crypten)
             output = model_crypten(self.x_test_enc).get_plain_text()
             accuracy = ModelBenchmarks.calc_accuracy(output, self.y_test)
             accuracies_crypten.append(accuracy)
@@ -375,14 +453,22 @@ class ModelBenchmarks:
 
     def run(self):
         """Runs and stores benchmarks in self.df"""
-        times_per_epoch, times_per_epoch_crypten = self.time_training()
+        runtimes, runtimes_enc = self.time_training()
         accuracies, accuracies_crypten = self.evaluate()
         model_names = [model.name for model in ModelBenchmarks.MODELS]
-        n_rows = len(times_per_epoch)
+
+        all_runtimes = runtimes + runtimes_enc
+        epoch_mid = [r.mid / self.epochs for r in all_runtimes]
+        epoch_q1 = [r.q1 / self.epochs for r in all_runtimes]
+        epoch_q3 = [r.q3 / self.epochs for r in all_runtimes]
+
+        n_rows = len(runtimes)
         self.df = pd.DataFrame.from_dict(
             {
                 "model": model_names + model_names,
-                "seconds per epoch": times_per_epoch + times_per_epoch_crypten,
+                "seconds per epoch": epoch_mid,
+                "seconds per epoch q1": epoch_q1,
+                "seconds per epoch q3": epoch_q3,
                 "is plain text": [True] * n_rows + [False] * n_rows,
                 "accuracy": accuracies + accuracies_crypten,
             }
@@ -407,6 +493,7 @@ def parse_path():
 
 if __name__ == "__main__":
     path = parse_path()
+    pd.set_option("display.precision", 3)
 
     func_benchmarks = FuncBenchmarks()
     func_benchmarks.run()
