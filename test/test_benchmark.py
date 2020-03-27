@@ -24,7 +24,9 @@ class TestBenchmark(unittest.TestCase):
 
     def test_model_benchmarks_run(self):
         """Ensure model benchmarks run without an exception"""
-        model_benchmarks = benchmark.ModelBenchmarks(n_samples=100, epochs=2)
+        model_benchmarks = benchmark.ModelBenchmarks()
+        for model in model_benchmarks.models:
+            model.epochs = 2
         model_benchmarks.run()
 
     def test_func_benchmarks_data(self):
@@ -56,9 +58,11 @@ class TestBenchmark(unittest.TestCase):
 
     def test_model_benchmarks_data(self):
         """Sanity check length and columns of model benchmarks"""
-        model_benchmarks = benchmark.ModelBenchmarks(n_samples=100, epochs=2)
+        model_benchmarks = benchmark.ModelBenchmarks()
+        for model in model_benchmarks.models:
+            model.epochs = 2
         model_benchmarks.run()
-        expected_n_rows = 2 * len(model_benchmarks.MODELS)
+        expected_n_rows = 2 * len(model_benchmarks.models)
         n_rows = model_benchmarks.df.shape[0]
         self.assertEqual(
             n_rows,
@@ -77,6 +81,15 @@ class TestBenchmark(unittest.TestCase):
             all(model_benchmarks.df["accuracy"] > 0)
             and all(model_benchmarks.df["accuracy"] < 1.0),
             msg="accuracy should be between 0 and 1.0",
+        )
+
+    def test_advanced_model_benchmarks(self):
+        """Tests advanced models are added with flag"""
+        model_benchmarks = benchmark.ModelBenchmarks(advanced_models=False)
+        self.assertTrue(all(not model.advanced for model in model_benchmarks.models))
+        all_model_benchmarks = benchmark.ModelBenchmarks(advanced_models=True)
+        self.assertGreater(
+            len(all_model_benchmarks.models), len(model_benchmarks.models)
         )
 
 

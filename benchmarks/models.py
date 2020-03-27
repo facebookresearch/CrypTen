@@ -9,12 +9,38 @@ Contains models used for benchmarking
 """
 
 
+from dataclasses import dataclass
+from typing import Any
+
 import crypten
 import torch
 
 
+try:
+    from . import data
+except ImportError:
+    # direct import if relative fails
+    import data
+
+
+N_FEATURES = 20
+
+
+@dataclass
+class Model:
+    name: str
+    plain: torch.nn.Module
+    crypten: crypten.nn.Module
+    # must contains x, y, x_test, y_test attributes
+    data: Any
+    epochs: int
+    lr: float
+    loss: str
+    advanced: bool
+
+
 class LogisticRegression(torch.nn.Module):
-    def __init__(self, n_features):
+    def __init__(self, n_features=N_FEATURES):
         super().__init__()
         self.linear = torch.nn.Linear(n_features, 1)
 
@@ -23,7 +49,7 @@ class LogisticRegression(torch.nn.Module):
 
 
 class LogisticRegressionCrypTen(crypten.nn.Module):
-    def __init__(self, n_features):
+    def __init__(self, n_features=N_FEATURES):
         super().__init__()
         self.linear = crypten.nn.Linear(n_features, 1)
 
@@ -32,7 +58,7 @@ class LogisticRegressionCrypTen(crypten.nn.Module):
 
 
 class FeedForward(torch.nn.Module):
-    def __init__(self, n_features):
+    def __init__(self, n_features=N_FEATURES):
         super().__init__()
         self.linear1 = torch.nn.Linear(n_features, n_features // 2)
         self.linear2 = torch.nn.Linear(n_features // 2, n_features // 4)
@@ -46,7 +72,7 @@ class FeedForward(torch.nn.Module):
 
 
 class FeedForwardCrypTen(crypten.nn.Module):
-    def __init__(self, n_features):
+    def __init__(self, n_features=N_FEATURES):
         super().__init__()
         self.linear1 = crypten.nn.Linear(n_features, n_features // 2)
         self.linear2 = crypten.nn.Linear(n_features // 2, n_features // 4)
@@ -57,3 +83,50 @@ class FeedForwardCrypTen(crypten.nn.Module):
         out = (self.linear2(out)).relu()
         out = (self.linear3(out)).sigmoid()
         return out
+
+
+def resnet18():
+    model = torch.hub.load("pytorch/vision:v0.5.0", "resnet18", pretrained=True)
+    return model
+
+
+def resnet18_enc():
+    model = torch.hub.load("pytorch/vision:v0.5.0", "resnet18", pretrained=True)
+    dummy_input = torch.rand([1, 3, 224, 224])
+    crypten.init()
+    model_enc = crypten.nn.from_pytorch(model, dummy_input)
+    return model_enc
+
+
+MODELS = [
+    Model(
+        name="logistic regression",
+        plain=LogisticRegression,
+        crypten=LogisticRegressionCrypTen,
+        data=data.GaussianClusters(),
+        epochs=50,
+        lr=0.1,
+        loss="BCELoss",
+        advanced=False,
+    ),
+    Model(
+        name="feedforward neural network",
+        plain=FeedForward,
+        crypten=FeedForwardCrypTen,
+        data=data.GaussianClusters(),
+        epochs=50,
+        lr=0.1,
+        loss="BCELoss",
+        advanced=False,
+    ),
+    Model(
+        name="resnet 18",
+        plain=resnet18,
+        crypten=resnet18_enc,
+        data=data.Images(),
+        epochs=2,
+        lr=0.1,
+        loss="CrossEntropyLoss",
+        advanced=True,
+    ),
+]

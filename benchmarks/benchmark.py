@@ -14,12 +14,14 @@ $ python benchmark.py
 $ python benchmark.py --only-functions
 $ python benchmark.py --only-functions --world-size 2
 
+# benchmark functions and all models
+$ python benchmark.py --advanced-models
+
 # save benchmarks to csv
 $ python benchmark.py -p ~/Downloads/
 """
 
 import argparse
-import collections
 import functools
 import os
 import timeit
@@ -31,14 +33,14 @@ import numpy as np
 import pandas as pd
 import torch
 from examples import multiprocess_launcher
-from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
 
 
 try:
+    from . import data
     from . import models
 except ImportError:
     # direct import if relative fails
+    import data
     import models
 
 Runtime = namedtuple("Runtime", "mid q1 q3")
@@ -305,100 +307,84 @@ class ModelBenchmarks:
     """Benchmarks runtime and accuracy of crypten models
 
     Models are benchmarked on synthetically generated
-    Gaussian clusters for binary classification.
+    Gaussian clusters for binary classification. Resnet18 is
+    benchmarks use image data.
 
     Args:
-        n_samples (int): number of samples for model training
+        n_samples (int): number of samples for Gaussian cluster model training
+        n_features (int): number of features for the Gaussian clusters.
         epochs (int): number of training epochs
         lr_rate (float): learning rate.
     """
 
-    Model = collections.namedtuple("model", "name plain crypten")
-
-    MODELS = [
-        Model(
-            name="logistic regression",
-            plain=models.LogisticRegression,
-            crypten=models.LogisticRegressionCrypTen,
-        ),
-        Model(
-            name="feedforward neural network",
-            plain=models.FeedForward,
-            crypten=models.FeedForwardCrypTen,
-        ),
-    ]
-
-    def __init__(self, n_samples=5000, n_features=20, epochs=50, lr_rate=0.1):
-        self.n_samples = n_samples
-        self.n_features = n_features
-        self.epochs = epochs
-        self.lr_rate = lr_rate
-
+    def __init__(self, advanced_models=False):
         self.df = None
 
-        data = ModelBenchmarks.generate_data(n_samples, n_features)
-        self.x, self.x_test, self.y, self.y_test = data
-
-        crypten.init()
-        self.x_enc = crypten.cryptensor(self.x)
-        self.y_enc = crypten.cryptensor(self.y)
-        self.x_test_enc = crypten.cryptensor(self.x_test)
+        self.models = models.MODELS
+        if not advanced_models:
+            self.remove_advanced_models()
 
     def __repr__(self):
         if self.df is not None:
             return self.df.to_string(index=False, justify="left")
-        return "No Function Benchmarks"
+        return "No Model Benchmarks"
 
-    @staticmethod
-    def generate_data(n_samples, n_features):
-        """Generates Glussian clusters for binary classes
+    def remove_advanced_models(self):
+        """Removes advanced models from instance"""
+        self.models = list(filter(lambda x: not x.advanced, self.models))
+
+    @time_me(n_loops=3)
+    def train(self, model, x, y, epochs, lr, loss):
+        """Trains PyTorch model
 
         Args:
-            n_samples (int): number of samples
-            n_features (int): number of features
+            model (PyTorch model): model to be trained
+            x (torch.tensor): inputs
+            y (torch.tensor): targets
+            epochs (int): number of training epochs
+            lr (float): learning rate
+            loss (str): type of loss to use for training
 
-        Returns: torch tensors with inputs and labels
+        Returns:
+            model with update weights
         """
-        x, y = make_classification(
-            n_samples=n_samples,
-            n_features=n_features,
-            # by default, 2 features are redundant
-            n_informative=n_features - 2,
-            n_classes=2,
-        )
-        x = torch.tensor(x).float()
-        y = torch.tensor(y).float().unsqueeze(-1)
-
-        return train_test_split(x, y)
-
-    @time_me(n_loops=1)
-    def train(self, model):
-        """Trains PyTorch binary classifier"""
         assert isinstance(model, torch.nn.Module), "must be a PyTorch model"
-        criterion = torch.nn.BCELoss()
-        optimizer = torch.optim.SGD(model.parameters(), lr=self.lr_rate)
+        criterion = getattr(torch.nn, loss)()
+        optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-        for _ in range(self.epochs):
+        for _ in range(epochs):
             model.zero_grad()
-            output = model(self.x)
-            loss = criterion(output, self.y)
+            output = model(x)
+            loss = criterion(output, y)
             loss.backward()
             optimizer.step()
 
         return model
 
-    @time_me(n_loops=1)
-    def train_crypten(self, model):
-        """Trains crypten binary classifier"""
-        assert isinstance(model, crypten.nn.Module), "must be a CrypTen model"
-        criterion = crypten.nn.BCELoss()
+    @time_me(n_loops=3)
+    def train_crypten(self, model, x, y, epochs, lr, loss):
+        """Trains crypten encrypted model
 
-        for _ in range(self.epochs):
+        Args:
+            model (CrypTen model): model to be trained
+            x (crypten.tensor): inputs
+            y (crypten.tensor): targets
+            epochs (int): number of training epochs
+            lr (float): learning rate
+            loss (str): type of loss to use for training
+
+        Returns:
+            model with update weights
+        """
+        assert isinstance(model, crypten.nn.Module), "must be a CrypTen model"
+        criterion = getattr(crypten.nn, loss)()
+
+        for _ in range(epochs):
             model.zero_grad()
-            output = model(self.x_enc)
-            loss = criterion(output, self.y_enc)
+            output = model(x)
+            loss = criterion(output, y)
             loss.backward()
-            model.update_parameters(self.lr_rate)
+            model.update_parameters(lr)
 
         return model
 
@@ -407,23 +393,24 @@ class ModelBenchmarks:
         runtimes = []
         runtimes_enc = []
 
-        for model in ModelBenchmarks.MODELS:
-            model_plain = model.plain(self.n_features)
-            runtime, _ = self.train(model_plain)
+        for model in self.models:
+            x, y = model.data.x, model.data.y
+            model_plain = model.plain()
+            runtime, _ = self.train(model_plain, x, y, 1, model.lr, model.loss)
             runtimes.append(runtime)
 
-            model_enc = model.crypten(self.n_features).encrypt()
-            runtime_enc, _ = self.train_crypten(model_enc)
+            x_enc, y_enc = model.data.x_enc, model.data.y_enc
+            model_enc = model.crypten().encrypt()
+            runtime_enc, _ = self.train_crypten(
+                model_enc, x_enc, y_enc, 1, model.lr, model.loss
+            )
             runtimes_enc.append(runtime_enc)
 
         return runtimes, runtimes_enc
 
     @time_me(n_loops=3)
-    def predict(self, model):
-        if isinstance(model, torch.nn.Module):
-            y = model(self.x)
-        else:
-            y = model(self.x_enc)
+    def predict(self, model, x):
+        y = model(x)
         return y
 
     def time_inference(self):
@@ -431,13 +418,13 @@ class ModelBenchmarks:
         runtimes = []
         runtimes_enc = []
 
-        for model in ModelBenchmarks.MODELS:
-            model_plain = model.plain(self.n_features)
-            runtime, _ = self.predict(model_plain)
+        for model in self.models:
+            model_plain = model.plain()
+            runtime, _ = self.predict(model_plain, model.data.x)
             runtimes.append(runtime)
 
-            model_enc = model.crypten(self.n_features).encrypt()
-            runtime_enc, _ = self.predict(model_enc)
+            model_enc = model.crypten().encrypt()
+            runtime_enc, _ = self.predict(model_enc, model.data.x_enc)
             runtimes_enc.append(runtime_enc)
 
         return runtimes, runtimes_enc
@@ -462,18 +449,26 @@ class ModelBenchmarks:
         """Evaluates accuracy of crypten versus plain text models"""
         accuracies, accuracies_crypten = [], []
 
-        for model in ModelBenchmarks.MODELS:
-            model_plain = model.plain(self.n_features)
-            _, model_plain = self.train(model_plain)
-            accuracy = ModelBenchmarks.calc_accuracy(
-                model_plain(self.x_test), self.y_test
+        for model in self.models:
+            model_plain = model.plain()
+            x, y = model.data.x, model.data.y
+            _, model_plain = self.train(
+                model_plain, x, y, model.epochs, model.lr, model.loss
             )
+
+            x_test, y_test = model.data.x_test, model.data.y_test
+            accuracy = ModelBenchmarks.calc_accuracy(model_plain(x_test), y_test)
             accuracies.append(accuracy)
 
-            model_crypten = model.crypten(self.n_features).encrypt()
-            _, model_crypten = self.train_crypten(model_crypten)
-            output = model_crypten(self.x_test_enc).get_plain_text()
-            accuracy = ModelBenchmarks.calc_accuracy(output, self.y_test)
+            model_crypten = model.crypten().encrypt()
+            x_enc, y_enc = model.data.x_enc, model.data.y_enc
+            _, model_crypten = self.train_crypten(
+                model_crypten, x_enc, y_enc, model.epochs, model.lr, model.loss
+            )
+            x_test_enc = model.data.x_test_enc
+
+            output = model_crypten(x_test_enc).get_plain_text()
+            accuracy = ModelBenchmarks.calc_accuracy(output, y_test)
             accuracies_crypten.append(accuracy)
 
         return accuracies, accuracies_crypten
@@ -486,7 +481,7 @@ class ModelBenchmarks:
         training_runtimes, training_runtimes_enc = self.time_training()
         inference_runtimes, inference_runtimes_enc = self.time_inference()
         accuracies, accuracies_crypten = self.evaluate()
-        model_names = [model.name for model in ModelBenchmarks.MODELS]
+        model_names = [model.name for model in self.models]
 
         training_times_both = training_runtimes + training_runtimes_enc
         inference_times_both = inference_runtimes + inference_runtimes_enc
@@ -535,6 +530,13 @@ def get_args():
         default=1,
         help="world size for number of parties",
     )
+    parser.add_argument(
+        "--advanced-models",
+        required=False,
+        default=False,
+        action="store_true",
+        help="run advanced model (resnet, transformer, etc.) benchmarks",
+    )
     args = parser.parse_args()
     return args
 
@@ -554,7 +556,10 @@ def multiprocess_caller(args):
 def main():
     """Runs benchmarks and saves if path is provided"""
     args = get_args()
-    benchmarks = [FuncBenchmarks(), ModelBenchmarks()]
+    benchmarks = [
+        FuncBenchmarks(),
+        ModelBenchmarks(advanced_models=args.advanced_models),
+    ]
 
     if args.only_functions:
         benchmarks = [FuncBenchmarks()]
