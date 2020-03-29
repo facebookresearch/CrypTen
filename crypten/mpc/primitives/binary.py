@@ -5,8 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from functools import reduce
-
 import crypten.communicator as comm
 
 # dependencies:
@@ -97,6 +95,11 @@ class BinarySharedTensor(object):
         result.encoder = self.encoder
         result.share = self.share
         return result
+
+    def copy_(self, other):
+        """Copies other tensor into this tensor."""
+        self.share.copy_(other.share)
+        self.encoder = other.encoder
 
     def __repr__(self):
         return f"BinarySharedTensor({self.share})"

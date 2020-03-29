@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import itertools
 from collections import OrderedDict
 
 import crypten
@@ -15,6 +16,9 @@ class Module:
     """
     Base Module class that mimics the torch.nn.Module class.
     """
+
+    # allow for versioning of modules:
+    _version = 1
 
     def __init__(self):
         self._parameters = OrderedDict()
@@ -53,21 +57,26 @@ class Module:
         return self.train(False)
 
     def register_module(self, name, module):
-        """Registers module in the container."""
+        """Registers child module in the module."""
         self._modules[name] = module
 
     def modules(self):
-        """Returns iterator over modules."""
+        """Returns iterator over modules (non-recursively)."""
+        # TODO: Add option to do this recursively, akin to PyTorch.
         for _, module in self.named_modules():
             yield module
 
     def named_modules(self):
         """Returns iterator over named modules (non-recursively)."""
+        # TODO: Add option to do this recursively, akin to PyTorch.
         for name, module in self._modules.items():
             yield name, module
 
     def register_parameter(self, name, param, requires_grad=True):
-        """Register parameter in the module."""
+        """
+        Register parameter in the module. This function cannot register
+        parameters in child modules.
+        """
         if name in self._parameters or hasattr(self, name):
             raise ValueError("Parameter or field %s already exists." % name)
         if torch.is_tensor(param):  # unencrypted model
@@ -80,12 +89,14 @@ class Module:
         setattr(self, name, param)
 
     def set_parameter(self, name, param):
-        """Sets value of parameter in the module."""
+        """
+        Sets value of parameter in the module. This function cannot set
+        parameters in child modules.
+        """
         if name not in self._parameters or not hasattr(self, name):
             raise ValueError("Parameter %s does not exist." % name)
         self._parameters[name] = param
         setattr(self, name, param)
-        # FIXME: Naming logic for get/set_parameters when recursing.
 
     def set_parameter_from_shares(self, name, share, **kwargs):
         """
@@ -95,6 +106,8 @@ class Module:
         Supported named arguments for `MPCTensor` parameters include the `precision`
         of the encoder (default = `None`), the rank of the `src` (default = 0),
         and the `ptype` of the shares (default = `crypten.mpc.arithmetic`).
+
+        This function cannot set the parameters in child modules.
         """
 
         # functionality is only supported when parameters are MPCTensors:
@@ -109,21 +122,137 @@ class Module:
         # load parameters from shares:
         self._parameters[name] = cls.from_shares(share, **kwargs)
         setattr(self, name, self._parameters[name])
-        # FIXME: Naming logic for get/set_parameters when recursing.
 
     def parameters(self, recurse=True):
         """Iterator over parameters."""
         for _, param in self.named_parameters(recurse=recurse):
             yield param
 
-    def named_parameters(self, recurse=True):
+    def named_parameters(self, recurse=True, prefix=None):
         """Iterator over named parameters."""
         for name, param in self._parameters.items():
-            yield name, param
+            param_name = name if prefix is None else prefix + "." + name
+            yield param_name, param
         if recurse:
-            for module in self.modules():
-                yield from module.named_parameters(recurse=recurse)
-                # FIXME: Naming logic for get/set_parameters when recursing.
+            for module_name, module in self.named_modules():
+                pre = module_name if prefix is None else prefix + "." + module_name
+                yield from module.named_parameters(recurse=recurse, prefix=pre)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        """
+        Saves module state to `destination` dictionary, containing a state
+        of the module, but not its descendants. The specified `prefix` will be
+        used in names of parameters and buffers in this module. The `keep_vars`
+        boolean determines if parameters and buffers are kept on the autograd tape.
+        """
+        for name, param in self.named_parameters(recurse=False):
+            if param is not None:
+                destination[prefix + name] = param if keep_vars else param.detach()
+        for name, buffer in self.named_buffers(recurse=False):
+            if buffer is not None:
+                destination[prefix + name] = buffer if keep_vars else buffer.detach()
+
+    def state_dict(self, destination=None, prefix="", keep_vars=False):
+        """
+        Returns a dictionary containing the state of the module. Both parameters
+        and persistent buffers (e.g., running averages) are included. Keys are
+        corresponding parameter and buffer names.
+        """
+
+        # save parameters and buffers of current module:
+        if destination is None:
+            destination = OrderedDict()
+            destination._metadata = {"version": Module._version}
+        self._save_to_state_dict(destination, prefix, keep_vars)
+
+        # recurse over modules:
+        for name, module in self.named_modules():
+            if module is not None:
+                module.state_dict(destination, prefix + name + ".", keep_vars=keep_vars)
+        return destination
+
+    def _load_from_state_dict(self, state_dict, prefix, strict):
+        """
+        Copies parameters and buffers from `state_dict` into only this module
+        but not its children. This is called on every submodule in the
+        `load_state_dict` function.
+        """
+
+        # get state dict for just the current module (without children)
+        local_named_params = itertools.chain(
+            self.named_parameters(), self.named_buffers()
+        )
+        local_state = {key: val for key, val in local_named_params if val is not None}
+
+        # in strict mode, check for missing keys in the state_dict:
+        if strict:
+            for name in local_state.keys():
+                key = prefix + name
+                if key not in state_dict:
+                    raise ValueError("Key {} not found in state dict.".format(key))
+
+        # loop over parameters / buffers in module:
+        for name, param in local_state.items():
+            key = prefix + name
+            input_param = state_dict[key]
+
+            # size in state_dict should match size of parameters:
+            if input_param.size() != param.size():
+                raise ValueError(
+                    "Size mismatch for {}: copying a param with"
+                    "shape {} from checkpoint, the shape in"
+                    "current model is {}.".format(key, input_param.size(), param.size())
+                )
+                continue
+
+            # cannot copy encrypted tensors into unencrypted models and vice versa:
+            param_encrypted = isinstance(input_param, crypten.CrypTensor)
+            if param_encrypted:
+                assert (
+                    self.encrypted
+                ), "cannot copy encrypted parameters into unencrypted model"
+            else:
+                assert (
+                    not self.encrypted
+                ), "cannot copy unencrypted parameters into encrypted model"
+
+            # copy parameters from state_dict:
+            with crypten.no_grad(), torch.no_grad():
+                param.copy_(input_param)
+
+    def load_state_dict(self, state_dict, strict=True):
+        """
+        Copies parameters and buffers from `state_dict` into this module and its
+        children. If `strict` is `True`, then the keys of `state_dict` must
+        exactly match the keys returned by this module's `state_dict` function.
+        """
+
+        # check version of state_dict:
+        if strict:
+            metadata = getattr(state_dict, "_metadata", None)
+            if metadata is None:
+                raise ValueError("Specified state_dict does not have metadata.")
+            version = metadata.get("version", -1)
+            if version != Module._version:
+                raise ValueError(
+                    "Specified state_dict has incorrect version: {}".format(version)
+                )
+
+        # make copy state_dict so that load() can modify it:
+        state_dict = state_dict.copy()
+
+        def load(module, prefix=""):
+            """
+            Closure that performs the loading of a module recursively.
+            """
+            module._load_from_state_dict(state_dict, prefix, strict)
+            for name, child in module.named_modules():
+                if child is not None:
+                    load(child, prefix + name + ".")
+
+        # perform the actual loading:
+        load(self)
+        load = None  # break load->load reference cycle
 
     def zero_grad(self):
         """Sets gradients of all parameters to zero."""
@@ -156,7 +285,10 @@ class Module:
         setattr(self, name, buffer)
 
     def set_buffer(self, name, buffer):
-        """Sets value of buffer in the module."""
+        """
+        Sets value of buffer in the module. This function cannot set the
+        parameters in child modules.
+        """
         if name not in self._buffers or not hasattr(self, name):
             raise ValueError("Buffer %s does not exist." % name)
         self._buffers[name] = buffer
@@ -167,13 +299,15 @@ class Module:
         for _, buffer in self.named_buffers(recurse=recurse):
             yield buffer
 
-    def named_buffers(self, recurse=True):
+    def named_buffers(self, recurse=True, prefix=None):
         """Iterator over named buffers."""
         for name, buffer in self._buffers.items():
-            yield name, buffer
+            buffer_name = name if prefix is None else prefix + "." + name
+            yield buffer_name, buffer
         if recurse:
-            for module in self.modules():
-                yield from module.named_buffers(recurse=recurse)
+            for module_name, module in self.named_modules():
+                pre = module_name if prefix is None else prefix + "." + module_name
+                yield from module.named_buffers(recurse=recurse, prefix=pre)
 
     def _apply(self, fn):
         """Applies a function recursively on all modules."""

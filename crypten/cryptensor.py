@@ -309,6 +309,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         # TODO: Rename this to __copy__()?
         raise NotImplementedError("shallow_copy is not implemented")
 
+    def copy_(self, other):
+        """Copies value of other CrypTensor into this CrypTensor."""
+        raise NotImplementedError("copy_ is not implemented")
+
     def add_(self, tensor):
         """Adds :attr:`tensor` to :attr:`self` (in-place) see :meth:`add`."""
         raise NotImplementedError("add_ is not implemented")

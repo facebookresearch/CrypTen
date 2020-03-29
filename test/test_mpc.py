@@ -1288,6 +1288,17 @@ class TestMPC(object):
             )
             self._check(encrypted_tensor_clone, tensor, "clone failed")
 
+    def test_copy_(self):
+        """Tests copy_ function."""
+        sizes = [(5,), (1, 5), (5, 10, 15)]
+        for size in sizes:
+            tensor1 = get_random_test_tensor(size=size, is_float=True)
+            tensor2 = get_random_test_tensor(size=size, is_float=True)
+            encrypted_tensor1 = MPCTensor(tensor1)
+            encrypted_tensor2 = MPCTensor(tensor2)
+            encrypted_tensor1.copy_(encrypted_tensor2)
+            self._check(encrypted_tensor1, tensor2, "copy_ failed")
+
     def test_index_select(self):
         """Tests index_select of encrypted tensors."""
         sizes = [(5,), (5, 10), (5, 10, 15)]
