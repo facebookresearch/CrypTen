@@ -430,9 +430,60 @@ class TestGradients:
                 # Skip invalid padding sizes
                 if kernel_size == 1 and padding == 1:
                     continue
-                self._check_forward_backward(
-                    func, image, kernel_size, padding=padding, stride=stride
-                )
+                if func == "max_pool2d":
+                    self._check_max_pool2d_forward_backward(
+                        image, kernel_size, padding, stride
+                    )
+                else:
+                    self._check_forward_backward(
+                        func, image, kernel_size, padding=padding, stride=stride
+                    )
+
+    def _check_max_pool2d_forward_backward(
+        self, image, kernel_size, padding, stride, tol=0.1
+    ):
+        """Checks forward and backward are for max pool 2d.
+        Verifies gradients by checking sum of non-matching elements to account for
+        differences in tie resolution in max between PyTorch and CrypTen:
+        PyTorch returns smallest index for max entries,
+        whereas CrypTen returns a random index.
+
+        Args:
+            image (torch.tensor): input
+            kernel_size (tuple of ints): size of the window over which to compute max
+            padding (int or tuple of ints): implicit zero padding to added on both sides
+            stride (int or tuple of ints): the stride of the window
+        """
+        # check forward
+        image = image.clone()
+        image.requires_grad = True
+        image_enc = crypten.cryptensor(image, requires_grad=True)
+
+        out = torch.nn.functional.max_pool2d(
+            image, kernel_size, padding=padding, stride=stride
+        )
+        out_enc = image_enc.max_pool2d(kernel_size, padding=padding, stride=stride)
+        self._check(out_enc, out, "max_pool2d forward incorrect")
+
+        # check backward
+        grad_output = get_random_test_tensor(size=out.size(), is_float=True)
+        grad_output_enc = crypten.cryptensor(grad_output)
+        out.backward(grad_output)
+        out_enc.backward(grad_output_enc)
+
+        # check sum of non-matching gradient entries
+        crypten_grad = image_enc.grad.get_plain_text()
+        non_matching_indices = (image.grad - crypten_grad).abs() > tol
+        sum_is_close = (
+            crypten_grad[non_matching_indices].sum()
+            - image.grad[non_matching_indices].sum()
+        ) < tol
+        if not sum_is_close:
+            msg = "max_pool2d backward failed"
+            logging.info(msg)
+            logging.info(f"Result: crypten image gradient {crypten_grad}")
+            logging.info(f"Result - Reference {image.grad - crypten_grad}")
+            self.assertTrue(sum_is_close, msg=msg)
 
     def test_square(self):
         """Tests square function gradient.
