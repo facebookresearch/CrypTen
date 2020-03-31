@@ -37,6 +37,7 @@ from .module import (
     Graph,
     Linear,
     LogSoftmax,
+    MatMul,
     MaxPool2d,
     Module,
     ReduceSum,
@@ -57,6 +58,15 @@ from .onnx_helper import (
     get_attribute_value,
     get_parameter_name,
 )
+
+
+try:
+    import tensorflow as tf  # noqa
+    import tf2onnx
+
+    TF_AND_TF2ONNX = True
+except ImportError:
+    TF_AND_TF2ONNX = False
 
 
 # expose contents of package:
@@ -121,6 +131,7 @@ ONNX_TO_CRYPTEN = {
     "Gemm": Linear,
     "GlobalAveragePool": GlobalAveragePool,
     "LogSoftmax": LogSoftmax,
+    "MatMul": MatMul,
     "MaxPool": MaxPool2d,
     "Pad": _ConstantPad,
     "Relu": ReLU,
@@ -176,6 +187,46 @@ def from_pytorch(pytorch_model, dummy_input):
 
     # make sure training / eval setting is copied:
     crypten_model.train(mode=pytorch_model.training)
+    return crypten_model
+
+
+def from_tensorflow(tensorflow_graph_def, inputs, outputs):
+    """
+    Static function that converts Tensorflow model into CrypTen model based on
+    https://github.com/onnx/tensorflow-onnx/blob/master/tf2onnx/convert.py
+    The model is returned in evaluation mode.
+    Args:
+        `tensorflow_graph_def`: Input Tensorflow GraphDef to be converted
+        `inputs`: input nodes
+        `outputs`: output nodes
+    """
+    # Exporting model to ONNX graph
+    if not TF_AND_TF2ONNX:
+        raise ImportError("Please install both tensorflow and tf2onnx packages")
+
+    with tf.Graph().as_default() as tf_graph:
+        tf.import_graph_def(tensorflow_graph_def, name="")
+    with tf2onnx.tf_loader.tf_session(graph=tf_graph):
+        g = tf2onnx.tfonnx.process_tf_graph(
+            tf_graph,
+            opset=10,
+            continue_on_error=False,
+            input_names=inputs,
+            output_names=outputs,
+        )
+    onnx_graph = tf2onnx.optimizer.optimize_graph(g)
+    model_proto = onnx_graph.make_model(
+        "converted from {}".format(tensorflow_graph_def)
+    )
+    f = io.BytesIO()
+    f.write(model_proto.SerializeToString())
+
+    # construct CrypTen model
+    # Note: We don't convert crypten model to training mode, as Tensorflow
+    # models are used for both training and evaluation without the specific
+    # conversion of one mode to another
+    f.seek(0)
+    crypten_model = from_onnx(f)
     return crypten_model
 
 

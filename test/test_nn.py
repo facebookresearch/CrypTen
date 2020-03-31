@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import os
 import unittest
 from test.multiprocess_test_case import (
     MultiProcessTestCase,
@@ -123,7 +124,6 @@ class TestNN(object):
         """
         Tests the global average pool module with fixed 4-d test tensors
         """
-
         # construct basic input
         base_tensor = torch.Tensor([[2, 1], [3, 0]])
         all_init = []
@@ -227,7 +227,7 @@ class TestNN(object):
 
         # input arguments for modules and input sizes:
         no_input_modules = ["Constant"]
-        binary_modules = ["Add", "Sub", "Concat"]
+        binary_modules = ["Add", "Sub", "Concat", "MatMul"]
         ex_zero_modules = []
         module_args = {
             "Add": (),
@@ -235,6 +235,7 @@ class TestNN(object):
             "Constant": (1.2,),
             "Exp": (),
             "Gather": (0,),
+            "MatMul": (),
             "Reshape": (),
             "ReduceSum": ([0], True),
             "Shape": (),
@@ -250,6 +251,7 @@ class TestNN(object):
             "Gather": lambda x: torch.from_numpy(
                 x[0].numpy().take(x[1], module_args["Gather"][0])
             ),
+            "MatMul": lambda x: torch.matmul(x[0], x[1]),
             "ReduceSum": lambda x: torch.sum(
                 x,
                 dim=module_args["ReduceSum"][0],
@@ -267,6 +269,7 @@ class TestNN(object):
             "Constant": (1,),
             "Exp": (10, 10, 10),
             "Gather": (4, 4, 4, 4),
+            "MatMul": (4, 4),
             "Reshape": (1, 4),
             "ReduceSum": (3, 3, 3),
             "Shape": (8, 3, 2),
@@ -286,6 +289,7 @@ class TestNN(object):
             "Concat": [("axis", False)],
             "Constant": [("value", False)],
             "Gather": [("axis", False)],
+            "MatMul": [],
             "ReduceSum": [("axes", False), ("keepdims", False)],
             "Reshape": [],
             "Shape": [],
@@ -990,6 +994,62 @@ class TestNN(object):
             linear.encrypt(mode=encrypted)
             _run_test(sample, target)
             _run_test(crypten.cryptensor(sample), crypten.cryptensor(target))
+
+    @unittest.skipIf(
+        not crypten.nn.TF_AND_TF2ONNX, "Tensorflow and tf2onnx not installed"
+    )
+    def test_tensorflow_model_conversion(self):
+        import tensorflow as tf
+        import tf2onnx
+
+        # create simple model
+        model_tf = tf.keras.Sequential(
+            [
+                tf.keras.layers.Dense(
+                    10,
+                    activation=tf.nn.relu,
+                    kernel_initializer="ones",
+                    bias_initializer="ones",
+                    input_shape=(4,),
+                ),
+                tf.keras.layers.Dense(
+                    10,
+                    activation=tf.nn.relu,
+                    kernel_initializer="ones",
+                    bias_initializer="ones",
+                ),
+                tf.keras.layers.Dense(3, kernel_initializer="ones"),
+            ]
+        )
+        # create a random feature vector
+        features = get_random_test_tensor(size=(100, 4))
+        # convert to a TF tensor via numpy
+        features_tf = tf.convert_to_tensor(features.numpy())
+        # compute the tensorflow predictions
+        result_tf = model_tf(features_tf, training=False)
+
+        # convert TF model to CrypTen model
+        # write as a SavedModel, then load GraphDef from it
+        import tempfile
+
+        saved_model_dir = tempfile.NamedTemporaryFile(delete=True).name
+        os.makedirs(saved_model_dir, exist_ok=True)
+        model_tf.save(saved_model_dir)
+        graph_def, inputs, outputs = tf2onnx.tf_loader.from_saved_model(
+            saved_model_dir, None, None
+        )
+        model_enc = crypten.nn.from_tensorflow(
+            graph_def, list(inputs.keys()), list(outputs.keys())
+        )
+
+        # encrypt model and run it
+        model_enc.encrypt()
+        features_enc = crypten.cryptensor(features)
+        result_enc = model_enc(features_enc)
+
+        # compare the results
+        result = torch.tensor(result_tf.numpy())
+        self._check(result_enc, result, "nn.from_tensorflow failed")
 
 
 # Run all unit tests with both TFP and TTP providers

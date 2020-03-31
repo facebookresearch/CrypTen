@@ -418,19 +418,34 @@ class Add(Module):
     """
 
     def forward(self, input):
-        assert isinstance(input, (list, tuple)), "input must be list or tuple"
-        assert len(input) == 2, "input must contain two tensors"
-        return input[0].add(input[1])
+        num_parameters = len(list(self.parameters()))
+        if num_parameters == 0:
+            assert isinstance(input, (list, tuple)), "input must be list or tuple"
+            assert len(input) == 2, "input must contain two tensors"
+            return input[0].add(input[1])
+        elif num_parameters == 1:
+            return input.add(list(self.parameters())[0])
+        else:
+            raise ValueError("Add cannot have more than one parameter.")
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
-        return Add()
+        module = Add()
+        if parameters:
+            len_param = len(parameters)
+            assert len_param == 1, "Add module can have maximum one parameter"
+            for key, value in parameters.items():
+                module.register_parameter(key, value)
+        return module
 
 
 class Sub(Module):
     """
     Module that subtracts two values.
     """
+
+    # TODO: Allow subtract to have a parameter as well, like add.
+    # Note that parameter needs to define ordering for subtraction
 
     def forward(self, input):
         assert isinstance(input, (list, tuple)), "input must be list or tuple"
@@ -893,7 +908,10 @@ class Linear(Module):
     def forward(self, x):
         if x.dim() > 2:
             x = x.view(x.size(0), -1)
-        return x.matmul(self.weight.t()) + self.bias
+        output = x.matmul(self.weight.t())
+        if hasattr(self, "bias"):
+            output = output.add(self.bias)
+        return output
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
@@ -908,6 +926,67 @@ class Linear(Module):
         # set parameters:
         for key, value in parameters.items():
             module.set_parameter(key, value)
+        return module
+
+
+class MatMul(Module):
+    """
+    Matrix product of two tensors.
+    The behavior depends on the dimensionality of the tensors as followsf
+        - If both tensors are 1-dimensional, the dot product (scalar) is returned.
+        - If both arguments are 2-dimensional, the matrix-matrix product is returned.
+        - If the first argument is 1-dimensional and the second argument is
+        2-dimensional, a 1 is prepended to its dimension for the purpose of the
+        matrix multiply. After the matrix multiply, the prepended dimension is removed.
+        - If the first argument is 2-dimensional and the second argument is
+        1-dimensional, the matrix-vector product is returned.
+        - If both arguments are at least 1-dimensional and at least one argument is
+        N-dimensional (where N > 2), then a batched matrix multiply is returned.
+        If the first argument is 1-dimensional, a 1 is prepended to its dimension
+        for the purpose of the batched matrix multiply and removed after. If the
+        second argument is 1-dimensional, a 1 is appended to its dimension for the
+        purpose of the batched matrix multiple and removed after.
+        The non-matrix (i.e. batch) dimensions are broadcasted (and thus
+        must be broadcastable).  For example, if :attr:`input` is a
+        :math:`(j \times 1 \times n \times m)` tensor and :attr:`other` is
+        a :math:`(k \times m \times p)` tensor, :attr:`out` will be an
+        :math:`(j \times k \times n \times p)` tensor.
+
+    Arguments:
+        Option 1: [input1, input2]
+            input1: first input matrix to be multiplied
+            input2: second input matrix to be multiplied.
+        Option 2: input1
+            input1: first input matrix to be multiplied, if module
+            is already initialized with the second (i.e. multiplier) matrix.
+    """
+
+    def __init__(self, weight=None):
+        super().__init__()
+        if weight is not None:
+            self.register_parameter("weight", weight)
+
+    def forward(self, x):
+        if hasattr(self, "weight"):
+            output = x.matmul(self.weight)
+        else:
+            assert isinstance(x, (list, tuple)), "input must be list or tuple"
+            assert len(x) == 2, "input must contain two tensors"
+            output = x[0].matmul(x[1])
+        return output
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if parameters is None:
+            parameters = {}
+        # set parameters if they exist
+        if parameters:
+            assert len(parameters) == 1, "Can have maximum one parameter"
+            weight_param = list(parameters.keys())[0]
+            value = parameters[weight_param]
+            module = MatMul(weight=value)
+        else:
+            module = MatMul()
         return module
 
 
