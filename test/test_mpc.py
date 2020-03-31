@@ -548,30 +548,6 @@ class TestMPC(object):
                                 self._check(
                                     encrypted_pool[0], reference[0], "max_pool2d failed"
                                 )
-
-                                # Compute max_pool2d backward with random grad
-                                grad_output = get_random_test_tensor(
-                                    size=reference[0].size(), is_float=True
-                                )
-
-                                if matrix.grad is not None:
-                                    matrix.grad.data.zero_()
-                                reference[0].backward(grad_output)
-                                grad_ref = matrix.grad
-
-                                # Compute encrypted backward with same grad
-                                encrypted_grad = MPCTensor(grad_output)
-                                kwargs = {
-                                    "stride": stride,
-                                    "padding": padding,
-                                    "output_size": encrypted_matrix.size(),
-                                }
-                                encrypted_grad = encrypted_grad._max_pool2d_backward(
-                                    encrypted_pool[1], kernel_size, **kwargs
-                                )
-
-                                msg = "max_pool2d_backward failed"
-                                self._check(encrypted_grad, grad_ref, msg)
                             else:
                                 self._check(
                                     encrypted_pool, reference, "max_pool2d failed"
