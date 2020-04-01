@@ -9,6 +9,7 @@ import logging
 import threading
 from operator import itemgetter
 from queue import Queue
+import copy
 
 import torch
 from torch.distributed import ReduceOp
@@ -188,6 +189,24 @@ class InProcessCommunicator(Communicator):
         if self.rank == src:
             for i in range(self.get_world_size()):
                 self.mailbox[i].put(tensor.clone())
+
+        # No need for a barrier here.
+
+        return self.mailbox[self.rank].get()
+
+    def send_obj(self, obj, dst):
+        """Sends the specified object to the destination `dst`."""
+        self.mailbox[dst].put((self.rank, copy.deepcopy(obj))
+
+    def recv_obj(self, src):
+        """Receives a tensor from a source src."""
+        return self.recv(src)
+
+    def broadcast_obj(self, obj, src):
+        """Broadcasts a given object to all parties."""
+        if self.rank == src:
+            for i in range(self.get_world_size()):
+                self.mailbox[i].put(copy.deepcopy(obj))
 
         # No need for a barrier here.
 
