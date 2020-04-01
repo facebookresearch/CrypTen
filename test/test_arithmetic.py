@@ -880,10 +880,36 @@ class TestArithmetic(MultiProcessTestCase):
                 encrypted_out = encrypted.gather(dim, index)
                 self._check(encrypted_out, reference, f"gather failed with size {size}")
 
-    # TODO: Write the following unit tests
-    @unittest.skip("Test not implemented")
     def test_split(self):
-        pass
+        """Test gather function of encrypted tensor"""
+        sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
+
+        for size in sizes:
+            for dim in range(len(size)):
+                tensor = get_random_test_tensor(size=size, is_float=True)
+                encrypted = ArithmeticSharedTensor(tensor)
+
+                for idx in range(6):
+                    split = (idx, 5 - idx)
+                    reference0, reference1 = tensor.split(split, dim=dim)
+                    encrypted_out0, encrypted_out1 = encrypted.split(split, dim=dim)
+
+                    self._check(
+                        encrypted_out0, reference0, f"split failed with input {split}"
+                    )
+                    self._check(
+                        encrypted_out1, reference1, f"split failed with input {split}"
+                    )
+
+                split = (5,)
+                reference, = tensor.split(split, dim=dim)
+                encrypted_out, = encrypted.split(split, dim=dim)
+                self._check(
+                    encrypted_out, reference, f"split failed with input {split}"
+                )
+
+                with self.assertRaises(RuntimeError):
+                    encrypted_out.split((5, 1))
 
 
 # This code only runs when executing the file outside the test harness
