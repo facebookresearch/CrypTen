@@ -329,7 +329,7 @@ class BinarySharedTensor(object):
         corresponding value in `index` for `dimension = dim`.
         """
         result = self.clone()
-        return result.scatter_(self, dim, index, src)
+        return result.scatter_(dim, index, src)
 
     # Bitwise operators
     __add__ = add
@@ -365,7 +365,6 @@ REGULAR_FUNCTIONS = [
     "flip",
     "reshape",
     "gather",
-    "scatter",
     "take",
     "split",
 ]

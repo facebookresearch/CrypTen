@@ -333,11 +333,11 @@ class TestArithmetic(MultiProcessTestCase):
                             "%s %s failed" % ("private" if private else "public", func),
                         )
                         if func.endswith("_"):
-                            # Check in-place scatter/scatter-add worked
+                            # Check in-place scatter/scatter-add modified input
                             self._check(
                                 encrypted,
                                 reference,
-                                "%s %s failed"
+                                "%s %s failed to modify input"
                                 % ("private" if private else "public", func),
                             )
                         else:
@@ -345,7 +345,7 @@ class TestArithmetic(MultiProcessTestCase):
                             self._check(
                                 encrypted,
                                 tensor1,
-                                "%s %s failed"
+                                "%s %s unintendedly modified input"
                                 % ("private" if private else "public", func),
                             )
 
