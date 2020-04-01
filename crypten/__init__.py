@@ -194,6 +194,12 @@ def _setup_przs():
     comm.get().g0.manual_seed(next_seed.item())
     comm.get().g1.manual_seed(prev_seed.item())
 
+    # Create global generator
+    global_seed = torch.tensor(numpy.random.randint(-2 ** 63, 2 ** 63 - 1, (1,)))
+    global_seed = comm.get().broadcast(global_seed, 0)
+    comm.get().global_generator = torch.Generator()
+    comm.get().global_generator.manual_seed(global_seed.item())
+
 
 def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
     """
