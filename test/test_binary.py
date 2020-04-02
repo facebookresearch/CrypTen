@@ -392,10 +392,57 @@ class TestBinary(MultiProcessTestCase):
                 "where failed with private condition",
             )
 
-    # TODO: Write the following unit tests
-    @unittest.skip("Test not implemented")
-    def test_gather_scatter(self):
-        pass
+    def test_gather(self):
+        """Test gather function of encrypted tensor"""
+        sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
+        for size in sizes:
+            for dim in range(len(size)):
+                tensor = get_random_test_tensor(size=size, is_float=False)
+                index = get_random_test_tensor(size=size, is_float=False)
+                index = index.abs().clamp(0, 4)
+                encrypted = BinarySharedTensor(tensor)
+                reference = tensor.gather(dim, index)
+                encrypted_out = encrypted.gather(dim, index)
+                self._check(encrypted_out, reference, f"gather failed with size {size}")
+
+    def test_scatter(self):
+        """Test scatter function of encrypted tensor"""
+        funcs = ["scatter", "scatter_"]
+        sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
+        for func in funcs:
+            for size in sizes:
+                for tensor_type in [lambda x: x, BinarySharedTensor]:
+                    for dim in range(len(size)):
+                        tensor1 = get_random_test_tensor(size=size, is_float=False)
+                        tensor2 = get_random_test_tensor(size=size, is_float=False)
+                        index = get_random_test_tensor(size=size, is_float=False)
+                        index = index.abs().clamp(0, 4)
+                        encrypted = BinarySharedTensor(tensor1)
+                        encrypted2 = tensor_type(tensor2)
+                        reference = getattr(tensor1, func)(dim, index, tensor2)
+                        encrypted_out = getattr(encrypted, func)(dim, index, encrypted2)
+                        private = tensor_type == BinarySharedTensor
+                        self._check(
+                            encrypted_out,
+                            reference,
+                            "%s %s failed" % ("private" if private else "public", func),
+                        )
+                        if func.endswith("_"):
+                            # Check in-place scatter modified input
+                            self._check(
+                                encrypted,
+                                reference,
+                                "%s %s failed to modify input"
+                                % ("private" if private else "public", func),
+                            )
+                        else:
+                            # Check original is not modified
+                            self._check(
+                                encrypted,
+                                tensor1,
+                                "%s %s unintendedly modified input"
+                                % ("private" if private else "public", func),
+                            )
 
     def test_split(self):
         """Test gather function of encrypted tensor"""
