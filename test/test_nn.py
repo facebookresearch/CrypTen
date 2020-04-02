@@ -1051,6 +1051,106 @@ class TestNN(object):
         result = torch.tensor(result_tf.numpy())
         self._check(result_enc, result, "nn.from_tensorflow failed")
 
+    def test_state_dict(self):
+        """
+        Tests dumping and loading of state dicts.
+        """
+
+        def _check_equal(t1, t2):
+            """
+            Checks whether to tensors are identical.
+            """
+            if isinstance(t1, torch.nn.parameter.Parameter):
+                t1 = t1.data
+            if isinstance(t2, torch.nn.parameter.Parameter):
+                t2 = t2.data
+            self.assertEqual(type(t1), type(t2))
+            if isinstance(t1, crypten.CrypTensor):
+                t1 = t1.get_plain_text()
+                t2 = t2.get_plain_text()
+            self.assertTrue(t1.eq(t2).all())
+
+        def _check_state_dict(model, state_dict):
+            """
+            Checks if state_dict matches parameters in model.
+            """
+            print(model)
+
+            # get all parameters, buffers, and names from model:
+            params_buffers = {}
+            for func in ["named_parameters", "named_buffers"]:
+                params_buffers.update({k: v for k, v in getattr(model, func)()})
+
+            # do all the checks:
+            self.assertEqual(len(params_buffers), len(state_dict))
+            for name, param_or_buffer in params_buffers.items():
+                self.assertIn(name, state_dict)
+                _check_equal(state_dict[name], param_or_buffer)
+
+        # test for individual modules:
+        module_args = {
+            "BatchNorm1d": (400,),
+            "BatchNorm2d": (3,),
+            "BatchNorm3d": (6,),
+            "Conv1d": (3, 6, 5),
+            "Conv2d": (3, 6, 5),
+            "Linear": (400, 120),
+        }
+        for module_name, args in module_args.items():
+            for encrypt in [False, True]:
+
+                # create module and get state dict:
+                module = getattr(crypten.nn, module_name)(*args)
+                if encrypt:
+                    module.encrypt()
+                state_dict = module.state_dict()
+                _check_state_dict(module, state_dict)
+
+                # load state dict into fresh module:
+                new_module = getattr(crypten.nn, module_name)(*args)
+                if encrypt:
+                    with self.assertRaises(AssertionError):
+                        new_module.load_state_dict(state_dict)
+                    new_module.encrypt()
+                new_module.load_state_dict(state_dict)
+                _check_state_dict(new_module, state_dict)
+
+        # tests for model that is sequence of modules:
+        for num_layers in range(1, 6):
+            for encrypt in [False, True]:
+
+                # some variables that we need:
+                input_size = (3, 10)
+                output_size = (input_size[0], input_size[1] - num_layers)
+                layer_idx = range(input_size[1], output_size[1], -1)
+
+                # construct sequential model:
+                module_list = [
+                    crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
+                ]
+                model = crypten.nn.Sequential(module_list)
+                if encrypt:
+                    model.encrypt()
+
+                # check state dict:
+                state_dict = model.state_dict()
+                _check_state_dict(model, state_dict)
+
+                # load state dict into fresh model:
+                state_dict = model.state_dict()
+                module_list = [
+                    crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
+                ]
+                new_model = crypten.nn.Sequential(module_list)
+                if encrypt:
+                    with self.assertRaises(AssertionError):
+                        new_model.load_state_dict(state_dict)
+                    new_model.encrypt()
+                new_model.load_state_dict(state_dict)
+
+                # check new model:
+                _check_state_dict(model, state_dict)
+
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestNN):

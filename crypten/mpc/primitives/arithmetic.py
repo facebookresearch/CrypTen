@@ -101,6 +101,11 @@ class ArithmeticSharedTensor(object):
         result.share = self.share
         return result
 
+    def copy_(self, other):
+        """Copies other tensor into this tensor."""
+        self.share.copy_(other.share)
+        self.encoder = other.encoder
+
     def __repr__(self):
         return f"ArithmeticSharedTensor({self.share})"
 

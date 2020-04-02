@@ -110,6 +110,12 @@ class MPCTensor(CrypTensor):
         result.ptype = self.ptype
         return result
 
+    def copy_(self, other):
+        """Copies value of other MPCTensor into this MPCTensor."""
+        assert isinstance(other, MPCTensor), "other must be MPCTensor"
+        self._tensor.copy_(other._tensor)
+        self.ptype = other.ptype
+
     # Handle share types and conversions
     def to(self, ptype, **kwargs):
         """Converts self._tensor to the given ptype
