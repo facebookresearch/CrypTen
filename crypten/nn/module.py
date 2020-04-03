@@ -604,7 +604,43 @@ class Exp(Module):
         return Exp()
 
 
-class ReduceSum(Module):
+class _Reduce(Module):
+    """
+    Base class for the functionality of ONNX ReduceMean (defined here as Mean),
+    and ONNX ReduceSum (defined here as Sum).
+    """
+
+    def __init__(self, dim, keepdim=False, reduction_fn="mean"):
+        super().__init__()
+        self.dim = dim
+        self.keepdim = keepdim
+        self.reduction_fn = reduction_fn
+
+    def forward(self, input):
+        return getattr(input, self.reduction_fn)(self.dim, keepdim=self.keepdim)
+
+
+class Mean(_Reduce):
+    """
+    Module that computes the mean of the input tensor's element along the provided axes.
+    If `keepdim` is True, the output tensor is of the same size as input
+    except in the dimension(s) `dim` where it is of size 1.
+    Otherwise, `dim` is squeezed, resulting in the output tensor having 1
+    (or `len(dim)`) fewer dimension(s).
+    """
+
+    def __init__(self, dim, keepdim=False):
+        super().__init__(dim, keepdim, "mean")
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        keepdim = _identify_bool_attributes_with_defaults(attributes, "keepdims", 1)
+        return Mean(attributes["axes"], keepdim)
+
+
+class Sum(_Reduce):
     """
     Module that computes the sum of the input tensor's element along the provided axes.
     If `keepdim` is True, the output tensor is of the same size as input
@@ -614,22 +650,46 @@ class ReduceSum(Module):
     """
 
     def __init__(self, dim, keepdim=False):
-        super().__init__()
-        self.dim = dim
-        self.keepdim = keepdim
-
-    def forward(self, input):
-        return input.sum(self.dim, keepdim=self.keepdim)
+        super().__init__(dim, keepdim, "sum")
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         if attributes is None:
             attributes = {}
-        dim = attributes["axes"]
-        if "keepdims" not in attributes:
-            attributes["keepdims"] = 1
-        keepdim = True if attributes["keepdims"] == 1 else False
-        return ReduceSum(dim, keepdim)
+        keepdim = _identify_bool_attributes_with_defaults(attributes, "keepdims", 1)
+        return Sum(attributes["axes"], keepdim)
+
+
+class Transpose(Module):
+    """
+    Module that transposes the input tensor similar to
+    `numpy.transpose`. For example, when perm=(1, 0, 2), given an input
+    tensor of shape (1, 2, 3), the output shape will be (2, 1, 3). Note
+    that the signature of this module matches the ONNX specification
+    and differs from `torch.transpose`
+
+    Args:
+        `perm`: list of ints
+    """
+
+    def __init__(self, perm):
+        super().__init__()
+        self.perm = perm
+
+    def forward(self, input):
+        assert input.dim() == len(self.perm)
+        return input.permute(self.perm)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        # TODO: ONNX specification says the permutation should be
+        # reversed if not provided in the attributes.  Because we
+        # don't have the input size here, we need figure out a
+        # different way of supporting this, if we want to do that.
+        perm = attributes["perm"]
+        return Transpose(perm)
 
 
 class Squeeze(Module):
@@ -1402,10 +1462,16 @@ class Conv2d(Module):
             parameters = {}
         if attributes is None:
             attributes = {}
-        assert _all_the_same(["kernel_shape"]), "only square kernels are supported"
+        assert _all_the_same(
+            attributes["kernel_shape"]
+        ), "only square kernels are supported"
         assert _all_the_same(
             attributes["strides"]
         ), "stride must be the same in each dimension"
+        if "pads" not in attributes:
+            attributes["pads"] = [0, 0]
+        if "group" not in attributes:
+            attributes["group"] = 1
         assert _all_the_same(
             attributes["pads"]
         ), "padding must be the same in each dimension"
@@ -1724,9 +1790,12 @@ class _BatchNorm(Module):
             parameters = {}
         if attributes is None:
             attributes = {}
+
         num_features = len(parameters["running_mean"])
 
         # create module:
+        if "momentum" not in attributes:
+            attributes["momentum"] = 0.1
         kwargs = {"eps": attributes["epsilon"], "momentum": attributes["momentum"]}
         module = _BatchNorm(num_features, **kwargs)
 
@@ -1768,3 +1837,17 @@ def _all_the_same(items):
     Checks whether all values in a list are the same.
     """
     return all(items[0] == item for item in items)
+
+
+def _identify_bool_attributes_with_defaults(
+    attributes, attr_name, attr_value, default=True
+):
+    """For boolean attributes that have default values in the ONNX specification
+        checks to see if they are present in `attributes`, and assigns the
+        default if not present and appropriate value if present. Note `attr_value`
+        must be the value `attributes[attr_name]` if the default is to be kept.
+    """
+    output = default
+    if attr_name in attributes and attributes[attr_name] != attr_value:
+        output = not default
+    return output

@@ -630,6 +630,7 @@ REGULAR_FUNCTIONS = [
     "gather",
     "unbind",
     "split",
+    "permute",
 ]
 
 

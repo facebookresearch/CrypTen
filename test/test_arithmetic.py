@@ -433,6 +433,35 @@ class TestArithmetic(MultiProcessTestCase):
                     encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
 
+    def test_permute(self):
+        """Test the permute operations"""
+        sizes = [
+            (1,),
+            (5,),
+            (1, 5),
+            (1, 5, 7),
+            (7, 1, 5),
+            (5, 7, 1),
+            (1, 3, 5, 7),
+            (5, 3, 32, 32),
+        ]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            encrypted_tensor = ArithmeticSharedTensor(tensor)
+
+            # test reversing the dimensions
+            dim_arr = [x - 1 for x in range(tensor.dim(), 0, -1)]
+            reference = tensor.permute(dim_arr)
+            encrypted_out = encrypted_tensor.permute(dim_arr)
+            self._check(encrypted_out, reference, "permute failed")
+
+            # test one particular non-reversed permutation
+            if tensor.dim() == 4:
+                dim_arr = [1, 3, 0, 2]
+                reference = tensor.permute(dim_arr)
+                encrypted_out = encrypted_tensor.permute(dim_arr)
+                self._check(encrypted_out, reference, "permute failed")
+
     def test_conv1d_smaller_signal_one_channel(self):
         self._conv1d(5, 1)
 

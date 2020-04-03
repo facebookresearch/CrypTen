@@ -1294,6 +1294,7 @@ REGULAR_FUNCTIONS = [
     "cumsum",
     "reshape",
     "gather",
+    "permute",
 ]
 
 

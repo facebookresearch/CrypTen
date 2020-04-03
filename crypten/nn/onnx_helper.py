@@ -38,6 +38,35 @@ def get_attribute_value(attr):
         raise ValueError("Unknown attribute type for attribute %s." % attr.name)
 
 
+def _sync_parameters(parameter_map, module_name):
+    """
+    Syncs parameters from parameter map to be consistent
+    with expected PyTorch parameter map
+    """
+
+    def _map_module_parameters(parameter_map, module_param_names):
+        for i, key in enumerate(parameter_map.keys()):
+            value = parameter_map[key]
+            new_parameter_map[module_param_names[i]] = value
+
+    new_parameter_map = {}
+    if module_name == "Conv":
+        module_param_names = ["weight", "bias"]
+        _map_module_parameters(parameter_map, module_param_names)
+    elif module_name == "BatchNormalization":
+        module_param_names = [
+            "weight",
+            "bias",
+            "running_mean",
+            "running_var",
+            "training_mode",
+        ]
+        _map_module_parameters(parameter_map, module_param_names)
+    else:
+        new_parameter_map = parameter_map
+    return new_parameter_map
+
+
 def _update_onnx_symbolic_registry():
     """
     Updates the ONNX symbolic registry for operators that need a CrypTen-specific

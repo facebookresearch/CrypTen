@@ -370,6 +370,7 @@ REGULAR_FUNCTIONS = [
     "gather",
     "take",
     "split",
+    "permute",
 ]
 
 

@@ -236,11 +236,13 @@ class TestNN(object):
             "Exp": (),
             "Gather": (0,),
             "MatMul": (),
+            "Mean": ([0], True),
             "Reshape": (),
-            "ReduceSum": ([0], True),
             "Shape": (),
             "Sub": (),
+            "Sum": ([0], True),
             "Squeeze": (0,),
+            "Transpose": ([1, 3, 0, 2],),
             "Unsqueeze": (0,),
         }
         module_lambdas = {
@@ -252,15 +254,19 @@ class TestNN(object):
                 x[0].numpy().take(x[1], module_args["Gather"][0])
             ),
             "MatMul": lambda x: torch.matmul(x[0], x[1]),
-            "ReduceSum": lambda x: torch.sum(
-                x,
-                dim=module_args["ReduceSum"][0],
-                keepdim=(module_args["ReduceSum"][1] == 1),
+            "Mean": lambda x: torch.mean(
+                x, dim=module_args["Mean"][0], keepdim=(module_args["Mean"][1] == 1)
             ),
             "Reshape": lambda x: x[0].reshape(x[1].tolist()),
             "Shape": lambda x: torch.tensor(x.size()).float(),
             "Sub": lambda x: x[0] - x[1],
+            "Sum": lambda x: torch.sum(
+                x, dim=module_args["Sum"][0], keepdim=(module_args["Sum"][1] == 1)
+            ),
             "Squeeze": lambda x: x.squeeze(module_args["Squeeze"][0]),
+            "Transpose": lambda x: torch.from_numpy(
+                x.numpy().transpose(module_args["Transpose"][0])
+            ),
             "Unsqueeze": lambda x: x.unsqueeze(module_args["Unsqueeze"][0]),
         }
         input_sizes = {
@@ -270,11 +276,13 @@ class TestNN(object):
             "Exp": (10, 10, 10),
             "Gather": (4, 4, 4, 4),
             "MatMul": (4, 4),
+            "Mean": (3, 3, 3),
             "Reshape": (1, 4),
-            "ReduceSum": (3, 3, 3),
             "Shape": (8, 3, 2),
             "Sub": (10, 12),
+            "Sum": (3, 3, 3),
             "Squeeze": (1, 12, 6),
+            "Transpose": (1, 2, 3, 4),
             "Unsqueeze": (8, 3),
         }
         additional_inputs = {
@@ -290,11 +298,13 @@ class TestNN(object):
             "Constant": [("value", False)],
             "Gather": [("axis", False)],
             "MatMul": [],
-            "ReduceSum": [("axes", False), ("keepdims", False)],
+            "Mean": [("axes", False), ("keepdims", False)],
             "Reshape": [],
             "Shape": [],
             "Sub": [],
+            "Sum": [("axes", False), ("keepdims", False)],
             "Squeeze": [("axes", True)],
+            "Transpose": [("perm", False)],
             "Unsqueeze": [("axes", True)],
         }
         # loop over all modules:
@@ -344,10 +354,14 @@ class TestNN(object):
                 else:
                     local_attr[attr_name] = module_args[module_name][i]
 
-            # Update ReduceSum module attributes, since the module and from_onnx
-            # path are different
+            # Update ReduceSum/ReduceMean module attributes, since the module and
+            # from_onnx path are different
             if module_name == "ReduceSum":
                 local_attr["keepdims"] = 1 if module_args["ReduceSum"][1] is True else 0
+            if module_name == "ReduceMean":
+                local_attr["keepdims"] = (
+                    1 if module_args["ReduceMean"][1] is True else 0
+                )
 
             # compare model outputs using the from_onnx static function
             module = getattr(crypten.nn, module_name).from_onnx(attributes=local_attr)
@@ -1003,7 +1017,7 @@ class TestNN(object):
         import tf2onnx
 
         # create simple model
-        model_tf = tf.keras.Sequential(
+        model_tf1 = tf.keras.Sequential(
             [
                 tf.keras.layers.Dense(
                     10,
@@ -1021,35 +1035,66 @@ class TestNN(object):
                 tf.keras.layers.Dense(3, kernel_initializer="ones"),
             ]
         )
-        # create a random feature vector
-        features = get_random_test_tensor(size=(100, 4))
-        # convert to a TF tensor via numpy
-        features_tf = tf.convert_to_tensor(features.numpy())
-        # compute the tensorflow predictions
-        result_tf = model_tf(features_tf, training=False)
 
-        # convert TF model to CrypTen model
-        # write as a SavedModel, then load GraphDef from it
-        import tempfile
-
-        saved_model_dir = tempfile.NamedTemporaryFile(delete=True).name
-        os.makedirs(saved_model_dir, exist_ok=True)
-        model_tf.save(saved_model_dir)
-        graph_def, inputs, outputs = tf2onnx.tf_loader.from_saved_model(
-            saved_model_dir, None, None
-        )
-        model_enc = crypten.nn.from_tensorflow(
-            graph_def, list(inputs.keys()), list(outputs.keys())
+        model_tf2 = tf.keras.Sequential(
+            [
+                tf.keras.layers.Conv2D(
+                    32,
+                    3,
+                    activation="relu",
+                    strides=1,
+                    kernel_initializer="ones",
+                    bias_initializer="ones",
+                    input_shape=(32, 32, 3),
+                ),
+                tf.keras.layers.MaxPooling2D(3),
+                tf.keras.layers.GlobalAveragePooling2D(),
+                tf.keras.layers.Dropout(0.5),
+            ]
         )
 
-        # encrypt model and run it
-        model_enc.encrypt()
-        features_enc = crypten.cryptensor(features)
-        result_enc = model_enc(features_enc)
+        feature_sizes = [(1, 4), (1, 32, 32, 3)]
+        label_sizes = [(1, 3), (1, 32)]
 
-        # compare the results
-        result = torch.tensor(result_tf.numpy())
-        self._check(result_enc, result, "nn.from_tensorflow failed")
+        for i, curr_model_tf in enumerate([model_tf1, model_tf2]):
+            # create a random feature vector
+            features = get_random_test_tensor(
+                size=feature_sizes[i], is_float=True, min_value=1, max_value=3
+            )
+            labels = get_random_test_tensor(
+                size=label_sizes[i], is_float=True, min_value=1
+            )
+
+            # convert to a TF tensor via numpy
+            features_tf = tf.convert_to_tensor(features.numpy())
+            labels_tf = tf.convert_to_tensor(labels.numpy())
+            # compute the tensorflow predictions
+            curr_model_tf.compile("sgd", loss=tf.keras.losses.MeanSquaredError())
+            curr_model_tf.fit(features_tf, labels_tf)
+            result_tf = curr_model_tf(features_tf, training=False)
+
+            # convert TF model to CrypTen model
+            # write as a SavedModel, then load GraphDef from it
+            import tempfile
+
+            saved_model_dir = tempfile.NamedTemporaryFile(delete=True).name
+            os.makedirs(saved_model_dir, exist_ok=True)
+            curr_model_tf.save(saved_model_dir)
+            graph_def, inputs, outputs = tf2onnx.tf_loader.from_saved_model(
+                saved_model_dir, None, None
+            )
+            model_enc = crypten.nn.from_tensorflow(
+                graph_def, list(inputs.keys()), list(outputs.keys())
+            )
+
+            # encrypt model and run it
+            model_enc.encrypt()
+            features_enc = crypten.cryptensor(features)
+            result_enc = model_enc(features_enc)
+
+            # compare the results
+            result = torch.tensor(result_tf.numpy())
+            self._check(result_enc, result, "nn.from_tensorflow failed")
 
     def test_state_dict(self):
         """

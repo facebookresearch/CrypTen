@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import io
+from collections import OrderedDict
 
 import onnx
 import torch
@@ -39,8 +40,8 @@ from .module import (
     LogSoftmax,
     MatMul,
     MaxPool2d,
+    Mean,
     Module,
-    ReduceSum,
     ReLU,
     Reshape,
     Sequential,
@@ -48,12 +49,15 @@ from .module import (
     Softmax,
     Squeeze,
     Sub,
+    Sum,
+    Transpose,
     Unsqueeze,
     _BatchNorm,
     _ConstantPad,
     _Pool2d,
 )
 from .onnx_helper import (
+    _sync_parameters,
     _update_onnx_symbolic_registry,
     get_attribute_value,
     get_parameter_name,
@@ -104,13 +108,15 @@ __all__ = [
     "Module",
     "_Pool2d",
     "ReLU",
-    "ReduceSum",
+    "Mean",
+    "Sum",
     "Reshape",
     "Sequential",
     "Shape",
     "Softmax",
     "Squeeze",
     "Sub",
+    "Transpose",
     "Unsqueeze",
 ]
 
@@ -135,12 +141,14 @@ ONNX_TO_CRYPTEN = {
     "MaxPool": MaxPool2d,
     "Pad": _ConstantPad,
     "Relu": ReLU,
-    "ReduceSum": ReduceSum,
+    "ReduceMean": Mean,
+    "ReduceSum": Sum,
     "Reshape": Reshape,
     "Shape": Shape,
     "Softmax": Softmax,
     "Squeeze": Squeeze,
     "Sub": Sub,
+    "Transpose": Transpose,
     "Unsqueeze": Unsqueeze,
 }
 
@@ -261,15 +269,27 @@ def from_onnx(onnx_string_or_file):
         # retrieve inputs, outputs, attributes, and parameters for this node:
         node_output_name = list(node.output)[0]
         node_input_names = list(node.input)  # includes parameters
-        parameters = {
-            get_parameter_name(name): all_parameters[name]
-            for name in node_input_names
-            if name in all_parameters and name not in input_names
-        }  # all the parameters for the current module
+
+        # Create parameters: OrderedDict is required to figure out mapping
+        # between complex names and ONNX arguments
+        parameters = OrderedDict()
+        orig_parameter_names = []
+        # add in all the parameters for the current module
+        for i, name in enumerate(node_input_names):
+            if name in all_parameters and name not in input_names:
+                key = get_parameter_name(name)
+                # the following is necessary because tf2onnx names multiple parameters
+                # identically if they have the same value
+                if TF_AND_TF2ONNX:
+                    # only modify if we already have the key in parameters
+                    if key in parameters:
+                        key = key + "_" + str(i)
+                parameters[key] = all_parameters[name]
+                orig_parameter_names.append(get_parameter_name(name))
         node_input_names = [
             name
             for name in node_input_names
-            if get_parameter_name(name) not in parameters
+            if get_parameter_name(name) not in orig_parameter_names
         ]
         attributes = {attr.name: get_attribute_value(attr) for attr in node.attribute}
 
@@ -286,6 +306,10 @@ def from_onnx(onnx_string_or_file):
             if node.op_type not in ONNX_TO_CRYPTEN:
                 raise ValueError("CrypTen does not support op %s." % node.op_type)
             cls = ONNX_TO_CRYPTEN[node.op_type]
+
+        if TF_AND_TF2ONNX:
+            # sync parameter names so that they become what CrypTen expects
+            parameters = _sync_parameters(parameters, node.op_type)
 
         # add CrypTen module to graph:
         crypten_module = cls.from_onnx(parameters=parameters, attributes=attributes)
