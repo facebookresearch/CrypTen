@@ -22,6 +22,7 @@ from .module import (
     BatchNorm3d,
     Concat,
     Constant,
+    ConstantOfShape,
     ConstantPad1d,
     ConstantPad2d,
     ConstantPad3d,
@@ -42,6 +43,13 @@ from .module import (
     MaxPool2d,
     Mean,
     Module,
+<<<<<<< dest:   34200e9e1e33 - generatedunixname89002005294178: [MSDK] Update...
+||||||| base
+    ReduceSum,
+=======
+    Mul,
+    ReduceSum,
+>>>>>>> source: bbff138fd74d - marksibrahim: Add missing `Mul` and `ConstantO...
     ReLU,
     Reshape,
     Sequential,
@@ -87,6 +95,7 @@ __all__ = [
     "BatchNorm3d",
     "Concat",
     "Constant",
+    "ConstantOfShape",
     "ConstantPad1d",
     "ConstantPad2d",
     "ConstantPad3d",
@@ -127,6 +136,7 @@ ONNX_TO_CRYPTEN = {
     "BatchNormalization": _BatchNorm,
     "Concat": Concat,
     "Constant": Constant,
+    "ConstantOfShape": ConstantOfShape,
     "Dropout": Dropout,
     "Dropout2d": Dropout2d,
     "Dropout3d": Dropout3d,
@@ -138,6 +148,7 @@ ONNX_TO_CRYPTEN = {
     "GlobalAveragePool": GlobalAveragePool,
     "LogSoftmax": LogSoftmax,
     "MatMul": MatMul,
+    "Mul": Mul,
     "MaxPool": MaxPool2d,
     "Pad": _ConstantPad,
     "Relu": ReLU,

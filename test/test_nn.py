@@ -227,16 +227,22 @@ class TestNN(object):
 
         # input arguments for modules and input sizes:
         no_input_modules = ["Constant"]
-        binary_modules = ["Add", "Sub", "Concat", "MatMul"]
+        binary_modules = ["Add", "Sub", "Concat", "MatMul", "Mul"]
         ex_zero_modules = []
         module_args = {
             "Add": (),
             "Concat": (0,),
             "Constant": (1.2,),
+            "ConstantOfShape": (1.2,),
             "Exp": (),
             "Gather": (0,),
             "MatMul": (),
+<<<<<<< dest:   34200e9e1e33 - generatedunixname89002005294178: [MSDK] Update...
             "Mean": ([0], True),
+||||||| base
+=======
+            "Mul": (),
+>>>>>>> source: bbff138fd74d - marksibrahim: Add missing `Mul` and `ConstantO...
             "Reshape": (),
             "Shape": (),
             "Sub": (),
@@ -249,13 +255,29 @@ class TestNN(object):
             "Add": lambda x: x[0] + x[1],
             "Concat": lambda x: torch.cat((x[0], x[1])),
             "Constant": lambda _: torch.tensor(module_args["Constant"][0]),
+            "ConstantOfShape": lambda x: torch.empty(x.tolist()).fill_(
+                module_args["ConstantOfShape"][0]
+            ),
             "Exp": lambda x: torch.exp(x),
             "Gather": lambda x: torch.from_numpy(
                 x[0].numpy().take(x[1], module_args["Gather"][0])
             ),
             "MatMul": lambda x: torch.matmul(x[0], x[1]),
+<<<<<<< dest:   34200e9e1e33 - generatedunixname89002005294178: [MSDK] Update...
             "Mean": lambda x: torch.mean(
                 x, dim=module_args["Mean"][0], keepdim=(module_args["Mean"][1] == 1)
+||||||| base
+            "ReduceSum": lambda x: torch.sum(
+                x,
+                dim=module_args["ReduceSum"][0],
+                keepdim=(module_args["ReduceSum"][1] == 1),
+=======
+            "Mul": lambda x: torch.mul(x[0], x[1]),
+            "ReduceSum": lambda x: torch.sum(
+                x,
+                dim=module_args["ReduceSum"][0],
+                keepdim=(module_args["ReduceSum"][1] == 1),
+>>>>>>> source: bbff138fd74d - marksibrahim: Add missing `Mul` and `ConstantO...
             ),
             "Reshape": lambda x: x[0].reshape(x[1].tolist()),
             "Shape": lambda x: torch.tensor(x.size()).float(),
@@ -273,10 +295,16 @@ class TestNN(object):
             "Add": (10, 12),
             "Concat": (2, 2),
             "Constant": (1,),
+            "ConstantOfShape": (3,),
             "Exp": (10, 10, 10),
             "Gather": (4, 4, 4, 4),
             "MatMul": (4, 4),
+<<<<<<< dest:   34200e9e1e33 - generatedunixname89002005294178: [MSDK] Update...
             "Mean": (3, 3, 3),
+||||||| base
+=======
+            "Mul": (4, 4),
+>>>>>>> source: bbff138fd74d - marksibrahim: Add missing `Mul` and `ConstantO...
             "Reshape": (1, 4),
             "Shape": (8, 3, 2),
             "Sub": (10, 12),
@@ -296,9 +324,17 @@ class TestNN(object):
             "Exp": [],
             "Concat": [("axis", False)],
             "Constant": [("value", False)],
+            "ConstantOfShape": [("value", False)],
             "Gather": [("axis", False)],
             "MatMul": [],
+<<<<<<< dest:   34200e9e1e33 - generatedunixname89002005294178: [MSDK] Update...
             "Mean": [("axes", False), ("keepdims", False)],
+||||||| base
+            "ReduceSum": [("axes", False), ("keepdims", False)],
+=======
+            "Mul": [],
+            "ReduceSum": [("axes", False), ("keepdims", False)],
+>>>>>>> source: bbff138fd74d - marksibrahim: Add missing `Mul` and `ConstantO...
             "Reshape": [],
             "Shape": [],
             "Sub": [],
@@ -328,9 +364,17 @@ class TestNN(object):
                 ]
                 encr_inputs = [crypten.cryptensor(input) for input in inputs]
             elif module_name not in no_input_modules:
-                inputs = get_random_test_tensor(
-                    size=input_sizes[module_name], is_float=True, ex_zero=ex_zero_values
-                )
+                if module_name == "ConstantOfShape":
+                    # inputs represent shape of output
+                    inputs = get_random_test_tensor(
+                        size=input_sizes[module_name], is_float=False, min_value=1
+                    )
+                else:
+                    inputs = get_random_test_tensor(
+                        size=input_sizes[module_name],
+                        is_float=True,
+                        ex_zero=ex_zero_values,
+                    )
                 encr_inputs = crypten.cryptensor(inputs)
 
             # some modules take additonal indices as input:

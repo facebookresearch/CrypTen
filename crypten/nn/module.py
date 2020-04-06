@@ -546,6 +546,54 @@ class Constant(Module):
         return Constant(attributes["value"])
 
 
+class ConstantOfShape(Module):
+    """
+    Module that generates a tensor with the given value and shape.
+
+    Arguments:
+        input (tensor): 1D tensor. The shape of the expected output tensor.
+                If empty tensor is given, the output would be a scalar.
+                All values must be >= 0.
+
+    Attributes:
+        value (optional: tensor): The value of the output elements.
+            Should be a one-element tensor. If not specified,
+            it defaults to a tensor of value 0 and datatype float32
+
+    Returns:
+        Output tensor of shape specified by 'input'.
+        If attribute 'value' is specified, the value and datatype
+        of the output tensor is taken from 'value'.
+        If attribute 'value' is not specified,
+        the value in the output defaults to 0, and the datatype defaults to float32.
+    """
+
+    def __init__(self, value, trainable=False):
+        super().__init__()
+        if not torch.is_tensor(value):
+            value = torch.tensor(value)
+        value = value.to(dtype=torch.float)
+        if trainable:
+            self.register_parameter("value", value)
+        else:
+            self.register_buffer("value", value)
+
+    def forward(self, input):
+        assert input.dim() == 1, "input must be a 1D tensor"
+        # shape is not data so we can get plain text
+        if crypten.is_encrypted_tensor(input):
+            input = input.get_plain_text()
+        ones = torch.ones(input.long().tolist())
+        return self.value * ones
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        value = attributes.get("value", torch.tensor(0.0))
+        return ConstantOfShape(value)
+
+
 class Add(Module):
     """
     Module that sums two values.
@@ -1181,6 +1229,49 @@ class MatMul(Module):
             module = MatMul(weight=value)
         else:
             module = MatMul()
+        return module
+
+
+class Mul(Module):
+    """
+    Performs element-wise binary multiplication
+    (with Numpy-style broadcasting support).
+
+    Arguments:
+        Option 1: [input1, input2]
+            input1: first input tensor to be multiplied
+            input2: second input tensor to be multiplied.
+        Option 2: input1
+            input1: first input tensor to be multiplied, if module
+            is already initialized with the second (i.e. multiplier)tensor.
+    """
+
+    def __init__(self, weight=None):
+        super().__init__()
+        if weight is not None:
+            self.register_parameter("weight", weight)
+
+    def forward(self, x):
+        if hasattr(self, "weight"):
+            output = x.mul(self.weight)
+        else:
+            assert isinstance(x, (list, tuple)), "input must be list or tuple"
+            assert len(x) == 2, "input must contain two tensors"
+            output = x[0].mul(x[1])
+        return output
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if parameters is None:
+            parameters = {}
+        # set parameters if they exist
+        if parameters:
+            assert len(parameters) == 1, "Can have maximum one parameter"
+            weight_param = list(parameters.keys())[0]
+            value = parameters[weight_param]
+            module = Mul(weight=value)
+        else:
+            module = Mul()
         return module
 
 
