@@ -812,14 +812,14 @@ class TestNN(object):
                 "loss has not decreased after training",
             )
 
-    def test_from_pytorch_training(self):
-        """Tests the from_pytorch code path for training CrypTen models"""
+    def test_from_pytorch_training_classification(self):
+        """Tests from_pytorch CrypTen training for classification models"""
         import torch.nn as nn
         import torch.nn.functional as F
 
-        class ExampleNet(nn.Module):
+        class CNN(nn.Module):
             def __init__(self):
-                super(ExampleNet, self).__init__()
+                super(CNN, self).__init__()
                 self.conv1 = nn.Conv2d(1, 16, kernel_size=5, padding=1)
                 self.fc1 = nn.Linear(16 * 13 * 13, 100)
                 self.fc2 = nn.Linear(100, 2)
@@ -832,9 +832,10 @@ class TestNN(object):
                 out = self.fc1(out)
                 out = F.relu(out)
                 out = self.fc2(out)
+                out = F.softmax(out, dim=1)
                 return out
 
-        model_plaintext = ExampleNet()
+        model_plaintext = CNN()
         batch_size = 5
         x_orig = get_random_test_tensor(size=(batch_size, 1, 28, 28), is_float=True)
         y_orig = (
@@ -847,70 +848,104 @@ class TestNN(object):
         y_train = crypten.cryptensor(y_one_hot)
         dummy_input = torch.empty((1, 1, 28, 28))
 
-        for loss_name in ["BCELoss", "CrossEntropyLoss", "MSELoss"]:
-            # create loss function
-            loss = getattr(crypten.nn, loss_name)()
-
+        for loss_name in ["BCELoss", "CrossEntropyLoss"]:
             # create encrypted model
             model = crypten.nn.from_pytorch(model_plaintext, dummy_input)
             model.train()
             model.encrypt()
 
-            num_epochs = 3
-            learning_rate = 0.001
+            self._check_training(model, x_train, y_train, loss_name)
 
-            for i in range(num_epochs):
-                output = model(x_train)
-                if loss_name == "MSELoss":
-                    output_norm = output
-                else:
-                    output_norm = output.softmax(1)
-                loss_value = loss(output_norm, y_train)
+    def test_from_pytorch_training_regression(self):
+        """Tests from_pytorch CrypTen training for regression models"""
+        import torch.nn as nn
+        import torch.nn.functional as F
 
-                # set gradients to "zero"
-                model.zero_grad()
-                for param in model.parameters():
-                    self.assertIsNone(param.grad, "zero_grad did not reset gradients")
+        class FeedForward(nn.Module):
+            def __init__(self):
+                super(FeedForward, self).__init__()
+                self.fc1 = nn.Linear(3, 10)
+                self.fc2 = nn.Linear(10, 1)
 
-                # perform backward pass:
-                loss_value.backward()
-                for param in model.parameters():
-                    if param.requires_grad:
-                        self.assertIsNotNone(
-                            param.grad, "required parameter gradient not created"
-                        )
+            def forward(self, x):
+                out = self.fc1(x)
+                out = F.relu(out)
+                out = self.fc2(out)
+                return out
 
-                # update parameters
-                orig_parameters, upd_parameters = {}, {}
-                orig_parameters = self._compute_reference_parameters(
-                    "", orig_parameters, model, 0
-                )
-                model.update_parameters(learning_rate)
-                upd_parameters = self._compute_reference_parameters(
-                    "", upd_parameters, model, learning_rate
-                )
+        model_plaintext = FeedForward()
+        batch_size = 5
 
-                # FIX check that any parameter with a non-zero gradient has changed??
-                parameter_changed = False
-                for name, value in orig_parameters.items():
-                    if param.requires_grad and param.grad is not None:
-                        unchanged = torch.allclose(upd_parameters[name], value)
-                        if unchanged is False:
-                            parameter_changed = True
-                        self.assertTrue(
-                            parameter_changed, "no parameter changed in training step"
-                        )
+        x_orig = get_random_test_tensor(size=(batch_size, 3), is_float=True)
+        dummy_input = torch.empty((1, 3))
+        # y is a linear combo of features 1 and 3
+        y_orig = 2 * x_orig[:, 0] + 3 * x_orig[:, 2]
 
-                # record initial and current loss
-                if i == 0:
-                    orig_loss = loss_value.get_plain_text()
-                curr_loss = loss_value.get_plain_text()
+        x_train = crypten.cryptensor(x_orig, requires_grad=True)
+        y_train = crypten.cryptensor(y_orig.unsqueeze(-1))
 
-            # check that the loss has decreased after training
-            self.assertTrue(
-                curr_loss.item() < orig_loss.item(),
-                "loss has not decreased after training",
+        # create encrypted model
+        model = crypten.nn.from_pytorch(model_plaintext, dummy_input)
+        model.train()
+        model.encrypt()
+
+        self._check_training(model, x_train, y_train, "MSELoss")
+
+    def _check_training(
+        self, model, x_train, y_train, loss_name, num_epochs=3, learning_rate=0.001
+    ):
+        """Verifies gradient updates and loss decreases during training"""
+        # create loss function
+        loss = getattr(crypten.nn, loss_name)()
+
+        for i in range(num_epochs):
+            output = model(x_train)
+            loss_value = loss(output, y_train)
+
+            # set gradients to "zero"
+            model.zero_grad()
+            for param in model.parameters():
+                self.assertIsNone(param.grad, "zero_grad did not reset gradients")
+
+            # perform backward pass
+            loss_value.backward()
+            for param in model.parameters():
+                if param.requires_grad:
+                    self.assertIsNotNone(
+                        param.grad, "required parameter gradient not created"
+                    )
+
+            # update parameters
+            orig_parameters, upd_parameters = {}, {}
+            orig_parameters = self._compute_reference_parameters(
+                "", orig_parameters, model, 0
             )
+            model.update_parameters(learning_rate)
+            upd_parameters = self._compute_reference_parameters(
+                "", upd_parameters, model, learning_rate
+            )
+
+            # check parameter update
+            parameter_changed = False
+            for name, value in orig_parameters.items():
+                if param.requires_grad and param.grad is not None:
+                    unchanged = torch.allclose(upd_parameters[name], value)
+                    if unchanged is False:
+                        parameter_changed = True
+                    self.assertTrue(
+                        parameter_changed, "no parameter changed in training step"
+                    )
+
+            # record initial and current loss
+            if i == 0:
+                orig_loss = loss_value.get_plain_text()
+            curr_loss = loss_value.get_plain_text()
+
+        # check that the loss has decreased after training
+        self.assertTrue(
+            curr_loss.item() < orig_loss.item(),
+            f"{loss_name} has not decreased after training",
+        )
 
     def test_batchnorm_module(self):
         """Test module correctly sets and updates running stats"""
