@@ -201,7 +201,7 @@ def _setup_przs():
     comm.get().global_generator.manual_seed(global_seed.item())
 
 
-def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
+def load(f=None, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
     """
     Loads an object saved with `torch.save()` or `crypten.save()`.
 
@@ -236,7 +236,9 @@ def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
 
         # source party
         if comm.get().get_rank() == src:
-            result = preloaded if preloaded else torch.load(f, **kwargs)
+            assert not (f is None and preloaded is None), "Load failed: f or preloaded should be specified"
+
+            result = torch.load(f, **kwargs) if f else preloaded
 
             # Zero out the tensors / modules to hide loaded data from broadcast
             if torch.is_tensor(result):
