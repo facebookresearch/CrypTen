@@ -171,7 +171,6 @@ def from_pytorch(pytorch_model, dummy_input):
         export_params=True,
         input_names=["input"],
         output_names=["output"],
-        enable_onnx_checker=False,
     )
     # update ONNX symbolic registry with CrypTen-specific functions
     _update_onnx_symbolic_registry()
@@ -186,7 +185,6 @@ def from_pytorch(pytorch_model, dummy_input):
         export_params=True,
         input_names=["input"],
         output_names=["output"],
-        enable_onnx_checker=False,
     )
     f.seek(0)
 
