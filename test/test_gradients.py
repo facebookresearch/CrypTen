@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import copy
 import itertools
 import logging
 import unittest
@@ -74,7 +75,14 @@ class TestGradients:
         self.assertTrue(test_passed, msg=msg)
 
     def _check_forward_backward(
-        self, func_name, input_tensor, *args, torch_func_name=None, msg=None, **kwargs
+        self,
+        func_name,
+        input_tensor,
+        *args,
+        torch_func_name=None,
+        msg=None,
+        addl_args=None,
+        **kwargs,
     ):
         """Checks forward and backward against PyTorch
 
@@ -93,6 +101,11 @@ class TestGradients:
         input.requires_grad = True
         input_encr = crypten.cryptensor(input, requires_grad=True)
 
+        crypten_kwargs = copy.deepcopy(kwargs)
+        if addl_args is not None:
+            for item, val in addl_args.items():
+                crypten_kwargs[item] = val
+
         for private in [False, True]:
             input.grad = None
             input_encr.grad = None
@@ -106,7 +119,7 @@ class TestGradients:
                 torch_func = self._get_torch_func(func_name)
 
             reference = torch_func(input, *args, **kwargs)
-            encrypted_out = getattr(input_encr, func_name)(*args_encr, **kwargs)
+            encrypted_out = getattr(input_encr, func_name)(*args_encr, **crypten_kwargs)
 
             # extract argmax output for max / min with keepdim=False
             if isinstance(encrypted_out, (list, tuple)):
@@ -211,21 +224,45 @@ class TestGradients:
             else:
                 self._check_forward_backward(func, tensor1, 2.0)
 
-    def test_reductions(self):
-        """Tests reductions on tensors of various sizes."""
-        reductions = ["sum", "mean", "max", "min"]
+    def test_sum_mean_reductions(self):
+        reductions = ["sum", "mean"]
+        self._reductions_helper(reductions)
+
+    def test_max_min_reductions_pairwise(self):
+        reductions = ["max", "min"]
+        self._reductions_helper(reductions, "pairwise")
+
+    def test_max_min_reductions_log_reduction(self):
+        reductions = ["max", "min"]
+        self._reductions_helper(reductions, "log_reduction")
+
+    def _reductions_helper(self, input_reductions, algorithm=None):
+        """Tests input reductions on tensors of various sizes."""
         for size in SIZES:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            for reduction in reductions:
-                self._check_forward_backward(reduction, tensor)
+            args_dict = {"algorithm": algorithm}
+            for reduction in input_reductions:
+                if algorithm is None:
+                    self._check_forward_backward(reduction, tensor)
+                else:
+                    self._check_forward_backward(reduction, tensor, addl_args=args_dict)
 
                 # Check dim 0 if tensor is 0-dimensional
                 dims = 1 if tensor.dim() == 0 else tensor.dim()
                 for dim in range(dims):
                     for keepdim in [False, True]:
-                        self._check_forward_backward(
-                            reduction, tensor, dim, keepdim=keepdim
-                        )
+                        if algorithm is None:
+                            self._check_forward_backward(
+                                reduction, tensor, dim, keepdim=keepdim
+                            )
+                        else:
+                            self._check_forward_backward(
+                                reduction,
+                                tensor,
+                                dim,
+                                addl_args=args_dict,
+                                keepdim=keepdim,
+                            )
 
     def test_matmul(self):
         """Test matmul with broadcasting."""

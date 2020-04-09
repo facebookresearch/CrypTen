@@ -1088,13 +1088,19 @@ class AutogradMax(AutogradFunction):
             input, dim = args  # dimension to max over in args
         keepdim = kwargs.get("keepdim", False)
         one_hot = kwargs.get("one_hot", True)
+        algorithm = kwargs.get("algorithm", "pairwise")
 
         # find maximum value (and corresponding argmax):
         if dim is None:
-            argmax = input.argmax(one_hot=one_hot)
-            max = input.mul(argmax).sum()
+            argmax, max = input.argmax(
+                one_hot=one_hot, algorithm=algorithm, _return_max=True
+            )
+            if max is None:
+                max = input.mul(argmax).sum()
         else:
-            max, argmax = input.max(dim, keepdim=keepdim, one_hot=one_hot)
+            max, argmax = input.max(
+                dim, keepdim=keepdim, one_hot=one_hot, algorithm=algorithm
+            )
 
         # save context and return:
         ctx.save_multiple_for_backward((dim, keepdim, argmax, one_hot))

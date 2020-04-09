@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import math
 import warnings
 from functools import wraps
 
@@ -452,9 +453,10 @@ class MPCTensor(CrypTensor):
         return sample, indices
 
     # max / min-related functions
-    def _argmax_helper(self, dim=None):
+    def _argmax_helper_pairwise(self, dim=None):
         """Returns 1 for all elements that have the highest value in the appropriate
-           dimension of the tensor.
+           dimension of the tensor. Uses O(n^2) comparisons and a constant number of
+           rounds of communication
         """
 
         dim = -1 if dim is None else dim
@@ -477,61 +479,153 @@ class MPCTensor(CrypTensor):
             # Using ge() since it is slightly faster than eq()
             pairwise_comparisons = a.ge(b)
             result = pairwise_comparisons.sum(0).ge(row_length - 1)
-        return result
-
-        """
-        pairwise_comparisons = a.ge(b, _scale=False)
-
-        return result
-        """
+        return result, None
 
     @mode(Ptype.arithmetic)
-    def argmax(self, dim=None, keepdim=False, one_hot=True):
+    def _max_helper_log_reduction(self, dim=None):
+        """Returns max along dim `dim` using the log_reduction algorithm"""
+        if self.dim() == 0:
+            return self
+        input, dim_used = self, dim
+        if dim is None:
+            dim_used = 0
+            input = self.flatten()
+        n = input.size(dim_used)  # number of items in the dimension
+        steps = int(math.log(n))
+        enc_tensor_reduced = input.clone()
+        for _ in range(steps):
+            m = enc_tensor_reduced.size(dim_used)
+            x, y, remainder = enc_tensor_reduced.split(
+                [m // 2, m // 2, m % 2], dim=dim_used
+            )
+            pairwise_max = crypten.where(x >= y, x, y)
+            enc_tensor_reduced = crypten.cat([pairwise_max, remainder], dim=dim_used)
+
+        # compute max over the resulting reduced tensor with n^2 algorithm
+        # note that the resulting one-hot vector we get here finds maxes only
+        # over the reduced vector in enc_tensor_reduced, so we won't use it
+        enc_max_vec, enc_one_hot_reduced = enc_tensor_reduced.max(
+            dim=dim_used, algorithm="pairwise"
+        )
+        return enc_max_vec
+
+    @mode(Ptype.arithmetic)
+    def _argmax_helper_log_reduction(self, dim=None):
+        """Returns 1 for all elements that have the highest value in the appropriate
+           dimension of the tensor. Uses O(n) comparisons and O(log n) rounds of
+           communication
+        """
+        enc_max_vec = self._max_helper_log_reduction(dim)
+        # reshape back to the original size
+        enc_max_vec_orig = enc_max_vec
+        if dim is not None:
+            enc_max_vec_orig = enc_max_vec.unsqueeze(dim)
+        # compute the one-hot vector over the entire tensor
+        enc_one_hot_vec = self.eq(enc_max_vec_orig)
+        return enc_one_hot_vec, enc_max_vec
+
+    @mode(Ptype.arithmetic)
+    def _argmax_helper(self, dim=None, algorithm="pairwise"):
+        """Chooses among the different argmax algorithms"""
+        if algorithm == "pairwise":
+            return self._argmax_helper_pairwise(dim)
+        elif algorithm == "log_reduction":
+            return self._argmax_helper_log_reduction(dim)
+        else:
+            raise RuntimeError("Unknown argmax algorithm")
+
+    @mode(Ptype.arithmetic)
+    def argmax(
+        self,
+        dim=None,
+        keepdim=False,
+        one_hot=True,
+        algorithm="pairwise",
+        _return_max=False,
+    ):
         """Returns the indices of the maximum value of all elements in the
         `input` tensor.
         """
         # TODO: Make dim an arg.
         if self.dim() == 0:
-            return MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
+            result = (
+                MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
+            )
+            if _return_max:
+                return result, None
+            return result
 
         input = self.flatten() if dim is None else self
-        result = input._argmax_helper(dim)
+        result, result_max_val = input._argmax_helper(dim, algorithm)
 
         # Break ties by using a uniform weighted sample among tied indices
         result = result.weighted_index(dim)
 
         result = result.view(self.size()) if dim is None else result
-        return result if one_hot else _one_hot_to_index(result, dim, keepdim)
+        if not one_hot:
+            result = _one_hot_to_index(result, dim, keepdim)
+        if _return_max:
+            return result, result_max_val
+        return result
 
     @mode(Ptype.arithmetic)
-    def argmin(self, dim=None, keepdim=False, one_hot=True):
+    def argmin(
+        self,
+        dim=None,
+        keepdim=False,
+        one_hot=True,
+        algorithm="pairwise",
+        _return_min=False,
+    ):
         """Returns the indices of the minimum value of all elements in the
         `input` tensor.
         """
         # TODO: Make dim an arg.
-        return (-self).argmax(dim=dim, keepdim=keepdim, one_hot=one_hot)
+        return (-self).argmax(
+            dim=dim,
+            keepdim=keepdim,
+            one_hot=one_hot,
+            algorithm=algorithm,
+            _return_max=_return_min,
+        )
 
     @mode(Ptype.arithmetic)
-    def max(self, dim=None, keepdim=False, one_hot=True):
+    def max(self, dim=None, keepdim=False, one_hot=True, algorithm="pairwise"):
         """Returns the maximum value of all elements in the input tensor."""
         # TODO: Make dim an arg.
         if dim is None:
-            argmax_result = self.argmax(one_hot=True)
-            max_result = self.mul(argmax_result).sum()
+            if algorithm in ["log_reduction"]:
+                # max_result can be obtained directly
+                max_result = self._max_helper_log_reduction()
+            else:
+                # max_result needs to be obtained through argmax
+                argmax_result = self.argmax(one_hot=True, algorithm=algorithm)
+                max_result = self.mul(argmax_result).sum()
             return max_result
         else:
-            argmax_result = self.argmax(dim=dim, one_hot=True)
-            max_result = (self * argmax_result).sum(dim=dim, keepdim=keepdim)
+            argmax_result, max_result = self.argmax(
+                dim=dim, one_hot=True, algorithm=algorithm, _return_max=True
+            )
+            if max_result is None:
+                max_result = (self * argmax_result).sum(dim=dim, keepdim=keepdim)
+            if keepdim:
+                max_result = (
+                    max_result.unsqueeze(dim)
+                    if max_result.dim() < self.dim()
+                    else max_result
+                )
             if one_hot:
                 return max_result, argmax_result
             else:
                 return max_result, _one_hot_to_index(argmax_result, dim, keepdim)
 
     @mode(Ptype.arithmetic)
-    def min(self, dim=None, keepdim=False, one_hot=True):
+    def min(self, dim=None, keepdim=False, one_hot=True, algorithm="pairwise"):
         """Returns the minimum value of all elements in the input tensor."""
         # TODO: Make dim an arg.
-        result = (-self).max(dim=dim, keepdim=keepdim, one_hot=one_hot)
+        result = (-self).max(
+            dim=dim, keepdim=keepdim, one_hot=one_hot, algorithm=algorithm
+        )
         if dim is None:
             return -result
         else:
