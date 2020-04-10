@@ -169,9 +169,11 @@ def from_pytorch(pytorch_model, dummy_input):
         f,
         do_constant_folding=False,
         export_params=True,
+        enable_onnx_checker=False,
         input_names=["input"],
         output_names=["output"],
     )
+
     # update ONNX symbolic registry with CrypTen-specific functions
     _update_onnx_symbolic_registry()
 
@@ -183,6 +185,7 @@ def from_pytorch(pytorch_model, dummy_input):
         f,
         do_constant_folding=False,
         export_params=True,
+        enable_onnx_checker=False,
         input_names=["input"],
         output_names=["output"],
     )

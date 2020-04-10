@@ -8,7 +8,7 @@ setup_venv: &setup_venv
     . ~/crypten-test/bin/activate
     pip3 install --upgrade pip
     pip3 install onnx==1.6.0 tensorboard pandas sklearn
-    pip3 install torch==1.5.0.dev20200220+cpu torchvision==0.6.0.dev20200220+cpu -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+    pip3 install torch==1.6.0.dev20200410+cpu torchvision==0.6.0.dev20200410+cpu -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
     pip3 install tensorflow
     pip3 install git+https://github.com/onnx/tensorflow-onnx.git@557939b6eb07a122e74009b8ecd6d1d0cef0b94b
 
