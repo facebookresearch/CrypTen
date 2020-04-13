@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import math
 import warnings
 from functools import wraps
 
@@ -14,6 +13,7 @@ import torch
 from crypten.common.util import pool_reshape
 
 from ..cryptensor import CrypTensor
+from .max_helper import _argmax_helper, _max_helper_all_tree_reductions
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
 
@@ -453,177 +453,8 @@ class MPCTensor(CrypTensor):
         return sample, indices
 
     # max / min-related functions
-    def _argmax_helper_pairwise(self, dim=None):
-        """Returns 1 for all elements that have the highest value in the appropriate
-           dimension of the tensor. Uses O(n^2) comparisons and a constant number of
-           rounds of communication
-        """
-
-        dim = -1 if dim is None else dim
-        row_length = self.size(dim) if self.size(dim) > 1 else 2
-
-        # Copy each row (length - 1) times to compare to each other row
-        a = self.expand(row_length - 1, *self.size())
-
-        # Generate cyclic permutations for each row
-        b = crypten.stack([self.roll(i + 1, dims=dim) for i in range(row_length - 1)])
-
-        # Use either prod or sum & comparison depending on size
-        if row_length - 1 < torch.iinfo(torch.long).bits * 2:
-            pairwise_comparisons = a.ge(b, _scale=False)
-            result = pairwise_comparisons.prod(0)
-            result.share *= self.encoder._scale
-            result.encoder = self.encoder
-        else:
-            # Sum of columns with all 1s will have value equal to (length - 1).
-            # Using ge() since it is slightly faster than eq()
-            pairwise_comparisons = a.ge(b)
-            result = pairwise_comparisons.sum(0).ge(row_length - 1)
-        return result, None
-
     @mode(Ptype.arithmetic)
-    def _max_helper_log_reduction(self, dim=None):
-        """Returns max along dim `dim` using the log_reduction algorithm"""
-        if self.dim() == 0:
-            return self
-        input, dim_used = self, dim
-        if dim is None:
-            dim_used = 0
-            input = self.flatten()
-        n = input.size(dim_used)  # number of items in the dimension
-        steps = int(math.log(n))
-        enc_tensor_reduced = input.clone()
-        for _ in range(steps):
-            m = enc_tensor_reduced.size(dim_used)
-            x, y, remainder = enc_tensor_reduced.split(
-                [m // 2, m // 2, m % 2], dim=dim_used
-            )
-            pairwise_max = crypten.where(x >= y, x, y)
-            enc_tensor_reduced = crypten.cat([pairwise_max, remainder], dim=dim_used)
-
-        # compute max over the resulting reduced tensor with n^2 algorithm
-        # note that the resulting one-hot vector we get here finds maxes only
-        # over the reduced vector in enc_tensor_reduced, so we won't use it
-        enc_max_vec, enc_one_hot_reduced = enc_tensor_reduced.max(
-            dim=dim_used, algorithm="pairwise"
-        )
-        return enc_max_vec
-
-    @mode(Ptype.arithmetic)
-    def _max_helper_double_log_recursive(self, dim):
-        """Recursive subroutine for computing max via double log reduction algorithm"""
-        n = self.size(dim)
-        # compute integral sqrt(n) and the integer number of sqrt(n) size
-        # vectors that can be extracted from n
-        sqrt_n = int(math.sqrt(n))
-        count_sqrt_n = n // sqrt_n
-        # base case for recursion: no further splits along dimension dim
-        if n == 1:
-            return self
-        else:
-            # split into tensors that can be broken into vectors of size sqrt(n)
-            # and the remainder of the tensor
-            size_arr = [sqrt_n * count_sqrt_n, n % sqrt_n]
-            split_enc_tensor, remainder = self.split(size_arr, dim=dim)
-
-            # reshape such that dim holds sqrt_n and dim+1 holds count_sqrt_n
-            updated_enc_tensor_size = [sqrt_n, self.size(dim + 1) * count_sqrt_n]
-            size_arr = [self.size(i) for i in range(self.dim())]
-            size_arr[dim], size_arr[dim + 1] = updated_enc_tensor_size
-            split_enc_tensor = split_enc_tensor.reshape(size_arr)
-
-            # recursive call on reshaped tensor
-            split_enc_max = split_enc_tensor._max_helper_double_log_recursive(dim)
-
-            # reshape the result to have the (dim+1)th dimension as before
-            # and concatenate the previously computed remainder
-            size_arr[dim], size_arr[dim + 1] = [count_sqrt_n, self.size(dim + 1)]
-            enc_max_tensor = split_enc_max.reshape(size_arr)
-            full_max_tensor = crypten.cat([enc_max_tensor, remainder], dim=dim)
-
-            # call the max function on dimension dim
-            enc_max, enc_arg_max = full_max_tensor.max(
-                dim=dim, keepdim=True, algorithm="pairwise"
-            )
-            # compute max over the resulting reduced tensor with n^2 algorithm
-            # note that the resulting one-hot vector we get here finds maxes only
-            # over the reduced vector in enc_tensor_reduced, so we won't use it
-            return enc_max
-
-    @mode(Ptype.arithmetic)
-    def _max_helper_double_log_reduction(self, dim=None):
-        """Returns max along dim `dim` using the double_log_reduction algorithm"""
-        if self.dim() == 0:
-            return self
-        input, dim_used, size_arr = self, dim, ()
-        if dim is None:
-            dim_used = 0
-            input = self.flatten()
-        # turn dim_used into a positive number
-        dim_used = dim_used + input.dim() if dim_used < 0 else dim_used
-        if input.dim() > 1:
-            size_arr = [input.size(i) for i in range(input.dim()) if i != dim_used]
-        # add another dimension to vectorize double log reductions
-        input = input.unsqueeze(dim_used + 1)
-        enc_max_val = input._max_helper_double_log_recursive(dim_used)
-        enc_max_val = enc_max_val.squeeze(dim_used + 1)
-        enc_max_val = enc_max_val.reshape(size_arr)
-        return enc_max_val
-
-    @mode(Ptype.arithmetic)
-    def _max_helper_all_tree_reductions(self, dim=None, algorithm="log_reduction"):
-        """
-        Finds the max along `dim` using the specified reduction algorithm. `algorithm`
-        can be one of [`log_reduction`, `double_log_reduction`]
-        `log_reduction`: Uses O(n) comparisons and O(log n) rounds of communication
-        `double_log_reduction`: Uses O(n loglog n) comparisons and O(loglog n) rounds
-        of communication (Section 2.6.2 in https://folk.idi.ntnu.no/mlh/algkon/jaja.pdf)
-        """
-        if algorithm == "log_reduction":
-            return self._max_helper_log_reduction(dim)
-        elif algorithm == "double_log_reduction":
-            return self._max_helper_double_log_reduction(dim)
-        else:
-            raise RuntimeError("Unknown max algorithm")
-
-    @mode(Ptype.arithmetic)
-    def _argmax_helper_all_tree_reductions(self, dim=None, algorithm="log_reduction"):
-        """
-        Returns 1 for all elements that have the highest value in the appropriate
-        dimension of the tensor. `algorithm` can be one of [`log_reduction`,
-        `double_log_reduction`].
-        `log_reduction`: Uses O(n) comparisons and O(log n) rounds of communication
-        `double_log_reduction`: Uses O(n loglog n) comparisons and O(loglog n) rounds
-        of communication (Section 2.6.2 in https://folk.idi.ntnu.no/mlh/algkon/jaja.pdf)
-        """
-        enc_max_vec = self._max_helper_all_tree_reductions(dim=dim, algorithm=algorithm)
-        # reshape back to the original size
-        enc_max_vec_orig = enc_max_vec
-        if dim is not None:
-            enc_max_vec_orig = enc_max_vec.unsqueeze(dim)
-        # compute the one-hot vector over the entire tensor
-        enc_one_hot_vec = self.eq(enc_max_vec_orig)
-        return enc_one_hot_vec, enc_max_vec
-
-    @mode(Ptype.arithmetic)
-    def _argmax_helper(self, dim=None, algorithm="pairwise"):
-        """Chooses among the different argmax algorithms"""
-        if algorithm == "pairwise":
-            return self._argmax_helper_pairwise(dim)
-        elif algorithm in ["log_reduction", "double_log_reduction"]:
-            return self._argmax_helper_all_tree_reductions(dim, algorithm)
-        else:
-            raise RuntimeError("Unknown argmax algorithm")
-
-    @mode(Ptype.arithmetic)
-    def argmax(
-        self,
-        dim=None,
-        keepdim=False,
-        one_hot=True,
-        algorithm="pairwise",
-        _return_max=False,
-    ):
+    def argmax(self, dim=None, keepdim=False, one_hot=True, algorithm="pairwise"):
         """Returns the indices of the maximum value of all elements in the
         `input` tensor.
         """
@@ -632,42 +463,22 @@ class MPCTensor(CrypTensor):
             result = (
                 MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
             )
-            if _return_max:
-                return result, None
             return result
 
-        input = self.flatten() if dim is None else self
-        result, result_max_val = input._argmax_helper(dim, algorithm)
+        result = _argmax_helper(self, dim, algorithm, _return_max=False)
 
-        # Break ties by using a uniform weighted sample among tied indices
-        result = result.weighted_index(dim)
-
-        result = result.view(self.size()) if dim is None else result
         if not one_hot:
             result = _one_hot_to_index(result, dim, keepdim)
-        if _return_max:
-            return result, result_max_val
         return result
 
     @mode(Ptype.arithmetic)
-    def argmin(
-        self,
-        dim=None,
-        keepdim=False,
-        one_hot=True,
-        algorithm="pairwise",
-        _return_min=False,
-    ):
+    def argmin(self, dim=None, keepdim=False, one_hot=True, algorithm="pairwise"):
         """Returns the indices of the minimum value of all elements in the
         `input` tensor.
         """
         # TODO: Make dim an arg.
         return (-self).argmax(
-            dim=dim,
-            keepdim=keepdim,
-            one_hot=one_hot,
-            algorithm=algorithm,
-            _return_max=_return_min,
+            dim=dim, keepdim=keepdim, one_hot=one_hot, algorithm=algorithm
         )
 
     @mode(Ptype.arithmetic)
@@ -677,15 +488,15 @@ class MPCTensor(CrypTensor):
         if dim is None:
             if algorithm in ["log_reduction", "double_log_reduction"]:
                 # max_result can be obtained directly
-                max_result = self._max_helper_all_tree_reductions(algorithm=algorithm)
+                max_result = _max_helper_all_tree_reductions(self, algorithm=algorithm)
             else:
                 # max_result needs to be obtained through argmax
                 argmax_result = self.argmax(one_hot=True, algorithm=algorithm)
                 max_result = self.mul(argmax_result).sum()
             return max_result
         else:
-            argmax_result, max_result = self.argmax(
-                dim=dim, one_hot=True, algorithm=algorithm, _return_max=True
+            argmax_result, max_result = _argmax_helper(
+                self, dim=dim, one_hot=True, algorithm=algorithm, _return_max=True
             )
             if max_result is None:
                 max_result = (self * argmax_result).sum(dim=dim, keepdim=keepdim)
