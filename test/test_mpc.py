@@ -653,10 +653,11 @@ class TestMPC(object):
             (5, 5, 5, 5),
         ]
         test_cases = [torch.FloatTensor([[1, 1, 2, 1, 4, 1, 3, 4]])] + [
-            get_random_test_tensor(size=size, is_float=True) for size in sizes
+            get_random_test_tensor(size=size, is_float=False) for size in sizes
         ]
 
         for tensor in test_cases:
+            tensor = tensor.float()
             encrypted_tensor = MPCTensor(tensor)
             for comp in ["max", "min"]:
                 reference = getattr(tensor, comp)()
@@ -738,10 +739,11 @@ class TestMPC(object):
             (5, 5, 5, 5),
         ]
         test_cases = [torch.FloatTensor([[1, 1, 2, 1, 4, 1, 3, 4]])] + [
-            get_random_test_tensor(size=size, is_float=True) for size in sizes
+            get_random_test_tensor(size=size, is_float=False) for size in sizes
         ]
 
         for tensor in test_cases:
+            tensor = tensor.float()
             encrypted_tensor = MPCTensor(tensor)
             for comp in ["argmax", "argmin"]:
                 cmp = comp[3:]
