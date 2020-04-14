@@ -26,8 +26,15 @@ enable_grad = CrypTensor.enable_grad
 set_grad_enabled = CrypTensor.set_grad_enabled
 
 
-def init():
+def init(party_name=None):
+    # Initialize communicator
     comm._init(use_threads=False, init_ttp=crypten.mpc.ttp_required())
+
+    # Setup party name for file save / load
+    if party_name is not None:
+        comm.get().set_name(party_name)
+
+    # Setup seeds for Random Number Generation
     if comm.get().get_rank() < comm.get().get_world_size():
         _setup_przs()
         if crypten.mpc.ttp_required():

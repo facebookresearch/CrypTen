@@ -40,6 +40,7 @@ class DistributedCommunicator(Communicator):
             self.world_size = int(self.world_size)
             self.rank = int(self.rank)
             self.reset_communication_stats()
+            self.name = f"rank{self.rank}"
 
             # logging:
             logging.info("==================")
@@ -310,6 +311,17 @@ class DistributedCommunicator(Communicator):
     def get_ttp_rank(self):
         """Returns the rank of the Trusted Third Party"""
         return self.get_world_size()
+
+    def set_name(self, name):
+        """Sets the party name of the current process."""
+        assert isinstance(
+            name, str
+        ), f"Improper name provided to process on rank {self.get_rank()}"
+        self.name = name
+
+    def get_name(self):
+        """Returns the party name of the current process."""
+        return self.name
 
     def get_distributed_backend(self):
         """Returns name of torch.distributed backend used."""
