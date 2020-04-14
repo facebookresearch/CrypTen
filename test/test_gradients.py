@@ -240,6 +240,10 @@ class TestGradients:
         reductions = ["max", "min"]
         self._reductions_helper(reductions, "double_log_reduction")
 
+    def test_max_min_reductions_accelerated_cascade(self):
+        reductions = ["max", "min"]
+        self._reductions_helper(reductions, "accelerated_cascade")
+
     def _reductions_helper(self, input_reductions, algorithm=None):
         """Tests input reductions on tensors of various sizes."""
         for size in SIZES:

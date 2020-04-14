@@ -40,6 +40,20 @@ def _argmax_helper_pairwise(enc_tensor, dim=None):
     return result, None
 
 
+def _compute_pairwise_comparisons_for_steps(input_tensor, dim, steps):
+    """
+    Helper function that does pairwise comparisons by splitting input
+    tensor for `steps` number of steps along dimension `dim`.
+    """
+    enc_tensor_reduced = input_tensor.clone()
+    for _ in range(steps):
+        m = enc_tensor_reduced.size(dim)
+        x, y, remainder = enc_tensor_reduced.split([m // 2, m // 2, m % 2], dim=dim)
+        pairwise_max = crypten.where(x >= y, x, y)
+        enc_tensor_reduced = crypten.cat([pairwise_max, remainder], dim=dim)
+    return enc_tensor_reduced
+
+
 def _max_helper_log_reduction(enc_tensor, dim=None):
     """Returns max along dim `dim` using the log_reduction algorithm"""
     if enc_tensor.dim() == 0:
@@ -50,14 +64,7 @@ def _max_helper_log_reduction(enc_tensor, dim=None):
         input = enc_tensor.flatten()
     n = input.size(dim_used)  # number of items in the dimension
     steps = int(math.log(n))
-    enc_tensor_reduced = input.clone()
-    for _ in range(steps):
-        m = enc_tensor_reduced.size(dim_used)
-        x, y, remainder = enc_tensor_reduced.split(
-            [m // 2, m // 2, m % 2], dim=dim_used
-        )
-        pairwise_max = crypten.where(x >= y, x, y)
-        enc_tensor_reduced = crypten.cat([pairwise_max, remainder], dim=dim_used)
+    enc_tensor_reduced = _compute_pairwise_comparisons_for_steps(input, dim_used, steps)
 
     # compute max over the resulting reduced tensor with n^2 algorithm
     # note that the resulting one-hot vector we get here finds maxes only
@@ -129,18 +136,42 @@ def _max_helper_double_log_reduction(enc_tensor, dim=None):
     return enc_max_val
 
 
+def _max_helper_accelerated_cascade(enc_tensor, dim=None):
+    """Returns max along dimension `dim` using the accelerated cascading algorithm"""
+    if enc_tensor.dim() == 0:
+        return enc_tensor
+    input, dim_used = enc_tensor, dim
+    if dim is None:
+        dim_used = 0
+        input = enc_tensor.flatten()
+    n = input.size(dim_used)  # number of items in the dimension
+    if n < 3:
+        enc_max, enc_argmax = enc_tensor.max(dim=dim_used, algorithm="pairwise")
+        return enc_max
+    steps = int(math.log(math.log(math.log(n)))) + 1
+    enc_tensor_reduced = _compute_pairwise_comparisons_for_steps(
+        enc_tensor, dim_used, steps
+    )
+    enc_max = _max_helper_double_log_reduction(enc_tensor_reduced, dim=dim_used)
+    return enc_max
+
+
 def _max_helper_all_tree_reductions(enc_tensor, dim=None, algorithm="log_reduction"):
     """
     Finds the max along `dim` using the specified reduction algorithm. `algorithm`
-    can be one of [`log_reduction`, `double_log_reduction`]
+    can be one of [`log_reduction`, `double_log_reduction`, 'accelerated_cascade`]
     `log_reduction`: Uses O(n) comparisons and O(log n) rounds of communication
     `double_log_reduction`: Uses O(n loglog n) comparisons and O(loglog n) rounds
     of communication (Section 2.6.2 in https://folk.idi.ntnu.no/mlh/algkon/jaja.pdf)
+    `accelerated_cascade`: Uses O(n) comparisons and O(loglog n) rounds of
+    communication. (See Section 2.6.3 of https://folk.idi.ntnu.no/mlh/algkon/jaja.pdf)
     """
     if algorithm == "log_reduction":
         return _max_helper_log_reduction(enc_tensor, dim)
     elif algorithm == "double_log_reduction":
         return _max_helper_double_log_reduction(enc_tensor, dim)
+    elif algorithm == "accelerated_cascade":
+        return _max_helper_accelerated_cascade(enc_tensor, dim)
     else:
         raise RuntimeError("Unknown max algorithm")
 
@@ -149,10 +180,12 @@ def _argmax_helper_all_tree_reductions(enc_tensor, dim=None, algorithm="log_redu
     """
     Returns 1 for all elements that have the highest value in the appropriate
     dimension of the tensor. `algorithm` can be one of [`log_reduction`,
-    `double_log_reduction`].
+    `double_log_reduction`, `accelerated_cascade`].
     `log_reduction`: Uses O(n) comparisons and O(log n) rounds of communication
     `double_log_reduction`: Uses O(n loglog n) comparisons and O(loglog n) rounds
     of communication (Section 2.6.2 in https://folk.idi.ntnu.no/mlh/algkon/jaja.pdf)
+    `accelerated_cascade`: Uses O(n) comparisons and O(loglog n) rounds of
+    communication. (See Section 2.6.3 of https://folk.idi.ntnu.no/mlh/algkon/jaja.pdf)
     """
     enc_max_vec = _max_helper_all_tree_reductions(
         enc_tensor, dim=dim, algorithm=algorithm
@@ -186,7 +219,7 @@ def _argmax_helper(
 
     if algorithm == "pairwise":
         result_args, result_val = _argmax_helper_pairwise(updated_enc_tensor, dim)
-    elif algorithm in ["log_reduction", "double_log_reduction"]:
+    elif algorithm in ["log_reduction", "double_log_reduction", "accelerated_cascade"]:
         result_args, result_val = _argmax_helper_all_tree_reductions(
             updated_enc_tensor, dim, algorithm
         )

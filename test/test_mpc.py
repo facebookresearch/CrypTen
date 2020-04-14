@@ -635,8 +635,12 @@ class TestMPC(object):
         self._max_min("log_reduction")
 
     def test_max_min_double_log_reduction(self):
-        """Tests max and min for log reduction algorithm"""
+        """Tests max and min for double log reduction algorithm"""
         self._max_min("double_log_reduction")
+
+    def test_max_min_accelerated_cascade(self):
+        """Tests max and min for accelerated cascading algorithm"""
+        self._max_min("accelerated_cascade")
 
     def _max_min(self, algorithm):
         """Test max and min for the specified algorithm"""
@@ -721,8 +725,12 @@ class TestMPC(object):
         self._argmax_argmin("log_reduction")
 
     def test_argmax_argmin_double_log_reduction(self):
-        """Tests argmax and argmin for log reduction algorithm"""
+        """Tests argmax and argmin for double log reduction algorithm"""
         self._argmax_argmin("double_log_reduction")
+
+    def test_argmax_argmin_accelerated_cascade(self):
+        """Tests max and min for accelerated cascading algorithm"""
+        self._max_min("accelerated_cascade")
 
     def _argmax_argmin(self, algorithm):
         """Test argmax and argmin for specified algorithm"""
