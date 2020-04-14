@@ -244,13 +244,13 @@ class TestGradients:
         reductions = ["max", "min"]
         self._reductions_helper(reductions, "accelerated_cascade")
 
-    def _reductions_helper(self, input_reductions, algorithm=None):
+    def _reductions_helper(self, input_reductions, method=None):
         """Tests input reductions on tensors of various sizes."""
         for size in SIZES:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            args_dict = {"algorithm": algorithm}
+            args_dict = {"method": method}
             for reduction in input_reductions:
-                if algorithm is None:
+                if method is None:
                     self._check_forward_backward(reduction, tensor)
                 else:
                     self._check_forward_backward(reduction, tensor, addl_args=args_dict)
@@ -259,7 +259,7 @@ class TestGradients:
                 dims = 1 if tensor.dim() == 0 else tensor.dim()
                 for dim in range(dims):
                     for keepdim in [False, True]:
-                        if algorithm is None:
+                        if method is None:
                             self._check_forward_backward(
                                 reduction, tensor, dim, keepdim=keepdim
                             )

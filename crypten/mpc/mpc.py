@@ -454,7 +454,7 @@ class MPCTensor(CrypTensor):
 
     # max / min-related functions
     @mode(Ptype.arithmetic)
-    def argmax(self, dim=None, keepdim=False, one_hot=True, algorithm="pairwise"):
+    def argmax(self, dim=None, keepdim=False, one_hot=True, method="pairwise"):
         """Returns the indices of the maximum value of all elements in the
         `input` tensor.
         """
@@ -465,38 +465,36 @@ class MPCTensor(CrypTensor):
             )
             return result
 
-        result = _argmax_helper(self, dim, algorithm, _return_max=False)
+        result = _argmax_helper(self, dim, method, _return_max=False)
 
         if not one_hot:
             result = _one_hot_to_index(result, dim, keepdim)
         return result
 
     @mode(Ptype.arithmetic)
-    def argmin(self, dim=None, keepdim=False, one_hot=True, algorithm="pairwise"):
+    def argmin(self, dim=None, keepdim=False, one_hot=True, method="pairwise"):
         """Returns the indices of the minimum value of all elements in the
         `input` tensor.
         """
         # TODO: Make dim an arg.
-        return (-self).argmax(
-            dim=dim, keepdim=keepdim, one_hot=one_hot, algorithm=algorithm
-        )
+        return (-self).argmax(dim=dim, keepdim=keepdim, one_hot=one_hot, method=method)
 
     @mode(Ptype.arithmetic)
-    def max(self, dim=None, keepdim=False, one_hot=True, algorithm="pairwise"):
+    def max(self, dim=None, keepdim=False, one_hot=True, method="pairwise"):
         """Returns the maximum value of all elements in the input tensor."""
         # TODO: Make dim an arg.
         if dim is None:
-            if algorithm in ["log_reduction", "double_log_reduction"]:
+            if method in ["log_reduction", "double_log_reduction"]:
                 # max_result can be obtained directly
-                max_result = _max_helper_all_tree_reductions(self, algorithm=algorithm)
+                max_result = _max_helper_all_tree_reductions(self, method=method)
             else:
                 # max_result needs to be obtained through argmax
-                argmax_result = self.argmax(one_hot=True, algorithm=algorithm)
+                argmax_result = self.argmax(one_hot=True, method=method)
                 max_result = self.mul(argmax_result).sum()
             return max_result
         else:
             argmax_result, max_result = _argmax_helper(
-                self, dim=dim, one_hot=True, algorithm=algorithm, _return_max=True
+                self, dim=dim, one_hot=True, method=method, _return_max=True
             )
             if max_result is None:
                 max_result = (self * argmax_result).sum(dim=dim, keepdim=keepdim)
@@ -512,12 +510,10 @@ class MPCTensor(CrypTensor):
                 return max_result, _one_hot_to_index(argmax_result, dim, keepdim)
 
     @mode(Ptype.arithmetic)
-    def min(self, dim=None, keepdim=False, one_hot=True, algorithm="pairwise"):
+    def min(self, dim=None, keepdim=False, one_hot=True, method="pairwise"):
         """Returns the minimum value of all elements in the input tensor."""
         # TODO: Make dim an arg.
-        result = (-self).max(
-            dim=dim, keepdim=keepdim, one_hot=one_hot, algorithm=algorithm
-        )
+        result = (-self).max(dim=dim, keepdim=keepdim, one_hot=one_hot, method=method)
         if dim is None:
             return -result
         else:

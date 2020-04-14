@@ -1088,7 +1088,6 @@ class AutogradMax(AutogradFunction):
             input, dim = args  # dimension to max over in args
         keepdim = kwargs.get("keepdim", False)
         one_hot = kwargs.get("one_hot", True)
-
         # find maximum value (and corresponding argmax):
         if dim is None:
             shape = input.size()

@@ -70,7 +70,7 @@ def _max_helper_log_reduction(enc_tensor, dim=None):
     # note that the resulting one-hot vector we get here finds maxes only
     # over the reduced vector in enc_tensor_reduced, so we won't use it
     enc_max_vec, enc_one_hot_reduced = enc_tensor_reduced.max(
-        dim=dim_used, algorithm="pairwise"
+        dim=dim_used, method="pairwise"
     )
     return enc_max_vec
 
@@ -108,7 +108,7 @@ def _max_helper_double_log_recursive(enc_tensor, dim):
 
         # call the max function on dimension dim
         enc_max, enc_arg_max = full_max_tensor.max(
-            dim=dim, keepdim=True, algorithm="pairwise"
+            dim=dim, keepdim=True, method="pairwise"
         )
         # compute max over the resulting reduced tensor with n^2 algorithm
         # note that the resulting one-hot vector we get here finds maxes only
@@ -146,7 +146,7 @@ def _max_helper_accelerated_cascade(enc_tensor, dim=None):
         input = enc_tensor.flatten()
     n = input.size(dim_used)  # number of items in the dimension
     if n < 3:
-        enc_max, enc_argmax = enc_tensor.max(dim=dim_used, algorithm="pairwise")
+        enc_max, enc_argmax = enc_tensor.max(dim=dim_used, method="pairwise")
         return enc_max
     steps = int(math.log(math.log(math.log(n)))) + 1
     enc_tensor_reduced = _compute_pairwise_comparisons_for_steps(
@@ -156,9 +156,9 @@ def _max_helper_accelerated_cascade(enc_tensor, dim=None):
     return enc_max
 
 
-def _max_helper_all_tree_reductions(enc_tensor, dim=None, algorithm="log_reduction"):
+def _max_helper_all_tree_reductions(enc_tensor, dim=None, method="log_reduction"):
     """
-    Finds the max along `dim` using the specified reduction algorithm. `algorithm`
+    Finds the max along `dim` using the specified reduction method. `method`
     can be one of [`log_reduction`, `double_log_reduction`, 'accelerated_cascade`]
     `log_reduction`: Uses O(n) comparisons and O(log n) rounds of communication
     `double_log_reduction`: Uses O(n loglog n) comparisons and O(loglog n) rounds
@@ -166,20 +166,20 @@ def _max_helper_all_tree_reductions(enc_tensor, dim=None, algorithm="log_reducti
     `accelerated_cascade`: Uses O(n) comparisons and O(loglog n) rounds of
     communication. (See Section 2.6.3 of https://folk.idi.ntnu.no/mlh/algkon/jaja.pdf)
     """
-    if algorithm == "log_reduction":
+    if method == "log_reduction":
         return _max_helper_log_reduction(enc_tensor, dim)
-    elif algorithm == "double_log_reduction":
+    elif method == "double_log_reduction":
         return _max_helper_double_log_reduction(enc_tensor, dim)
-    elif algorithm == "accelerated_cascade":
+    elif method == "accelerated_cascade":
         return _max_helper_accelerated_cascade(enc_tensor, dim)
     else:
-        raise RuntimeError("Unknown max algorithm")
+        raise RuntimeError("Unknown max method")
 
 
-def _argmax_helper_all_tree_reductions(enc_tensor, dim=None, algorithm="log_reduction"):
+def _argmax_helper_all_tree_reductions(enc_tensor, dim=None, method="log_reduction"):
     """
     Returns 1 for all elements that have the highest value in the appropriate
-    dimension of the tensor. `algorithm` can be one of [`log_reduction`,
+    dimension of the tensor. `method` can be one of [`log_reduction`,
     `double_log_reduction`, `accelerated_cascade`].
     `log_reduction`: Uses O(n) comparisons and O(log n) rounds of communication
     `double_log_reduction`: Uses O(n loglog n) comparisons and O(loglog n) rounds
@@ -187,9 +187,7 @@ def _argmax_helper_all_tree_reductions(enc_tensor, dim=None, algorithm="log_redu
     `accelerated_cascade`: Uses O(n) comparisons and O(loglog n) rounds of
     communication. (See Section 2.6.3 of https://folk.idi.ntnu.no/mlh/algkon/jaja.pdf)
     """
-    enc_max_vec = _max_helper_all_tree_reductions(
-        enc_tensor, dim=dim, algorithm=algorithm
-    )
+    enc_max_vec = _max_helper_all_tree_reductions(enc_tensor, dim=dim, method=method)
     # reshape back to the original size
     enc_max_vec_orig = enc_max_vec
     if dim is not None:
@@ -200,7 +198,7 @@ def _argmax_helper_all_tree_reductions(enc_tensor, dim=None, algorithm="log_redu
 
 
 def _argmax_helper(
-    enc_tensor, dim=None, one_hot=True, algorithm="pairwise", _return_max=False
+    enc_tensor, dim=None, one_hot=True, method="pairwise", _return_max=False
 ):
     """
     Returns 1 for one randomly chosen element among all the elements that have
@@ -217,14 +215,14 @@ def _argmax_helper(
 
     updated_enc_tensor = enc_tensor.flatten() if dim is None else enc_tensor
 
-    if algorithm == "pairwise":
+    if method == "pairwise":
         result_args, result_val = _argmax_helper_pairwise(updated_enc_tensor, dim)
-    elif algorithm in ["log_reduction", "double_log_reduction", "accelerated_cascade"]:
+    elif method in ["log_reduction", "double_log_reduction", "accelerated_cascade"]:
         result_args, result_val = _argmax_helper_all_tree_reductions(
-            updated_enc_tensor, dim, algorithm
+            updated_enc_tensor, dim, method
         )
     else:
-        raise RuntimeError("Unknown argmax algorithm")
+        raise RuntimeError("Unknown argmax method")
 
     # Break ties by using a uniform weighted sample among tied indices
     result_args = result_args.weighted_index(dim)
