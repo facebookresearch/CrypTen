@@ -68,6 +68,7 @@ try:
     import tensorflow as tf  # noqa
     import tf2onnx
 
+    tf.logging.set_verbosity(tf.logging.ERROR)
     TF_AND_TF2ONNX = True
 except ImportError:
     TF_AND_TF2ONNX = False
