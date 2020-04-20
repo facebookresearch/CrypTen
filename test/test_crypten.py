@@ -163,15 +163,16 @@ class TestCrypten(MultiProcessTestCase):
                 test_load_fn = all_test_load_fns[i]
                 complete_file = filename + all_file_completions[i]
                 for src in range(comm.get().get_world_size()):
-                    crypten.save(
+                    crypten.save_from_party(
                         tensor, complete_file, src=src, save_closure=save_closure
                     )
+
                     # the following line will throw an error if an object saved with
                     # torch.save is attempted to be loaded with np.load
                     if self.rank == src:
                         test_load_fn(complete_file)
 
-                    encrypted_load = crypten.load(
+                    encrypted_load = crypten.load_from_party(
                         complete_file, src=src, load_closure=load_closure
                     )
 
@@ -187,7 +188,7 @@ class TestCrypten(MultiProcessTestCase):
 
                     # test for invalid load_closure
                     with self.assertRaises(TypeError):
-                        crypten.load(
+                        crypten.load_from_party(
                             complete_file, src=src, load_closure=(lambda f: None)
                         )
 
@@ -205,9 +206,9 @@ class TestCrypten(MultiProcessTestCase):
 
             filename = tempfile.NamedTemporaryFile(delete=True).name
             for src in range(comm.get().get_world_size()):
-                crypten.save(test_model, filename, src=src)
+                crypten.save_from_party(test_model, filename, src=src)
 
-                result = crypten.load(filename, src=src)
+                result = crypten.load_from_party(filename, src=src)
                 if src == rank:
                     for param in result.parameters(recurse=True):
                         self.assertTrue(
