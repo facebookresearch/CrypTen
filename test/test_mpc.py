@@ -626,8 +626,24 @@ class TestMPC(object):
 
                     self._check(encrypted_out, reference, "%s comparator failed" % comp)
 
-    def test_max_min(self):
-        """Test max and min"""
+    def test_max_min_pairwise(self):
+        """Tests max and min for the deterministic constant (n^2) algorithm"""
+        self._max_min("pairwise")
+
+    def test_max_min_log_reduction(self):
+        """Tests max and min for log reduction algorithm"""
+        self._max_min("log_reduction")
+
+    def test_max_min_double_log_reduction(self):
+        """Tests max and min for double log reduction algorithm"""
+        self._max_min("double_log_reduction")
+
+    def test_max_min_accelerated_cascade(self):
+        """Tests max and min for accelerated cascading algorithm"""
+        self._max_min("accelerated_cascade")
+
+    def _max_min(self, method):
+        """Test max and min for the specified algorithm"""
         sizes = [
             (),
             (1,),
@@ -641,14 +657,15 @@ class TestMPC(object):
             (5, 5, 5, 5),
         ]
         test_cases = [torch.FloatTensor([[1, 1, 2, 1, 4, 1, 3, 4]])] + [
-            get_random_test_tensor(size=size, is_float=True) for size in sizes
+            get_random_test_tensor(size=size, is_float=False) for size in sizes
         ]
 
         for tensor in test_cases:
+            tensor = tensor.float()
             encrypted_tensor = MPCTensor(tensor)
             for comp in ["max", "min"]:
                 reference = getattr(tensor, comp)()
-                encrypted_out = getattr(encrypted_tensor, comp)()
+                encrypted_out = getattr(encrypted_tensor, comp)(method=method)
                 self._check(encrypted_out, reference, "%s reduction failed" % comp)
 
                 for dim in range(tensor.dim()):
@@ -657,7 +674,7 @@ class TestMPC(object):
 
                         # Test with one_hot = False
                         encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim, keepdim=keepdim, one_hot=False
+                            dim, keepdim=keepdim, one_hot=False, method=method
                         )
 
                         # Check max / min values are correct
@@ -685,9 +702,8 @@ class TestMPC(object):
 
                         # Test indices with one_hot = True
                         encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim, keepdim=keepdim, one_hot=True
+                            dim, keepdim=keepdim, one_hot=True, method=method
                         )
-
                         # Check argmax results
                         val_ref = reference[0]
                         out_encr = encrypted_out[1]
@@ -700,8 +716,24 @@ class TestMPC(object):
                             ).all()
                         )
 
-    def test_argmax_argmin(self):
-        """Test argmax and argmin"""
+    def test_argmax_argmin_pairwise(self):
+        """Tests argmax and argmin for the deterministic constant (n^2) algorithm"""
+        self._argmax_argmin("pairwise")
+
+    def test_argmax_argmin_log_reduction(self):
+        """Tests argmax and argmin for log reduction algorithm"""
+        self._argmax_argmin("log_reduction")
+
+    def test_argmax_argmin_double_log_reduction(self):
+        """Tests argmax and argmin for double log reduction algorithm"""
+        self._argmax_argmin("double_log_reduction")
+
+    def test_argmax_argmin_accelerated_cascade(self):
+        """Tests max and min for accelerated cascading algorithm"""
+        self._max_min("accelerated_cascade")
+
+    def _argmax_argmin(self, method):
+        """Test argmax and argmin for specified algorithm"""
         sizes = [
             (),
             (1,),
@@ -715,10 +747,11 @@ class TestMPC(object):
             (5, 5, 5, 5),
         ]
         test_cases = [torch.FloatTensor([[1, 1, 2, 1, 4, 1, 3, 4]])] + [
-            get_random_test_tensor(size=size, is_float=True) for size in sizes
+            get_random_test_tensor(size=size, is_float=False) for size in sizes
         ]
 
         for tensor in test_cases:
+            tensor = tensor.float()
             encrypted_tensor = MPCTensor(tensor)
             for comp in ["argmax", "argmin"]:
                 cmp = comp[3:]
@@ -726,7 +759,9 @@ class TestMPC(object):
                 value = getattr(tensor, cmp)()
 
                 # test with one_hot = False
-                encrypted_out = getattr(encrypted_tensor, comp)(one_hot=False)
+                encrypted_out = getattr(encrypted_tensor, comp)(
+                    one_hot=False, method=method
+                )
 
                 # Must index into tensor since ties are broken randomly
                 # so crypten and PyTorch can return different indices.
@@ -739,7 +774,9 @@ class TestMPC(object):
                     self.assertTrue(decrypted_val.eq(value).all().item())
 
                 # test with one_hot = False
-                encrypted_out = getattr(encrypted_tensor, comp)(one_hot=True)
+                encrypted_out = getattr(encrypted_tensor, comp)(
+                    one_hot=True, method=method
+                )
                 one_hot_indices = (tensor == value).float()
                 decrypted_out = encrypted_out.get_plain_text()
                 self.assertTrue(decrypted_out.sum() == 1)
@@ -752,7 +789,7 @@ class TestMPC(object):
 
                         # test with one_hot = False
                         encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim, keepdim=keepdim, one_hot=False
+                            dim, keepdim=keepdim, one_hot=False, method=method
                         )
 
                         # Must index into tensor since ties are broken randomly
@@ -768,7 +805,7 @@ class TestMPC(object):
 
                         # test with one_hot = True
                         encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim, keepdim=keepdim, one_hot=True
+                            dim, keepdim=keepdim, one_hot=True, method=method
                         )
                         decrypted_out = encrypted_out.get_plain_text()
 
@@ -1816,22 +1853,26 @@ class TestMPC(object):
 class TestTFP(MultiProcessTestCase, TestMPC):
     def setUp(self):
         self._original_provider = crypten.mpc.get_default_provider()
+        crypten.CrypTensor.set_grad_enabled(False)
         crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
         super(TestTFP, self).setUp()
 
     def tearDown(self):
         crypten.mpc.set_default_provider(self._original_provider)
+        crypten.CrypTensor.set_grad_enabled(True)
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestMPC):
     def setUp(self):
         self._original_provider = crypten.mpc.get_default_provider()
+        crypten.CrypTensor.set_grad_enabled(False)
         crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
         super(TestTTP, self).setUp()
 
     def tearDown(self):
         crypten.mpc.set_default_provider(self._original_provider)
+        crypten.CrypTensor.set_grad_enabled(True)
         super(TestTTP, self).tearDown()
 
 

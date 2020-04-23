@@ -201,9 +201,17 @@ def _setup_przs():
     comm.get().global_generator.manual_seed(global_seed.item())
 
 
-def load(f=None, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
+def load_from_party(
+    f=None,
+    preloaded=None,
+    encrypted=False,
+    dummy_model=None,
+    src=0,
+    load_closure=torch.load,
+    **kwargs
+):
     """
-    Loads an object saved with `torch.save()` or `crypten.save()`.
+    Loads an object saved with `torch.save()` or `crypten.save_from_party()`.
 
     Args:
         f: a file-like object (has to implement `read()`, `readline()`,
@@ -221,6 +229,9 @@ def load(f=None, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwa
             party will attempt to read in the specified file. If `src` is
             specified, the source party will read the tensor from `f` and it
             will broadcast it to the other parties
+        load_closure: Custom load function that matches the interface of `torch.load`,
+        to be used when the tensor is saved with a custom save function in
+        `crypten.save_from_party`. Additional kwargs are passed on to the closure.
     """
     if dummy_model is not None:
         warnings.warn(
@@ -247,6 +258,7 @@ def load(f=None, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwa
                 result_zeros = copy.deepcopy(result)
                 result_zeros.set_all_parameters(0)
             else:
+                result = comm.get().broadcast_obj(-1, src)
                 raise TypeError("Unrecognized load type %s" % type(result))
 
             comm.get().broadcast_obj(result_zeros, src)
@@ -254,6 +266,8 @@ def load(f=None, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwa
         # Non-source party
         else:
             result = comm.get().broadcast_obj(None, src)
+            if isinstance(result, int) and result == -1:
+                raise TypeError("Unrecognized load type from src party")
 
         if torch.is_tensor(result):
             result = crypten.cryptensor(result, src=src)
@@ -264,7 +278,29 @@ def load(f=None, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwa
         return result
 
 
-def save(obj, f, src=0, **kwargs):
+def load(
+    f,
+    preloaded=None,
+    encrypted=False,
+    dummy_model=None,
+    src=0,
+    load_closure=torch.load,
+    **kwargs
+):
+    """
+    Loads an object saved with `torch.save()` or `crypten.save_from_party()`.
+    Note: this function is deprecated; please use load_from_party instead.
+    """
+    warnings.warn(
+        "The current 'load' function is deprecated, and will be removed soon. "
+        "To continue using current 'load' functionality, please use the "
+        "'load_from_party' function instead.",
+        DeprecationWarning,
+    )
+    load_from_party(f, preloaded, encrypted, dummy_model, src, load_closure, **kwargs)
+
+
+def save_from_party(obj, f, src=0, save_closure=torch.save, **kwargs):
     """
     Saves a CrypTensor or PyTorch tensor to a file.
 
@@ -273,6 +309,9 @@ def save(obj, f, src=0, **kwargs):
         f: a file-like object (has to implement `read()`, `readline()`,
               `tell()`, and `seek()`), or a string containing a file name
         src: The source party that writes data to the specified file.
+        save_closure: Custom save function that matches the interface of `torch.save`,
+        to be used when the tensor is saved with a custom load function in
+        `crypten.load_from_party`. Additional kwargs are passed on to the closure.
     """
     if is_encrypted_tensor(obj):
         raise NotImplementedError("Saving encrypted tensors is not yet supported")
@@ -283,10 +322,24 @@ def save(obj, f, src=0, **kwargs):
         ), "Save failed: src must be an integer in [0, world_size)"
 
         if comm.get().get_rank() == src:
-            torch.save(obj, f, **kwargs)
+            save_closure(obj, f, **kwargs)
 
     # Implement barrier to avoid race conditions that require file to exist
     comm.get().barrier()
+
+
+def save(obj, f, src=0, save_closure=torch.save, **kwargs):
+    """
+    Saves a CrypTensor or PyTorch tensor to a file.
+    Note: this function is deprecated, please use save_from_party instead
+    """
+    warnings.warn(
+        "The current 'save' function is deprecated, and will be removed soon. "
+        "To continue using current 'save' functionality, please use the "
+        "'save_from_party' function instead.",
+        DeprecationWarning,
+    )
+    save_from_party(obj, f, src, save_closure, **kwargs)
 
 
 def where(condition, input, other):

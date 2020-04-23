@@ -1088,10 +1088,25 @@ class TestNN(object):
             ]
         )
 
-        feature_sizes = [(1, 4), (1, 32, 32, 3)]
-        label_sizes = [(1, 3), (1, 32)]
+        model_tf3 = tf.keras.Sequential(
+            [
+                tf.keras.layers.Conv1D(
+                    32,
+                    1,
+                    activation="relu",
+                    strides=1,
+                    kernel_initializer="ones",
+                    bias_initializer="ones",
+                    input_shape=(6, 128),
+                ),
+                tf.keras.layers.AvgPool1D(1),
+            ]
+        )
 
-        for i, curr_model_tf in enumerate([model_tf1, model_tf2]):
+        feature_sizes = [(1, 4), (1, 32, 32, 3), (1, 6, 128)]
+        label_sizes = [(1, 3), (1, 32), (1, 6, 32)]
+
+        for i, curr_model_tf in enumerate([model_tf1, model_tf2, model_tf3]):
             # create a random feature vector
             features = get_random_test_tensor(
                 size=feature_sizes[i], is_float=True, min_value=1, max_value=3

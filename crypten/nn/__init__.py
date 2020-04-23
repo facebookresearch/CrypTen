@@ -163,31 +163,56 @@ def from_pytorch(pytorch_model, dummy_input):
 
     # export first time so symbolic registry is created
     f = io.BytesIO()
-    torch.onnx.export(
-        pytorch_model,
-        dummy_input,
-        f,
-        do_constant_folding=False,
-        export_params=True,
-        input_names=["input"],
-        output_names=["output"],
-        enable_onnx_checker=False,
-    )
+    try:
+        # current version of PyTorch requires us to use `enable_onnx_checker`
+        torch.onnx.export(
+            pytorch_model,
+            dummy_input,
+            f,
+            do_constant_folding=False,
+            export_params=True,
+            enable_onnx_checker=False,
+            input_names=["input"],
+            output_names=["output"],
+        )
+    except TypeError:
+        # older versions of PyTorch require us to NOT use `enable_onnx_checker`
+        torch.onnx.export(
+            pytorch_model,
+            dummy_input,
+            f,
+            do_constant_folding=False,
+            export_params=True,
+            input_names=["input"],
+            output_names=["output"],
+        )
+
     # update ONNX symbolic registry with CrypTen-specific functions
     _update_onnx_symbolic_registry()
 
     # export again so the graph is created with CrypTen-specific registry
     f = io.BytesIO()
-    torch.onnx.export(
-        pytorch_model,
-        dummy_input,
-        f,
-        do_constant_folding=False,
-        export_params=True,
-        input_names=["input"],
-        output_names=["output"],
-        enable_onnx_checker=False,
-    )
+    try:
+        torch.onnx.export(
+            pytorch_model,
+            dummy_input,
+            f,
+            do_constant_folding=False,
+            export_params=True,
+            enable_onnx_checker=False,
+            input_names=["input"],
+            output_names=["output"],
+        )
+    except TypeError:
+        torch.onnx.export(
+            pytorch_model,
+            dummy_input,
+            f,
+            do_constant_folding=False,
+            export_params=True,
+            input_names=["input"],
+            output_names=["output"],
+        )
     f.seek(0)
 
     # construct CrypTen model:
