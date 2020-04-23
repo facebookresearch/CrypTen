@@ -249,7 +249,7 @@ def load_from_party(
         if comm.get().get_rank() == src:
             assert not (f is None and preloaded is None), "Load failed: f or preloaded should be specified"
 
-            result = torch.load(f, **kwargs) if f else preloaded
+            result = load_closure(f, **kwargs) if f else preloaded
 
             # Zero out the tensors / modules to hide loaded data from broadcast
             if torch.is_tensor(result):
