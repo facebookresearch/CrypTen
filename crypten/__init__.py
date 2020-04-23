@@ -247,7 +247,7 @@ def load_from_party(
 
         # source party
         if comm.get().get_rank() == src:
-            result = preloaded if preloaded else load_closure(f, **kwargs)
+            result = preloaded if preloaded is not None else load_closure(f, **kwargs)
 
             # Zero out the tensors / modules to hide loaded data from broadcast
             if torch.is_tensor(result):
