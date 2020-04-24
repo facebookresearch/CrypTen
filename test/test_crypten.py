@@ -192,6 +192,16 @@ class TestCrypten(MultiProcessTestCase):
                             complete_file, src=src, load_closure=(lambda f: None)
                         )
 
+                    # test pre-loaded
+                    encrypted_preloaded = crypten.load_from_party(
+                        src=src, preloaded=tensor
+                    )
+                    self._check(
+                        encrypted_preloaded,
+                        reference,
+                        "crypten.load() failed using preloaded",
+                    )
+
     def test_save_load_module(self):
         """Test that crypten.save and crypten.load properly save and load modules"""
         import tempfile

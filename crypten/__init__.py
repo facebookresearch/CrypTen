@@ -202,7 +202,7 @@ def _setup_przs():
 
 
 def load_from_party(
-    f,
+    f=None,
     preloaded=None,
     encrypted=False,
     dummy_model=None,
@@ -245,9 +245,16 @@ def load_from_party(
             src >= 0 and src < comm.get().get_world_size()
         ), "Load failed: src must be in [0, world_size)"
 
+        assert (f is None and (preloaded is not None)) or (
+            (f is not None) and preloaded is None
+        ), "Exactly one of f and preloaded must not be None"
+
         # source party
         if comm.get().get_rank() == src:
-            result = preloaded if preloaded else load_closure(f, **kwargs)
+            if f is None:
+                result = preloaded
+            if preloaded is None:
+                result = load_closure(f, **kwargs)
 
             # Zero out the tensors / modules to hide loaded data from broadcast
             if torch.is_tensor(result):
