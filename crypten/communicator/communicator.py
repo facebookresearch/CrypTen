@@ -104,6 +104,14 @@ class Communicator:
         """Returns the rank of the current process."""
         raise NotImplementedError("get_rank is not implemented")
 
+    def set_name(self):
+        """Sets the party name of the current process."""
+        raise NotImplementedError("set_name is not implemented")
+
+    def get_name(self):
+        """Returns the party name of the current process."""
+        raise NotImplementedError("get_name is not implemented")
+
     def reset_communication_stats(self):
         """Resets communication statistics."""
         raise NotImplementedError("reset_communication_stats is not implemented")

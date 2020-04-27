@@ -215,6 +215,25 @@ class TestCommunicator:
             test_obj = comm.get().broadcast_obj(test_obj, src)
             self.assertEqual(test_obj, reference, "broadcast_obj failed")
 
+    def test_name(self):
+        # Test default name is correct
+        self.assertEqual(comm.get().get_name(), f"rank{comm.get().get_rank()}")
+
+        # Test name set / get
+        comm.get().set_name(f"{comm.get().get_rank()}")
+        self.assertEqual(comm.get().get_name(), f"{comm.get().get_rank()}")
+
+        # Test initialization using crypten.init()
+        name = f"init_{comm.get().get_rank()}"
+        crypten.uninit()
+        crypten.init(party_name=name)
+        self.assertEqual(comm.get().get_name(), f"init_{comm.get().get_rank()}")
+
+        # Test failure on bad input
+        for improper_input in [0, None, ["name"], ("name",)]:
+            with self.assertRaises(AssertionError):
+                comm.get().set_name(improper_input)
+
 
 # TODO: Commenting this out until we figure out why `thread.join() hangs
 #       Perhaps the thread to be joined has somehow exited
