@@ -1100,8 +1100,6 @@ class Linear(Module):
             self.register_parameter("bias", pytorch_module.bias)
 
     def forward(self, x):
-        if x.dim() > 2:
-            x = x.view(x.size(0), -1)
         output = x.matmul(self.weight.t())
         if hasattr(self, "bias"):
             output = output.add(self.bias)

@@ -489,6 +489,54 @@ class TestNN(object):
                         "%s backward on %s failed" % (module_name, name),
                     )
 
+    def test_linear(self):
+        """
+        Tests crypten.nn.Linear module.
+        """
+        dims = [(40, 80), (80, 1), (10, 10)]
+        sizes = [(1, 40), (4, 80), (6, 4, 2, 10)]
+        for compute_gradients in [True, False]:
+            for dim, size in zip(dims, sizes):
+                # generate inputs:
+                input = get_random_test_tensor(size=size, is_float=True)
+                input.requires_grad = True
+                encr_input = crypten.cryptensor(input)
+                encr_input.requires_grad = compute_gradients
+
+                # create PyTorch module:
+                module = torch.nn.Linear(*dim)
+                module.train()
+
+                # create encrypted CrypTen module:
+                encr_module = crypten.nn.Linear(*dim)
+                for n, p in module.named_parameters():
+                    p = comm.get().broadcast(p, src=0)
+                    encr_module.set_parameter(n, p)
+                encr_module.encrypt().train()
+
+                # compare model outputs:
+                self.assertTrue(encr_module.training, "training value incorrect")
+                reference = module(input)
+                encr_output = encr_module(encr_input)
+                self._check(encr_output, reference, "Linear forward failed")
+
+                # test backward pass:
+                reference.backward(torch.ones(reference.size()))
+                encr_output.backward()
+                if compute_gradients:
+                    self._check(
+                        encr_input.grad, input.grad, "Linear backward on input failed"
+                    )
+                else:
+                    self.assertIsNone(encr_input.grad)
+                for name, param in module.named_parameters():
+                    encr_param = getattr(encr_module, name)
+                    self._check(
+                        encr_param.grad,
+                        param.grad,
+                        "Linear backward on %s failed" % name,
+                    )
+
     def test_sequential(self):
         """
         Tests crypten.nn.Sequential module.
