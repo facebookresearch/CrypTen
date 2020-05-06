@@ -95,7 +95,8 @@ def online_learner(
         A_inv_context = A_inv.matmul(context)
         numerator = A_inv_context.unsqueeze(1).mul(A_inv_context.unsqueeze(2))
         denominator = A_inv_context.matmul(context).add(1.0).view(-1, 1, 1)
-        update = numerator.mul_(denominator.reciprocal(nr_iters=nr_iters))
+        with crypten.mpc.ConfigManager("reciprocal_nr_iters", nr_iters):
+            update = numerator.mul_(denominator.reciprocal())
         A_inv.sub_(update.mul_(onehot.view(-1, 1, 1)))
         b.add_(context.mul(reward).unsqueeze(0).mul_(onehot.unsqueeze(0)))
 

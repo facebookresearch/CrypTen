@@ -665,7 +665,8 @@ class TestMPC(object):
             encrypted_tensor = MPCTensor(tensor)
             for comp in ["max", "min"]:
                 reference = getattr(tensor, comp)()
-                encrypted_out = getattr(encrypted_tensor, comp)(method=method)
+                with crypten.mpc.ConfigManager("max_method", method):
+                    encrypted_out = getattr(encrypted_tensor, comp)()
                 self._check(encrypted_out, reference, "%s reduction failed" % comp)
 
                 for dim in range(tensor.dim()):
@@ -673,9 +674,10 @@ class TestMPC(object):
                         reference = getattr(tensor, comp)(dim, keepdim=keepdim)
 
                         # Test with one_hot = False
-                        encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim, keepdim=keepdim, one_hot=False, method=method
-                        )
+                        with crypten.mpc.ConfigManager("max_method", method):
+                            encrypted_out = getattr(encrypted_tensor, comp)(
+                                dim, keepdim=keepdim, one_hot=False
+                            )
 
                         # Check max / min values are correct
                         self._check(
@@ -701,9 +703,10 @@ class TestMPC(object):
                         )
 
                         # Test indices with one_hot = True
-                        encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim, keepdim=keepdim, one_hot=True, method=method
-                        )
+                        with crypten.mpc.ConfigManager("max_method", method):
+                            encrypted_out = getattr(encrypted_tensor, comp)(
+                                dim, keepdim=keepdim, one_hot=True
+                            )
                         # Check argmax results
                         val_ref = reference[0]
                         out_encr = encrypted_out[1]
@@ -759,9 +762,8 @@ class TestMPC(object):
                 value = getattr(tensor, cmp)()
 
                 # test with one_hot = False
-                encrypted_out = getattr(encrypted_tensor, comp)(
-                    one_hot=False, method=method
-                )
+                with crypten.mpc.ConfigManager("max_method", method):
+                    encrypted_out = getattr(encrypted_tensor, comp)(one_hot=False)
 
                 # Must index into tensor since ties are broken randomly
                 # so crypten and PyTorch can return different indices.
@@ -774,9 +776,8 @@ class TestMPC(object):
                     self.assertTrue(decrypted_val.eq(value).all().item())
 
                 # test with one_hot = False
-                encrypted_out = getattr(encrypted_tensor, comp)(
-                    one_hot=True, method=method
-                )
+                with crypten.mpc.ConfigManager("max_method", method):
+                    encrypted_out = getattr(encrypted_tensor, comp)(one_hot=True)
                 one_hot_indices = (tensor == value).float()
                 decrypted_out = encrypted_out.get_plain_text()
                 self.assertTrue(decrypted_out.sum() == 1)
@@ -788,9 +789,10 @@ class TestMPC(object):
                         values, indices = getattr(tensor, cmp)(dim, keepdim=keepdim)
 
                         # test with one_hot = False
-                        encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim, keepdim=keepdim, one_hot=False, method=method
-                        )
+                        with crypten.mpc.ConfigManager("max_method", method):
+                            encrypted_out = getattr(encrypted_tensor, comp)(
+                                dim, keepdim=keepdim, one_hot=False
+                            )
 
                         # Must index into tensor since ties are broken randomly
                         # so crypten and PyTorch can return different indices.
@@ -804,9 +806,10 @@ class TestMPC(object):
                         self.assertTrue(decrypted_val.eq(reference).all().item())
 
                         # test with one_hot = True
-                        encrypted_out = getattr(encrypted_tensor, comp)(
-                            dim, keepdim=keepdim, one_hot=True, method=method
-                        )
+                        with crypten.mpc.ConfigManager("max_method", method):
+                            encrypted_out = getattr(encrypted_tensor, comp)(
+                                dim, keepdim=keepdim, one_hot=True
+                            )
                         decrypted_out = encrypted_out.get_plain_text()
 
                         if not keepdim:
@@ -1395,7 +1398,7 @@ class TestMPC(object):
                     f"flatten failed with dim {dim}",
                 )
 
-            shapes = [(100), (5, 20), (10, 2, 5), (-1, 10)]
+            shapes = [100, (5, 20), (10, 2, 5), (-1, 10)]
             for shape in shapes:
                 self._check(
                     encrypted_tensor.view(shape),

@@ -5,10 +5,30 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import abc
 import functools
 
 import numpy as np
 import torch
+
+
+class ConfigBase(abc.ABC):
+    def __init__(self, config, *args):
+        self.config = config
+        assert len(args) % 2 == 0, "Uneven number of configuration params."
+        self.params = args[::2]
+        self.values = args[1::2]
+
+    def __enter__(self):
+        self.old_values = []
+        for p, v in zip(self.params, self.values):
+            self.old_values.append(getattr(self.config, p))
+            setattr(self.config, p, v)
+
+    def __exit__(self, exc_type, exc_value, tb):
+        for p, v in zip(self.params, self.old_values):
+            setattr(self.config, p, v)
+        return exc_type is None
 
 
 def count_wraps(share_list):

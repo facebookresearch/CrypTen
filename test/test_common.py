@@ -98,6 +98,21 @@ class TestCommon(unittest.TestCase):
             self.assertTrue(result[0] < 1e-4)
             self.assertTrue(torch.isclose(result[-1], torch.tensor(3.5e-2), atol=1e-1))
 
+    def test_config_managers(self):
+        """Checks setting configuartion with config manager works"""
+        # Set the config directly
+        crypten.mpc.config.exp_iterations = 8
+        self.assertTrue(crypten.mpc.config.exp_iterations == 8)
+
+        # Set with a context manager
+        with crypten.mpc.ConfigManager("exp_iterations", 3):
+            self.assertTrue(crypten.mpc.config.exp_iterations == 3)
+        self.assertTrue(crypten.mpc.config.exp_iterations == 8)
+
+        crypten.mpc.set_config(crypten.mpc.MPCConfig(exp_iterations=5))
+        self.assertTrue(crypten.mpc.config.exp_iterations == 5)
+        self.assertTrue(crypten.mpc.mpc.config.exp_iterations == 5)
+
 
 if __name__ == "__main__":
     unittest.main(argv=sys.argv[0])

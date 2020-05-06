@@ -6,11 +6,12 @@
 # LICENSE file in the root directory of this source tree.
 
 import warnings
+from dataclasses import dataclass
 from functools import wraps
 
 import crypten
 import torch
-from crypten.common.util import pool_reshape
+from crypten.common.util import ConfigBase, pool_reshape
 
 from ..cryptensor import CrypTensor
 from .max_helper import _argmax_helper, _max_helper_all_tree_reductions
@@ -61,6 +62,45 @@ def _one_hot_to_index(tensor, dim, keepdim):
         size[dim] = tensor.size(dim)
         result = tensor * torch.tensor(list(range(tensor.size(dim)))).view(size)
         return result.sum(dim, keepdim=keepdim)
+
+
+@dataclass
+class MPCConfig:
+    """
+    A configuration object for use by the MPCTensor.
+    """
+
+    # exponential function
+    exp_iterations: int = 8
+
+    # reciprocal configuration
+    reciprocal_method: str = "NR"
+    reciprocal_nr_iters: int = 10
+    reciprocal_log_iters: int = 1
+    reciprocal_all_pos: bool = False
+    reciprocal_initial: any = None
+
+    # Used by max / argmax / min / argmin
+    max_method: str = "pairwise"
+
+
+# Global config
+config = MPCConfig()
+
+
+class ConfigManager(ConfigBase):
+    r"""
+    Use this to temporarily change a value in the `mpc.config` object. The
+    following sets `config.exp_iterations` to `10` for one function
+    invocation and then sets it back to the previous value::
+
+        with ConfigManager("exp_iterations", 10):
+            tensor.exp()
+
+    """
+
+    def __init__(self, *args):
+        super().__init__(config, *args)
 
 
 class MPCTensor(CrypTensor):
@@ -454,7 +494,7 @@ class MPCTensor(CrypTensor):
 
     # max / min-related functions
     @mode(Ptype.arithmetic)
-    def argmax(self, dim=None, keepdim=False, one_hot=True, method="pairwise"):
+    def argmax(self, dim=None, keepdim=False, one_hot=True):
         """Returns the indices of the maximum value of all elements in the
         `input` tensor.
         """
@@ -465,31 +505,33 @@ class MPCTensor(CrypTensor):
             )
             return result
 
-        result = _argmax_helper(self, dim, method, _return_max=False)
+        result = _argmax_helper(self, dim, config.max_method, _return_max=False)
 
         if not one_hot:
             result = _one_hot_to_index(result, dim, keepdim)
         return result
 
     @mode(Ptype.arithmetic)
-    def argmin(self, dim=None, keepdim=False, one_hot=True, method="pairwise"):
+    def argmin(self, dim=None, keepdim=False, one_hot=True):
         """Returns the indices of the minimum value of all elements in the
         `input` tensor.
         """
         # TODO: Make dim an arg.
-        return (-self).argmax(dim=dim, keepdim=keepdim, one_hot=one_hot, method=method)
+        return (-self).argmax(dim=dim, keepdim=keepdim, one_hot=one_hot)
 
     @mode(Ptype.arithmetic)
-    def max(self, dim=None, keepdim=False, one_hot=True, method="pairwise"):
+    def max(self, dim=None, keepdim=False, one_hot=True):
         """Returns the maximum value of all elements in the input tensor."""
         # TODO: Make dim an arg.
+        method = config.max_method
         if dim is None:
             if method in ["log_reduction", "double_log_reduction"]:
                 # max_result can be obtained directly
                 max_result = _max_helper_all_tree_reductions(self, method=method)
             else:
                 # max_result needs to be obtained through argmax
-                argmax_result = self.argmax(one_hot=True, method=method)
+                with ConfigManager("max_method", method):
+                    argmax_result = self.argmax(one_hot=True)
                 max_result = self.mul(argmax_result).sum()
             return max_result
         else:
@@ -510,10 +552,10 @@ class MPCTensor(CrypTensor):
                 return max_result, _one_hot_to_index(argmax_result, dim, keepdim)
 
     @mode(Ptype.arithmetic)
-    def min(self, dim=None, keepdim=False, one_hot=True, method="pairwise"):
+    def min(self, dim=None, keepdim=False, one_hot=True):
         """Returns the minimum value of all elements in the input tensor."""
         # TODO: Make dim an arg.
-        result = (-self).max(dim=dim, keepdim=keepdim, one_hot=one_hot, method=method)
+        result = (-self).max(dim=dim, keepdim=keepdim, one_hot=one_hot)
         if dim is None:
             return -result
         else:
@@ -533,7 +575,7 @@ class MPCTensor(CrypTensor):
             # padding with extremely negative values to avoid choosing pads
             # -2 ** 40 is acceptable since it is lower than the supported range
             # which is -2 ** 32 because multiplication can otherwise fail.
-            pad_value=(-2 ** 40),
+            pad_value=(-(2 ** 40)),
         )
         max_vals, argmax_vals = max_input.max(dim=-1, one_hot=True)
         max_vals = max_vals.view(output_size)
@@ -653,9 +695,18 @@ class MPCTensor(CrypTensor):
             sign = 1 - 2 * ltz
 
             input = self.mul(sign)
-            denominator = input.neg().exp(iterations=9).add(1)
-
-            pos_output = denominator.reciprocal(nr_iters=3, all_pos=True, initial=0.75)
+            with ConfigManager(
+                "exp_iterations",
+                9,
+                "reciprocal_nr_iters",
+                3,
+                "reciprocal_all_pos",
+                True,
+                "reciprocal_initial",
+                0.75,
+            ):
+                denominator = input.neg().exp().add(1)
+                pos_output = denominator.reciprocal()
             result = pos_output * (1 - ltz) + ltz * (1 - pos_output)
             # TODO: Support addition with different encoder scales
             # result = pos_output + ltz - 2 * pos_output * ltz
@@ -730,7 +781,8 @@ class MPCTensor(CrypTensor):
         maximum_value = self.max(dim, keepdim=True)[0]
         logits = self - maximum_value
         numerator = logits.exp()
-        inv_denominator = numerator.sum(dim, keepdim=True).reciprocal(all_pos=True)
+        with ConfigManager("reciprocal_all_pos", True):
+            inv_denominator = numerator.sum(dim, keepdim=True).reciprocal()
         return numerator * inv_denominator
 
     @mode(Ptype.arithmetic)
@@ -799,7 +851,7 @@ class MPCTensor(CrypTensor):
         return terms.mul(coeffs).sum(0)
 
     # Approximations:
-    def exp(self, iterations=8):
+    def exp(self):
         """Approximates the exponential function using a limit approximation:
 
         .. math::
@@ -809,11 +861,11 @@ class MPCTensor(CrypTensor):
         Here we compute exp by choosing n = 2 ** d for some large d equal to
         `iterations`. We then compute (1 + x / n) once and square `d` times.
 
-        Args:
-            iterations (int): number of iterations for limit approximation
+        Set the number of iterations for the limit approximation with
+        config.exp_iterations.
         """  # noqa: W605
-        result = 1 + self.div(2 ** iterations)
-        for _ in range(iterations):
+        result = 1 + self.div(2 ** config.exp_iterations)
+        for _ in range(config.exp_iterations):
             result = result.square()
         return result
 
@@ -842,14 +894,13 @@ class MPCTensor(CrypTensor):
         y = term1 - term2 + 3.0
 
         # 8th order Householder iterations
-        for _ in range(iterations):
-            h = 1 - self * (-y).exp(iterations=exp_iterations)
-            y -= h.polynomial([1 / (i + 1) for i in range(order)])
+        with ConfigManager("exp_iterations", exp_iterations):
+            for _ in range(iterations):
+                h = 1 - self * (-y).exp()
+                y -= h.polynomial([1 / (i + 1) for i in range(order)])
         return y
 
-    def reciprocal(
-        self, method="NR", nr_iters=10, log_iters=1, all_pos=False, initial=None
-    ):
+    def reciprocal(self):
         """
         Methods:
             'NR' : `Newton-Raphson`_ method computes the reciprocal using iterations
@@ -859,46 +910,47 @@ class MPCTensor(CrypTensor):
             'log' : Computes the reciprocal of the input from the observation that:
                     :math:`x^{-1} = exp(-log(x))`
 
-        Args:
-            nr_iters (int):  determines the number of Newton-Raphson iterations to run
+        Configuration params:
+            reciprocal_method (str):  One of 'NR' or 'log'.
+            reciprocal_nr_iters (int):  determines the number of Newton-Raphson iterations to run
                          for the `NR` method
-            log_iters (int): determines the number of Householder iterations to run
-                         when computing logarithms for the `log` method
-            all_pos (bool): determines whether all elements
-                       of the input are known to be positive, which optimizes
-                       the step of computing the sign of the input.
-            initial (tensor): sets the initial value for the Newton-Raphson method. By
-                        default, this will be set to :math: `3*exp(-(x-.5)) + 0.003` as
-                        this allows the method to converge over a fairly large domain
+            reciprocal_log_iters (int): determines the number of Householder
+                iterations to run when computing logarithms for the `log` method
+            reciprocal_all_pos (bool): determines whether all elements of the
+                input are known to be positive, which optimizes the step of
+                computing the sign of the input.
+            reciprocal_initial (tensor): sets the initial value for the
+                Newton-Raphson method. By default, this will be set to :math:
+                `3*exp(-(x-.5)) + 0.003` as this allows the method to converge over
+                a fairly large domain
 
         .. _Newton-Raphson:
             https://en.wikipedia.org/wiki/Newton%27s_method
         """
-        if not all_pos:
+        method = config.reciprocal_method
+        if not config.reciprocal_all_pos:
             sgn = self.sign(_scale=False)
-            abs = sgn * self
-            rec = abs.reciprocal(
-                method=method, nr_iters=nr_iters, log_iters=log_iters, all_pos=True
-            )
-            return sgn * rec
+            pos = sgn * self
+            with ConfigManager("reciprocal_all_pos", True):
+                return sgn * pos.reciprocal()
 
         if method == "NR":
-            if initial is None:
+            if config.reciprocal_initial is None:
                 # Initialization to a decent estimate (found by qualitative inspection):
                 #                1/x = 3exp(.5 - x) + 0.003
                 result = 3 * (0.5 - self).exp() + 0.003
             else:
-                result = initial
-            for _ in range(nr_iters):
+                result = config.reciprocal_initial
+            for _ in range(config.reciprocal_nr_iters):
                 if isinstance(result, MPCTensor):
                     result += result - result.square().mul_(self)
                 else:
                     result = 2 * result - result * result * self
             return result
         elif method == "log":
-            return (-self.log(iterations=log_iters)).exp()
+            return (-(self.log(iterations=config.reciprocal_log_iters))).exp()
         else:
-            raise ValueError("Invalid method %s given for reciprocal function" % method)
+            raise ValueError(f"Invalid method {method} given for reciprocal function")
 
     def div(self, y):
         r"""Divides each element of :attr:`self` with the scalar :attr:`y` or
@@ -947,9 +999,9 @@ class MPCTensor(CrypTensor):
                 " pos_pow with positive-valued base."
             )
         if p < -1:
-            return self.reciprocal(**kwargs).pow(-p)
+            return self.reciprocal().pow(-p)
         elif p == -1:
-            return self.reciprocal(**kwargs)
+            return self.reciprocal()
         elif p == 0:
             # Note: This returns 0 ** 0 -> 1 when inputs have zeros.
             # This is consistent with PyTorch's pow function.

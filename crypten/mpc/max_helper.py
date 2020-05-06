@@ -69,9 +69,8 @@ def _max_helper_log_reduction(enc_tensor, dim=None):
     # compute max over the resulting reduced tensor with n^2 algorithm
     # note that the resulting one-hot vector we get here finds maxes only
     # over the reduced vector in enc_tensor_reduced, so we won't use it
-    enc_max_vec, enc_one_hot_reduced = enc_tensor_reduced.max(
-        dim=dim_used, method="pairwise"
-    )
+    with crypten.mpc.ConfigManager("max_method", "pairwise"):
+        enc_max_vec, enc_one_hot_reduced = enc_tensor_reduced.max(dim=dim_used)
     return enc_max_vec
 
 
@@ -107,9 +106,8 @@ def _max_helper_double_log_recursive(enc_tensor, dim):
         full_max_tensor = crypten.cat([enc_max_tensor, remainder], dim=dim)
 
         # call the max function on dimension dim
-        enc_max, enc_arg_max = full_max_tensor.max(
-            dim=dim, keepdim=True, method="pairwise"
-        )
+        with crypten.mpc.ConfigManager("max_method", "pairwise"):
+            enc_max, enc_arg_max = full_max_tensor.max(dim=dim, keepdim=True)
         # compute max over the resulting reduced tensor with n^2 algorithm
         # note that the resulting one-hot vector we get here finds maxes only
         # over the reduced vector in enc_tensor_reduced, so we won't use it
@@ -146,8 +144,9 @@ def _max_helper_accelerated_cascade(enc_tensor, dim=None):
         input = enc_tensor.flatten()
     n = input.size(dim_used)  # number of items in the dimension
     if n < 3:
-        enc_max, enc_argmax = enc_tensor.max(dim=dim_used, method="pairwise")
-        return enc_max
+        with crypten.mpc.ConfigManager("max_method", "pairwise"):
+            enc_max, enc_argmax = enc_tensor.max(dim=dim_used)
+            return enc_max
     steps = int(math.log(math.log(math.log(n)))) + 1
     enc_tensor_reduced = _compute_pairwise_comparisons_for_steps(
         enc_tensor, dim_used, steps

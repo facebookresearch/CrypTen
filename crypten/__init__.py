@@ -10,6 +10,7 @@ __version__ = "0.1.0"
 import copy
 import warnings
 
+import crypten.common
 import crypten.communicator as comm
 import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
@@ -179,7 +180,7 @@ def _setup_przs():
     import numpy
 
     numpy.random.seed(seed=None)
-    next_seed = torch.tensor(numpy.random.randint(-2 ** 63, 2 ** 63 - 1, (1,)))
+    next_seed = torch.tensor(numpy.random.randint(-(2 ** 63), 2 ** 63 - 1, (1,)))
     prev_seed = torch.LongTensor([0])  # placeholder
 
     # Send random seed to next party, receive random seed from prev party
@@ -202,7 +203,7 @@ def _setup_przs():
     comm.get().g1.manual_seed(prev_seed.item())
 
     # Create global generator
-    global_seed = torch.tensor(numpy.random.randint(-2 ** 63, 2 ** 63 - 1, (1,)))
+    global_seed = torch.tensor(numpy.random.randint(-(2 ** 63), 2 ** 63 - 1, (1,)))
     global_seed = comm.get().broadcast(global_seed, 0)
     comm.get().global_generator = torch.Generator()
     comm.get().global_generator.manual_seed(global_seed.item())

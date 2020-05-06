@@ -248,12 +248,12 @@ class TestGradients:
         """Tests input reductions on tensors of various sizes."""
         for size in SIZES:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            args_dict = {"method": method}
             for reduction in input_reductions:
                 if method is None:
                     self._check_forward_backward(reduction, tensor)
                 else:
-                    self._check_forward_backward(reduction, tensor, addl_args=args_dict)
+                    with crypten.mpc.ConfigManager("max_method", method):
+                        self._check_forward_backward(reduction, tensor)
 
                 # Check dim 0 if tensor is 0-dimensional
                 dims = 1 if tensor.dim() == 0 else tensor.dim()
@@ -264,13 +264,13 @@ class TestGradients:
                                 reduction, tensor, dim, keepdim=keepdim
                             )
                         else:
-                            self._check_forward_backward(
-                                reduction,
-                                tensor,
-                                dim,
-                                addl_args=args_dict,
-                                keepdim=keepdim,
-                            )
+                            with crypten.mpc.ConfigManager("max_method", method):
+                                self._check_forward_backward(
+                                    reduction,
+                                    tensor,
+                                    dim,
+                                    keepdim=keepdim,
+                                )
 
     def test_matmul(self):
         """Test matmul with broadcasting."""
