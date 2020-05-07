@@ -310,7 +310,9 @@ def load(
         "'load_from_party' function instead.",
         DeprecationWarning,
     )
-    return load_from_party(f, preloaded, encrypted, dummy_model, src, load_closure, **kwargs)
+    return load_from_party(
+        f, preloaded, encrypted, dummy_model, src, load_closure, **kwargs
+    )
 
 
 def save_from_party(obj, f, src=0, save_closure=torch.save, **kwargs):
