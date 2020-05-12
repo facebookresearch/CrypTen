@@ -283,12 +283,8 @@ class TestModule(nn.Module):
         return out
 
     def set_all_parameters(self, value):
-        self.fc1.weight.data.fill_(value)
-        self.fc1.bias.data.fill_(value)
-        self.fc2.weight.data.fill_(value)
-        self.fc2.bias.data.fill_(value)
-        self.fc3.weight.data.fill_(value)
-        self.fc3.bias.data.fill_(value)
+        for p in self.parameters():
+            torch.nn.init.constant_(p, value)
 
 
 class NestedTestModule(nn.Module):
@@ -302,9 +298,8 @@ class NestedTestModule(nn.Module):
         out = self.nested(out)
 
     def set_all_parameters(self, value):
-        self.fc1.weight.data.fill_(value)
-        self.fc1.bias.data.fill_(value)
-        self.nested.set_all_parameters(value)
+        for p in self.parameters():
+            torch.nn.init.constant_(p, value)
 
 
 # This code only runs when executing the file outside the test harness
