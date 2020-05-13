@@ -390,6 +390,7 @@ class TestNN(object):
             "Linear": (400, 120),
             "MaxPool2d": (2,),
             "ReLU": (),
+            "Sigmoid": (),
             "Softmax": (0,),
             "LogSoftmax": (0,),
         }
@@ -407,6 +408,7 @@ class TestNN(object):
             "Linear": (1, 400),
             "MaxPool2d": (1, 2, 32, 32),
             "ReLU": (1, 3, 32, 32),
+            "Sigmoid": (8, 3, 32, 32),
             "Softmax": (5, 5, 5),
             "LogSoftmax": (5, 5, 5),
         }

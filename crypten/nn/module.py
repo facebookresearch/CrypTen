@@ -1511,6 +1511,21 @@ class ReLU(Module):
         return ReLU()
 
 
+class Sigmoid(Module):
+    r"""Applies the element-wise function:
+
+    .. math::
+        \text{Sigmoid}(x) = \sigma(x) = \frac{1}{1 + \exp(-x)}
+    """
+
+    def forward(self, x):
+        return x.sigmoid()
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Sigmoid()
+
+
 class Softmax(Module):
     r"""Applies the Softmax function to an n-dimensional input Tensor
     rescaling them so that the elements of the n-dimensional output Tensor
