@@ -250,9 +250,9 @@ class ArithmeticSharedTensor(object):
             else:  # ['mul', 'matmul', 'convNd', 'conv_transposeNd']
                 # NOTE: 'mul_' calls 'mul' here
                 # Must copy share.data here to support 'mul_' being inplace
-                result.share.data = getattr(beaver, op)(
-                    result, y, *args, **kwargs
-                ).share.data
+                result.share.set_(getattr(beaver, op)(
+                    result, y, *args, **kwargs).share.data
+                )
         else:
             raise TypeError("Cannot %s %s with %s" % (op, type(y), type(self)))
 

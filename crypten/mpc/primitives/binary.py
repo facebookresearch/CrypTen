@@ -139,7 +139,7 @@ class BinarySharedTensor(object):
         if torch.is_tensor(y) or isinstance(y, int):
             self.share &= y
         elif isinstance(y, BinarySharedTensor):
-            self.share.data = beaver.AND(self, y).share.data
+            self.share.set_(beaver.AND(self, y).share.data)
         else:
             raise TypeError("Cannot AND %s with %s." % (type(y), type(self)))
         return self
