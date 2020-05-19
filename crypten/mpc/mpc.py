@@ -10,11 +10,13 @@ from dataclasses import dataclass
 from functools import wraps
 
 import crypten
+import crypten.communicator as comm
 import torch
 from crypten.common.util import ConfigBase, pool_reshape
 
 from ..cryptensor import CrypTensor
 from .max_helper import _argmax_helper, _max_helper_all_tree_reductions
+from .primitives import circuit
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
 
@@ -416,7 +418,23 @@ class MPCTensor(CrypTensor):
     @mode(Ptype.arithmetic)
     def eq(self, y, _scale=True):
         """Returns self == y"""
+        if comm.get().get_world_size() == 2:
+            return (self - y)._eqz(_scale=_scale)
+
         return 1 - self.ne(y, _scale=_scale)
+
+    @mode(Ptype.arithmetic)
+    def _eqz(self, _scale=True):
+        """Returns self == 0"""
+        x0 = MPCTensor(self.share, src=0, ptype=Ptype.binary)
+        x1 = MPCTensor(-self.share, src=1, ptype=Ptype.binary)
+
+        result = circuit.eqz_helper_tree_reduction(x0, x1)
+        if _scale:
+            return result * result.encoder._scale
+        else:
+            result.encoder._scale = 1
+            return result
 
     @mode(Ptype.arithmetic)
     def ne(self, y, _scale=True):
