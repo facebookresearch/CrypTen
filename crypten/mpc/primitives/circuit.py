@@ -27,6 +27,7 @@ __MASKS = torch.LongTensor(
 )
 
 # Cache other masks and constants to skip computation during each call
+__BITS = torch.iinfo(torch.long).bits
 __LOG_BITS = int(math.log2(torch.iinfo(torch.long).bits))
 __MULTIPLIERS = torch.tensor([(1 << (2 ** iter + 1)) - 2 for iter in range(__LOG_BITS)])
 __OUT_MASKS = __MASKS * __MULTIPLIERS
@@ -76,3 +77,14 @@ def add(x, y):
     P = x ^ y
     carry, _ = __SPK_circuit(S, P)
     return P ^ (carry << 1)
+
+
+def eqz_helper_tree_reduction(x, y):
+    is_equal = ~(x ^ y)
+    shift = __BITS // 2
+
+    for _ in range(__LOG_BITS):
+        is_equal &= is_equal >> shift
+        shift //= 2
+
+    return is_equal & 1
