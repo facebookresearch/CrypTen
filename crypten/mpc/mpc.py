@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import warnings
 from dataclasses import dataclass
 from functools import wraps
 
@@ -16,7 +15,6 @@ from crypten.common.util import ConfigBase, pool_reshape
 
 from ..cryptensor import CrypTensor
 from .max_helper import _argmax_helper, _max_helper_all_tree_reductions
-from .primitives import circuit
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
 
@@ -419,17 +417,24 @@ class MPCTensor(CrypTensor):
     def eq(self, y, _scale=True):
         """Returns self == y"""
         if comm.get().get_world_size() == 2:
-            return (self - y)._eqz(_scale=_scale)
+            return (self - y)._eqz_2PC(_scale=_scale)
 
         return 1 - self.ne(y, _scale=_scale)
 
     @mode(Ptype.arithmetic)
-    def _eqz(self, _scale=True):
+    def _eqz_2PC(self, _scale=True):
         """Returns self == 0"""
+        # Create BinarySharedTensors from shares
         x0 = MPCTensor(self.share, src=0, ptype=Ptype.binary)
         x1 = MPCTensor(-self.share, src=1, ptype=Ptype.binary)
 
-        result = circuit.eqz_helper_tree_reduction(x0, x1)
+        # Perform equality testing using binary shares
+        x0._tensor = x0._tensor.eq(x1._tensor)
+
+        # Convert to Arithmetic sharing
+        result = x0.to(Ptype.arithmetic, bits=1)
+
+        # Handle scaling
         if _scale:
             return result * result.encoder._scale
         else:

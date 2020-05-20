@@ -229,7 +229,23 @@ class TestBinary(MultiProcessTestCase):
             encrypted_tensor = BinarySharedTensor(tensor)
             encrypted_tensor2 = tensor_type(tensor2)
             encrypted_out = encrypted_tensor + encrypted_tensor2
-            self._check(encrypted_out, reference, "%s AND failed" % tensor_type)
+            self._check(encrypted_out, reference, "%s add failed" % tensor_type)
+
+    def test_comparators(self):
+        """Test comparators (>, >=, <, <=, ==, !=)"""
+        for _scale in [False, True]:
+            for comp in ["gt", "ge", "lt", "le", "eq", "ne"]:
+                for tensor_type in [lambda x: x, BinarySharedTensor]:
+                    tensor = get_random_test_tensor(is_float=False)
+                    tensor2 = get_random_test_tensor(is_float=False)
+
+                    encrypted_tensor = BinarySharedTensor(tensor)
+                    encrypted_tensor2 = tensor_type(tensor2)
+
+                    reference = getattr(tensor, comp)(tensor2).long()
+                    encrypted_out = getattr(encrypted_tensor, comp)(encrypted_tensor2)
+
+                    self._check(encrypted_out, reference, "%s comparator failed" % comp)
 
     def test_sum(self):
         """Tests sum using binary shares"""
@@ -495,8 +511,8 @@ class TestBinary(MultiProcessTestCase):
                     )
 
                 split = (5,)
-                reference, = tensor.split(split, dim=dim)
-                encrypted_out, = encrypted.split(split, dim=dim)
+                (reference,) = tensor.split(split, dim=dim)
+                (encrypted_out,) = encrypted.split(split, dim=dim)
                 self._check(
                     encrypted_out, reference, f"split failed with input {split}"
                 )
