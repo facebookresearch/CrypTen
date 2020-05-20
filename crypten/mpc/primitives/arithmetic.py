@@ -250,8 +250,8 @@ class ArithmeticSharedTensor(object):
             else:  # ['mul', 'matmul', 'convNd', 'conv_transposeNd']
                 # NOTE: 'mul_' calls 'mul' here
                 # Must copy share.data here to support 'mul_' being inplace
-                result.share.set_(getattr(beaver, op)(
-                    result, y, *args, **kwargs).share.data
+                result.share.set_(
+                    getattr(beaver, op)(result, y, *args, **kwargs).share.data
                 )
         else:
             raise TypeError("Cannot %s %s with %s" % (op, type(y), type(self)))
@@ -325,13 +325,13 @@ class ArithmeticSharedTensor(object):
             # Truncate protocol for dividing by public integers:
             if comm.get().get_world_size() > 2:
                 wraps = self.wraps()
-                self.share /= y
+                self.share //= y
                 # NOTE: The multiplication here must be split into two parts
                 # to avoid long out-of-bounds when y <= 2 since (2 ** 63) is
                 # larger than the largest long integer.
                 self -= wraps * 4 * (int(2 ** 62) // y)
             else:
-                self.share /= y
+                self.share //= y
             return self
 
         # Otherwise multiply by reciprocal
