@@ -10,13 +10,11 @@ from dataclasses import dataclass
 from functools import wraps
 
 import crypten
-import crypten.communicator as comm
 import torch
 from crypten.common.util import ConfigBase, pool_reshape
 
 from ..cryptensor import CrypTensor
 from .max_helper import _argmax_helper, _max_helper_all_tree_reductions
-from .primitives import circuit
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
 
@@ -81,6 +79,18 @@ class MPCConfig:
     reciprocal_log_iters: int = 1
     reciprocal_all_pos: bool = False
     reciprocal_initial: any = None
+
+    # tanh configuration
+    sigmoid_tanh_method: str = "reciprocal"
+    sigmoid_tanh_terms: int = 32
+
+    # log configuration
+    log_iterations: int = 2
+    log_exp_iterations: int = 8
+    log_order: int = 8
+
+    # _eix configuration
+    _eix_iterations: int = 10
 
     # Used by max / argmax / min / argmin
     max_method: str = "pairwise"
@@ -418,23 +428,7 @@ class MPCTensor(CrypTensor):
     @mode(Ptype.arithmetic)
     def eq(self, y, _scale=True):
         """Returns self == y"""
-        if comm.get().get_world_size() == 2:
-            return (self - y)._eqz(_scale=_scale)
-
         return 1 - self.ne(y, _scale=_scale)
-
-    @mode(Ptype.arithmetic)
-    def _eqz(self, _scale=True):
-        """Returns self == 0"""
-        x0 = MPCTensor(self.share, src=0, ptype=Ptype.binary)
-        x1 = MPCTensor(-self.share, src=1, ptype=Ptype.binary)
-
-        result = circuit.eqz_helper_tree_reduction(x0, x1)
-        if _scale:
-            return result * result.encoder._scale
-        else:
-            result.encoder._scale = 1
-            return result
 
     @mode(Ptype.arithmetic)
     def ne(self, y, _scale=True):
@@ -686,7 +680,7 @@ class MPCTensor(CrypTensor):
 
     # Logistic Functions
     @mode(Ptype.arithmetic)
-    def sigmoid(self, method="reciprocal", terms=32):
+    def sigmoid(self):
         """Computes the sigmoid function using the following definition
 
         .. math::
@@ -705,8 +699,10 @@ class MPCTensor(CrypTensor):
             terms (int): highest degree of Chebyshev polynomials for tanh
                 using Chebyshev approximation. Must be even and at least 6.
         """  # noqa: W605
+        method = config.sigmoid_tanh_method
+
         if method == "chebyshev":
-            tanh_approx = self.div(2).tanh(method=method, terms=terms)
+            tanh_approx = self.div(2).tanh()
             return tanh_approx.div(2) + 0.5
         elif method == "reciprocal":
             ltz = self._ltz(_scale=True)
@@ -753,8 +749,11 @@ class MPCTensor(CrypTensor):
             terms (int): highest degree of Chebyshev polynomials.
                          Must be even and at least 6.
         """
+        method = config.sigmoid_tanh_method
+        terms = config.sigmoid_tanh_terms
+
         if method == "reciprocal":
-            return self.mul(2).sigmoid(method=method).mul(2).sub(1)
+            return self.mul(2).sigmoid().mul(2).sub(1)
         elif method == "chebyshev":
             maxval = 6
             coeffs = crypten.common.util.chebyshev_series(torch.tanh, maxval, terms)[
@@ -887,7 +886,7 @@ class MPCTensor(CrypTensor):
             result = result.square()
         return result
 
-    def log(self, iterations=2, exp_iterations=8, order=8):
+    def log(self):
         r"""
         Approximates the natural logarithm using 8th order modified
         Householder iterations. This approximation is accurate within 2% relative
@@ -907,6 +906,10 @@ class MPCTensor(CrypTensor):
 
         # Initialization to a decent estimate (found by qualitative inspection):
         #                ln(x) = x/120 - 20exp(-2x - 1.0) + 3.0
+        iterations = config.log_iterations
+        exp_iterations = config.log_exp_iterations
+        order = config.log_order
+
         term1 = self.div(120)
         term2 = self.mul(2).add(1.0).neg().exp().mul(20)
         y = term1 - term2 + 3.0
@@ -1087,10 +1090,12 @@ class MPCTensor(CrypTensor):
         else:
             raise ValueError(f"Improper value p ({p})for p-norm")
 
-    def _eix(self, iterations=10):
+    def _eix(self):
         """Computes e^(i * self) where i is the imaginary unit.
         Returns (Re{e^(i * self)}, Im{e^(i * self)} = cos(self), sin(self)
         """
+        iterations = config._eix_iterations
+
         re = 1
         im = self.div(2 ** iterations)
 
@@ -1108,29 +1113,29 @@ class MPCTensor(CrypTensor):
 
         return re, im
 
-    def cos(self, iterations=10):
+    def cos(self):
         """Computes the cosine of the input using cos(x) = Re{exp(i * x)}
 
         Args:
             iterations (int): for approximating exp(i * x)
         """
-        return self.cossin(iterations=iterations)[0]
+        return self.cossin()[0]
 
-    def sin(self, iterations=10):
+    def sin(self):
         """Computes the sine of the input using sin(x) = Im{exp(i * x)}
 
         Args:
             iterations (int): for approximating exp(i * x)
         """
-        return self.cossin(iterations=iterations)[1]
+        return self.cossin()[1]
 
-    def cossin(self, iterations=10):
+    def cossin(self):
         """Computes cosine and sine of input via exp(i * x).
 
         Args:
             iterations (int): for approximating exp(i * x)
         """
-        return self._eix(iterations=iterations)
+        return self._eix()
 
     def _chebyshev_polynomials(self, terms):
         r"""Evaluates odd degree Chebyshev polynomials at x
