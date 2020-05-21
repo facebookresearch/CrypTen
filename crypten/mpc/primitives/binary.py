@@ -197,6 +197,24 @@ class BinarySharedTensor(object):
         """Compute [self] + [y] for xor-sharing"""
         return circuit.add(self, y)
 
+    def eq(self, y):
+        return circuit.eq(self, y)
+
+    def ne(self, y):
+        return self.eq(y) ^ 1
+
+    def lt(self, y):
+        return circuit.lt(self, y)
+
+    def le(self, y):
+        return circuit.le(self, y)
+
+    def gt(self, y):
+        return circuit.gt(self, y)
+
+    def ge(self, y):
+        return circuit.ge(self, y)
+
     def __setitem__(self, index, value):
         """Set tensor values by index"""
         if torch.is_tensor(value) or isinstance(value, list):
@@ -336,6 +354,12 @@ class BinarySharedTensor(object):
 
     # Bitwise operators
     __add__ = add
+    __eq__ = eq
+    __ne__ = ne
+    __lt__ = lt
+    __le__ = le
+    __gt__ = gt
+    __ge__ = ge
     __lshift__ = lshift
     __rshift__ = rshift
 

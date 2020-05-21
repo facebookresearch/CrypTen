@@ -71,6 +71,28 @@ def __SPK_circuit(S, P):
     return SP[0], SP[1]
 
 
+def __P_circuit(P):
+    """
+    Computes the Propagate Tree circuit for input P.
+    The P circuit will return 1 only if the binary of
+    the input is all ones (i.e. the value is -1).
+
+    Otherwise this circuit returns 0
+
+    At each stage:
+        P <- P0 & P1
+    """
+    shift = __BITS // 2
+    for _ in range(__LOG_BITS):
+        P &= P >> shift
+        shift //= 2
+    return P
+
+
+def __flip_sign_bit(x):
+    return x ^ -(2 ** 63)
+
+
 def add(x, y):
     """Returns x + y from BinarySharedTensors `x` and `y`"""
     S = x & y
@@ -79,12 +101,45 @@ def add(x, y):
     return P ^ (carry << 1)
 
 
-def eqz_helper_tree_reduction(x, y):
-    is_equal = ~(x ^ y)
-    shift = __BITS // 2
+def eq(x, y):
+    """Returns x == y from BinarySharedTensors `x` and `y`"""
+    bitwise_equal = ~(x ^ y)
+    return __P_circuit(bitwise_equal)
 
-    for _ in range(__LOG_BITS):
-        is_equal &= is_equal >> shift
-        shift //= 2
 
-    return is_equal & 1
+def lt(x, y):
+    """Returns x < y from BinarySharedTensors `x` and `y`"""
+    x, y = __flip_sign_bit(x), __flip_sign_bit(y)
+
+    S = y & ~x
+    P = ~(x ^ y)
+    return __SPK_circuit(S, P)[0] >> (__BITS - 1)
+
+
+def le(x, y):
+    """Returns x <= y from BinarySharedTensors `x` and `y`"""
+    x, y = __flip_sign_bit(x), __flip_sign_bit(y)
+
+    S = y & ~x
+    P = ~(x ^ y)
+    S, P = __SPK_circuit(S, P)
+    return (S ^ P) >> (__BITS - 1)
+
+
+def gt(x, y):
+    """Returns x > y from BinarySharedTensors `x` and `y`"""
+    x, y = __flip_sign_bit(x), __flip_sign_bit(y)
+
+    S = x & ~y
+    P = ~(x ^ y)
+    return __SPK_circuit(S, P)[0] >> (__BITS - 1)
+
+
+def ge(x, y):
+    """Returns x >= y from BinarySharedTensors `x` and `y`"""
+    x, y = __flip_sign_bit(x), __flip_sign_bit(y)
+
+    S = x & ~y
+    P = ~(x ^ y)
+    S, P = __SPK_circuit(S, P)
+    return (S ^ P) >> (__BITS - 1)

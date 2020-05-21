@@ -5,12 +5,12 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import warnings
 from dataclasses import dataclass
 from functools import wraps
 
 import crypten
 import torch
+from crypten import communicator as comm
 from crypten.common.util import ConfigBase, pool_reshape
 
 from ..cryptensor import CrypTensor
@@ -428,7 +428,30 @@ class MPCTensor(CrypTensor):
     @mode(Ptype.arithmetic)
     def eq(self, y, _scale=True):
         """Returns self == y"""
+        if comm.get().get_world_size() == 2:
+            return (self - y)._eqz_2PC(_scale=_scale)
+
         return 1 - self.ne(y, _scale=_scale)
+
+    @mode(Ptype.arithmetic)
+    def _eqz_2PC(self, _scale=True):
+        """Returns self == 0"""
+        # Create BinarySharedTensors from shares
+        x0 = MPCTensor(self.share, src=0, ptype=Ptype.binary)
+        x1 = MPCTensor(-self.share, src=1, ptype=Ptype.binary)
+
+        # Perform equality testing using binary shares
+        x0._tensor = x0._tensor.eq(x1._tensor)
+
+        # Convert to Arithmetic sharing
+        result = x0.to(Ptype.arithmetic, bits=1)
+
+        # Handle scaling
+        if _scale:
+            return result * result.encoder._scale
+        else:
+            result.encoder._scale = 1
+            return result
 
     @mode(Ptype.arithmetic)
     def ne(self, y, _scale=True):
