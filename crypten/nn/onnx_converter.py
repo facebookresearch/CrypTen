@@ -132,59 +132,90 @@ def from_tensorflow(tensorflow_graph_def, inputs, outputs):
 
 
 def from_onnx(onnx_string_or_file):
-    """
-    Constructs a CrypTen model or module from an ONNX Protobuf string or file.
-    """
-    onnx_model = _load_onnx_model(onnx_string_or_file)
+    """Converts an onnx model to a CrypTen model"""
+    converter = FromOnnx(onnx_string_or_file)
+    crypten_model = converter.to_crypten()
+    return crypten_model
 
-    # create dict of all parameters, inputs, and outputs:
-    all_parameters = {
-        t.name: torch.from_numpy(numpy_helper.to_array(t))
-        for t in onnx_model.graph.initializer
-    }
-    input_names, output_names = _get_input_output_names(onnx_model, all_parameters)
 
-    # create graph by looping over nodes:
-    crypten_model = module.Graph(input_names[0], output_names[0])
-    for node in onnx_model.graph.node:
-        # retrieve inputs, outputs, attributes, and parameters for this node:
-        node_output_name = list(node.output)[0]
-        node_input_names = list(node.input)  # includes parameters
+class FromOnnx:
+    """Converts Onnx Model to a CrypTen Model"""
+
+    def __init__(self, onnx_string_or_file):
+        onnx_model = _load_onnx_model(onnx_string_or_file)
+        self.onnx_model = onnx_model
+
+        self.all_parameters = {
+            t.name: torch.from_numpy(numpy_helper.to_array(t))
+            for t in onnx_model.graph.initializer
+        }
+
+    def to_crypten(self):
+        """Constructs a CrypTen model from the onnx graph"""
+        input_names, output_names = _get_input_output_names(
+            self.onnx_model, self.all_parameters
+        )
+
+        crypten_model = module.Graph(input_names[0], output_names[0])
+
+        for node in self.onnx_model.graph.node:
+            attributes = self.get_attributes(node)
+            parameters, node_input_names = self.get_parameters(node, input_names)
+
+            cls = _get_operator_class(node.op_type, attributes)
+
+            # add CrypTen module to graph
+            crypten_module = cls.from_onnx(parameters=parameters, attributes=attributes)
+            node_output_name = list(node.output)[0]
+            crypten_model.add_module(node_output_name, crypten_module, node_input_names)
+
+        crypten_model = self.modify_shapes_in_graph(crypten_model)
+        crypten_model = _get_model_or_module(crypten_model)
+        return crypten_model
+
+    def get_parameters(self, node, input_names):
+        """Returns parameters (Ordered Dict) and node_input_names (list of str)"""
+        # includes parameters
+        node_input_names = list(node.input)
 
         # Create parameters: OrderedDict is required to figure out mapping
         # between complex names and ONNX arguments
         parameters = OrderedDict()
         orig_parameter_names = []
+
         # add in all the parameters for the current module
         for i, name in enumerate(node_input_names):
-            if name in all_parameters and name not in input_names:
+            if name in self.all_parameters and name not in input_names:
                 key = _get_parameter_name(name)
                 # the following is necessary because tf2onnx names multiple parameters
                 # identically if they have the same value
                 # only modify if we already have the key in parameters
                 if TF_AND_TF2ONNX and key in parameters:
                     key = key + "_" + str(i)
-                parameters[key] = all_parameters[name]
+                parameters[key] = self.all_parameters[name]
                 orig_parameter_names.append(_get_parameter_name(name))
         node_input_names = [
             name
             for name in node_input_names
             if _get_parameter_name(name) not in orig_parameter_names
         ]
+        return parameters, node_input_names
+
+    def get_attributes(self, node):
         attributes = {attr.name: _get_attribute_value(attr) for attr in node.attribute}
+        return attributes
 
-        cls = _get_operator_class(node, attributes)
-
-        if TF_AND_TF2ONNX:
-            # sync parameter names so that they become what CrypTen expects
-            parameters = _sync_tensorflow_parameters(parameters, node.op_type)
-
-        # add CrypTen module to graph:
-        crypten_module = cls.from_onnx(parameters=parameters, attributes=attributes)
-        crypten_model.add_module(node_output_name, crypten_module, node_input_names)
-
-    crypten_model = _get_model_or_module(crypten_model)
-    return crypten_model
+    def modify_shapes_in_graph(self, crypten_model):
+        """Transforms how shapes are stored to prevent encryption"""
+        crypten_modules = list(crypten_model.modules())
+        for i, crypten_module in enumerate(crypten_modules):
+            if isinstance(crypten_module, module.Reshape):
+                # shape is stored in a constant module buffer called "value"
+                # convert shape to torch.Size
+                value = crypten_modules[i - 1].value.long()
+                shape = torch.Size(value)
+                crypten_modules[i - 1].set_buffer("value", shape)
+        return crypten_model
 
 
 def _load_onnx_model(onnx_string_or_file):
@@ -212,10 +243,10 @@ def _get_input_output_names(onnx_model, all_parameters):
     return input_names, output_names
 
 
-def _get_operator_class(node, attributes):
+def _get_operator_class(node_op_type, attributes):
     """Returns CrypTen class of operator"""
     # get operator type:
-    if node.op_type == "Conv":
+    if node_op_type == "Conv":
         dims = len(attributes["kernel_shape"])
         if dims == 1:
             cls = module.Conv1d
@@ -225,11 +256,11 @@ def _get_operator_class(node, attributes):
             raise ValueError("CrypTen does not support op Conv%dd." % dims)
     else:
         crypten_module = getattr(
-            module, node.op_type, ONNX_TO_CRYPTEN.get(node.op_type, None)
+            module, node_op_type, ONNX_TO_CRYPTEN.get(node_op_type, None)
         )
 
         if crypten_module is None:
-            raise ValueError("CrypTen does not support op %s." % node.op_type)
+            raise ValueError("CrypTen does not support op %s." % node_op_type)
         cls = crypten_module
     return cls
 

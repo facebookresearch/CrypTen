@@ -191,7 +191,7 @@ class TestOnnxConverter(object):
                 out = self.conv1(x)
                 out = F.relu(out)
                 out = F.max_pool2d(out, 2)
-                out = out.view(out.size(0), -1)
+                out = out.view(-1, 16 * 13 * 13)
                 out = self.fc1(out)
                 out = F.relu(out)
                 out = self.fc2(out)
@@ -310,6 +310,32 @@ class TestOnnxConverter(object):
             f"{loss_name} has not decreased after training",
         )
 
+    def test_get_operator_class(self):
+        """Checks operator is a valid crypten module"""
+        Node = collections.namedtuple("Node", "op_type")
+
+        op_types = ["Sum", "AveragePool", "Mean"]
+        for op_type in op_types:
+            node = Node(op_type)
+            operator = onnx_converter._get_operator_class(node.op_type, {})
+            self.assertTrue(
+                issubclass(operator, crypten.nn.Module),
+                f"{op_type} operator class {operator} is not a CrypTen module.",
+            )
+        # check conv
+        kernel_shapes = [[1], [3, 3]]
+        node = Node("Conv")
+        for kernel_shape in kernel_shapes:
+            attributes = {"kernel_shape": kernel_shape}
+            operator = onnx_converter._get_operator_class(node.op_type, attributes)
+
+        # check invalid op_types
+        invalid_types = [("Conv", {"kernel_shape": [3, 3, 3]}), ("Banana", {})]
+        for invalid_type, attr in invalid_types:
+            with self.assertRaises(ValueError):
+                node = Node(invalid_type)
+                operator = onnx_converter._get_operator_class(node.op_type, attr)
+
     def test_export_pytorch_model(self):
         """Tests loading of onnx model from a file"""
         pytorch_model = PyTorchLinear()
@@ -331,31 +357,29 @@ class TestOnnxConverter(object):
 
         self.assertTrue(hasattr(crypten_model, "encrypt"))
 
-    def test_get_operator_class(self):
-        """Checks operator is a valid crypten module"""
-        Node = collections.namedtuple("Node", "op_type")
+    def test_reshape_plain_text_conversion(self):
+        """Verifies shape inputs in reshape are properly imported"""
 
-        op_types = ["Sum", "AveragePool", "Mean"]
-        for op_type in op_types:
-            node = Node(op_type)
-            operator = onnx_converter._get_operator_class(node, {})
-            self.assertTrue(
-                issubclass(operator, crypten.nn.Module),
-                f"{op_type} operator class {operator} is not a CrypTen module.",
-            )
-        # check conv
-        kernel_shapes = [[1], [3, 3]]
-        node = Node("Conv")
-        for kernel_shape in kernel_shapes:
-            attributes = {"kernel_shape": kernel_shape}
-            operator = onnx_converter._get_operator_class(node, attributes)
+        class Net(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.fc1 = torch.nn.Linear(4, 4)
 
-        # check invalid op_types
-        invalid_types = [("Conv", {"kernel_shape": [3, 3, 3]}), ("Banana", {})]
-        for invalid_type, attr in invalid_types:
-            with self.assertRaises(ValueError):
-                node = Node(invalid_type)
-                operator = onnx_converter._get_operator_class(node, attr)
+            def forward(self, x):
+                # (1, 4) is stored in a constant module
+                out = x.reshape(1, 4)
+                out = self.fc1(out)
+                return out
+
+        model = Net()
+        x = torch.ones(2, 2)
+        x_enc = crypten.cryptensor(x)
+        y = model(x)
+        model_crypten = onnx_converter.from_pytorch(model, torch.empty(x.shape))
+
+        model_crypten.encrypt()
+        y_enc = model_crypten(x_enc)
+        self.assertTrue(y_enc.shape == y.shape)
 
 
 class PyTorchLinear(torch.nn.Module):

@@ -257,7 +257,7 @@ class TestNN(object):
             "Mean": lambda x: torch.mean(
                 x, dim=module_args["Mean"][0], keepdim=(module_args["Mean"][1] == 1)
             ),
-            "Reshape": lambda x: x[0].reshape(x[1].tolist()),
+            "Reshape": lambda x: x[0].reshape(x[1]),
             "Shape": lambda x: torch.tensor(x.size()).float(),
             "Sub": lambda x: x[0] - x[1],
             "Sum": lambda x: torch.sum(
@@ -287,7 +287,7 @@ class TestNN(object):
         }
         additional_inputs = {
             "Gather": torch.tensor([[1, 2], [0, 3]]),
-            "Reshape": torch.tensor([2, 2]),
+            "Reshape": torch.Size([2, 2]),
         }
         module_attributes = {
             # each attribute has two parameters: the name, and a bool indicating
@@ -338,7 +338,11 @@ class TestNN(object):
                 if not isinstance(inputs, (list, tuple)):
                     inputs, encr_inputs = [inputs], [encr_inputs]
                 inputs.append(additional_inputs[module_name])
-                encr_inputs.append(crypten.cryptensor(inputs[-1]))
+                # encrypt only torch tensor inputs, not shapes
+                if torch.is_tensor(inputs[-1]):
+                    encr_inputs.append(crypten.cryptensor(inputs[-1]))
+                else:
+                    encr_inputs.append(inputs[-1])
 
             # compare model outputs:
             reference = module_lambdas[module_name](inputs)
