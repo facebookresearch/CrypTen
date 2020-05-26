@@ -259,9 +259,14 @@ class Module:
         for param in self.parameters():
             param.grad = None
 
-    def update_parameters(self, learning_rate):
+    def update_parameters(self, learning_rate, mask=None):
         """Performs gradient step on parameters."""
         assert self.training, "module not in training mode"
+
+        # Apply mask to gradient updates throught learning rate
+        if mask is not None:
+            learning_rate = mask * learning_rate
+
         with crypten.no_grad(), torch.no_grad():
             for param in self.parameters():
                 if param.grad is None:

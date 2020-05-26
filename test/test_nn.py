@@ -736,41 +736,45 @@ class TestNN(object):
         loss = crypten.nn.MSELoss()
 
         # perform training iterations:
-        for _ in range(10):
-            for compute_gradients in [True, False]:
+        for mask in [None, crypten.cryptensor(0)]:
+            for _ in range(10):
+                for compute_gradients in [True, False]:
 
-                # get training sample:
-                input = get_random_test_tensor(
-                    size=(batch_size, num_inputs), is_float=True
-                )
-                target = input.mean(dim=1, keepdim=True)
+                    # get training sample:
+                    input = get_random_test_tensor(
+                        size=(batch_size, num_inputs), is_float=True
+                    )
+                    target = input.mean(dim=1, keepdim=True)
 
-                # encrypt training sample:
-                input = crypten.cryptensor(input)
-                target = crypten.cryptensor(target)
-                if compute_gradients:
-                    input.requires_grad = True
-                    target.requires_grad = True
+                    # encrypt training sample:
+                    input = crypten.cryptensor(input)
+                    target = crypten.cryptensor(target)
+                    if compute_gradients:
+                        input.requires_grad = True
+                        target.requires_grad = True
 
-                # perform forward pass:
-                output = model(input)
-                loss_value = loss(output, target)
+                    # perform forward pass:
+                    output = model(input)
+                    loss_value = loss(output, target)
 
-                # set gradients to "zero" (setting to None is more efficient):
-                model.zero_grad()
-                for param in model.parameters():
-                    self.assertIsNone(param.grad, "zero_grad did not reset gradients")
+                    # set gradients to "zero" (setting to None is more efficient):
+                    model.zero_grad()
+                    for param in model.parameters():
+                        self.assertIsNone(
+                            param.grad, "zero_grad did not reset gradients"
+                        )
 
-                # perform backward pass:
-                loss_value.backward()
+                    # perform backward pass:
+                    loss_value.backward()
 
-                # perform parameter update:
-                reference = {}
-                reference = self._compute_reference_parameters(
-                    "", reference, model, learning_rate
-                )
-                model.update_parameters(learning_rate)
-                self._check_reference_parameters("", reference, model)
+                    # perform parameter update:
+                    lr = learning_rate if mask is None else 0
+                    reference = {}
+                    reference = self._compute_reference_parameters(
+                        "", reference, model, lr
+                    )
+                    model.update_parameters(learning_rate, mask=mask)
+                    self._check_reference_parameters("", reference, model)
 
     def test_custom_module_training(self):
         """Tests training CrypTen models created directly using the crypten.nn.Module"""
