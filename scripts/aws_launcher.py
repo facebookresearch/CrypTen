@@ -26,10 +26,26 @@ Then the following command lines can run the mpc_linear_svm example on the two
 EC2 instances created above:
 
 $ python3 crypten/scripts/aws_launcher.py \
-    --ssh_key_file=/home/$USER/.aws/fair-$USER.pem \
+    --SSH_keys=/home/$USER/.aws/fair-$USER.pem \
     --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
-    --aux_files=deeplearning/projects/crypten/examples/mpc_linear_svm/mpc_linear_svm.py \
-    deeplearning/projects/crypten/examples/mpc_linear_svm/launcher.py \
+    --aux_files=crypten/examples/mpc_linear_svm/mpc_linear_svm.py \
+    crypten/examples/mpc_linear_svm/launcher.py \
+        --features 50 \
+        --examples 100 \
+        --epochs 50 \
+        --lr 0.5 \
+        --skip_plaintext
+
+
+If you want to train with AWS instances located at multiple regions, then you would need
+to provide ssh_key_file for each instance:
+
+$ python3 crypten/scripts/aws_launcher.py \
+    --regions=us-east-1,us-west-1 \
+    --SSH_keys=/home/$USER/.aws/east.pem,/home/$USER/.aws/west.pem  \
+    --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
+    --aux_files=crypten/examples/mpc_linear_svm/mpc_linear_svm.py \
+    crypten/examples/mpc_linear_svm/launcher.py \
         --features 50 \
         --examples 100 \
         --epochs 50 \
@@ -140,15 +156,51 @@ def main():
         "ignore", category=ResourceWarning, message="unclosed.*<ssl.SSLSocket.*>"
     )
 
-    session = boto3.session.Session(
-        aws_access_key_id=cf["default"]["aws_access_key_id"],
-        aws_secret_access_key=cf["default"]["aws_secret_access_key"],
-        region_name=args.region,
-    )
-    ec2 = session.resource("ec2")
-
+    regions = args.regions.split(",")
     instance_ids = args.instances.split(",")
-    instances = get_instances(ec2, instance_ids)
+    ssh_key_files = args.ssh_key_file.split(",")
+
+    instances = []
+    if len(regions) > 1:
+        print("Multiple regions detected")
+
+        assert len(instance_ids) == len(
+            ssh_key_files
+        ), "{} instance ids are provided, but {} SSH keys found.".format(
+            len(instance_ids), len(ssh_key_files)
+        )
+
+        assert len(instance_ids) == len(
+            regions
+        ), "{} instance ids are provided, but {} regions found.".format(
+            len(instance_ids), len(regions)
+        )
+
+        for i, region in enumerate(regions):
+            session = boto3.session.Session(
+                aws_access_key_id=cf["default"]["aws_access_key_id"],
+                aws_secret_access_key=cf["default"]["aws_secret_access_key"],
+                region_name=region,
+            )
+            ec2 = session.resource("ec2")
+
+            instance = get_instances(ec2, [instance_ids[i]])
+            instances += instance
+    else:
+        session = boto3.session.Session(
+            aws_access_key_id=cf["default"]["aws_access_key_id"],
+            aws_secret_access_key=cf["default"]["aws_secret_access_key"],
+            region_name=regions[0],
+        )
+        ec2 = session.resource("ec2")
+        instances = get_instances(ec2, instance_ids)
+
+        assert (
+            len(ssh_key_files) == 1
+        ), "1 region is detected, but {} SSH keys found.".format(len(ssh_key_files))
+
+        ssh_key_files = [ssh_key_files[0] for _ in range(len(instances))]
+
     assert len(instance_ids) == len(
         instances
     ), "{} instance ids are provided, but {} found.".format(
@@ -168,9 +220,9 @@ def main():
 
     # Key: instance id; value: paramiko.SSHClient object.
     client_dict = {}
-    for instance in instances:
+    for i, instance in enumerate(instances):
         client = connect_to_instance(
-            instance, args.ssh_key_file, args.ssh_user, args.http_proxy
+            instance, ssh_key_files[i], args.ssh_user, args.http_proxy
         )
         client_dict[instance.id] = client
 
@@ -267,7 +319,7 @@ def parse_args():
         "No other actions will be done",
     )
 
-    parser.add_argument("--region", type=str, default="us-west-2", help="AWS Region")
+    parser.add_argument("--regions", type=str, default="us-west-2", help="AWS Region")
 
     parser.add_argument(
         "--instances",
