@@ -79,10 +79,7 @@ def get_random_linear(in_channels, out_channels):
 
 class MultiProcessTestCase(unittest.TestCase):
     MAIN_PROCESS_RANK = -1
-
-    @property
-    def world_size(self):
-        return 2
+    DEFAULT_WORLD_SIZE = 2
 
     @staticmethod
     def join_or_run(fn):
@@ -112,8 +109,11 @@ class MultiProcessTestCase(unittest.TestCase):
         self.rank = self.MAIN_PROCESS_RANK
         self.mp_context = multiprocessing.get_context("spawn")
 
-    def setUp(self):
+    def setUp(self, world_size=None):
         super(MultiProcessTestCase, self).setUp()
+
+        if world_size is None:
+            world_size = self.DEFAULT_WORLD_SIZE
 
         crypten.debug.configure_logging()
 
@@ -124,7 +124,7 @@ class MultiProcessTestCase(unittest.TestCase):
         if self.rank == self.MAIN_PROCESS_RANK:
             self.file = tempfile.NamedTemporaryFile(delete=True).name
             self.processes = [
-                self._spawn_process(rank) for rank in range(int(self.world_size))
+                self._spawn_process(rank, world_size) for rank in range(world_size)
             ]
             if crypten.mpc.ttp_required():
                 self.processes += [self._spawn_ttp()]
@@ -153,25 +153,28 @@ class MultiProcessTestCase(unittest.TestCase):
         process.start()
         return process
 
-    def _spawn_process(self, rank):
+    def _spawn_process(self, rank, world_size):
         name = "process " + str(rank)
         test_name = self._current_test_name()
         process = self.mp_context.Process(
-            target=self.__class__._run, name=name, args=(test_name, rank, self.file)
+            target=self.__class__._run,
+            name=name,
+            args=(test_name, rank, world_size, self.file),
         )
         process.start()
         return process
 
     @classmethod
-    def _run(cls, test_name, rank, file):
+    def _run(cls, test_name, rank, world_size, file):
         self = cls(test_name)
 
         self.file = file
         self.rank = int(rank)
+        self.world_size = world_size
 
         # set environment variables:
         communicator_args = {
-            "WORLD_SIZE": self.world_size,
+            "WORLD_SIZE": world_size,
             "RANK": self.rank,
             "RENDEZVOUS": "file://%s" % self.file,
             "BACKEND": "gloo",
@@ -180,6 +183,7 @@ class MultiProcessTestCase(unittest.TestCase):
             os.environ[key] = str(val)
 
         crypten.init()
+
         self.setUp()
 
         # We're retrieving a corresponding test and executing it.
