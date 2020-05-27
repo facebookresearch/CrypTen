@@ -51,6 +51,7 @@ class TestArithmetic(MultiProcessTestCase):
         if not test_passed:
             logging.info(msg)
             logging.info("Result %s" % tensor)
+            logging.info("Reference %s" % reference)
             logging.info("Result - Reference = %s" % (tensor - reference))
         self.assertTrue(test_passed, msg=msg)
 
@@ -931,8 +932,8 @@ class TestArithmetic(MultiProcessTestCase):
                     )
 
                 split = (5,)
-                reference, = tensor.split(split, dim=dim)
-                encrypted_out, = encrypted.split(split, dim=dim)
+                (reference,) = tensor.split(split, dim=dim)
+                (encrypted_out,) = encrypted.split(split, dim=dim)
                 self._check(
                     encrypted_out, reference, f"split failed with input {split}"
                 )
