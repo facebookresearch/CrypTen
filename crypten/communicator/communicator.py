@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import timeit
 
 
 class Communicator:
@@ -128,17 +129,22 @@ class Communicator:
         """Resets communication statistics."""
         self.comm_rounds = 0
         self.comm_bytes = 0
+        self.comm_time = 0
 
     def print_communication_stats(self):
         """Prints communication statistics."""
         logging.info("====Communication Stats====")
-        logging.info("Rounds: %d" % self.comm_rounds)
-        logging.info("Bytes : %d" % self.comm_bytes)
+        logging.info("Rounds: {}".format(self.comm_rounds))
+        logging.info("Bytes : {}".format(self.comm_bytes))
+        logging.info("Comm time: {}".format(self.comm_time))
 
     def _log_communication(self, nelement):
         """Updates log of communication statistics."""
         self.comm_rounds += 1
         self.comm_bytes += nelement * self.BYTES_PER_ELEMENT
+
+    def _log_communication_time(self, comm_time):
+        self.comm_time += comm_time
 
 
 def _logging(func):
@@ -165,6 +171,14 @@ def _logging(func):
                 self._log_communication(nbytes)
             else:  # one tensor communicated
                 self._log_communication(args[0].nelement())
+
+            tic = timeit.timeit()
+            result = func(self, *args, **kwargs)
+            toc = timeit.timeit()
+
+            self._log_communication_time(toc - tic)
+            return result
+
         return func(self, *args, **kwargs)
 
     return logging_wrapper
