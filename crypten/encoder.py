@@ -21,7 +21,7 @@ def nearest_integer_division(tensor, integer):
     pos_remainder = (1 - lez) * tensor % integer
     neg_remainder = lez * ((integer - tensor) % integer)
     remainder = pos_remainder + neg_remainder
-    quotient = tensor / integer
+    quotient = tensor // integer
     correction = (2 * remainder > integer).long()
     return quotient + tensor.sign() * correction
 
@@ -64,7 +64,7 @@ class FixedPointEncoder:
         assert is_int_tensor(tensor), "input must be a LongTensor"
         if self._scale > 1:
             correction = (tensor < 0).long()
-            dividend = tensor / self._scale - correction
+            dividend = tensor // self._scale - correction
             remainder = tensor % self._scale
             remainder += (remainder == 0).long() * self._scale * correction
 
