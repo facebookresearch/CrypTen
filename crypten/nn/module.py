@@ -259,8 +259,15 @@ class Module:
         for param in self.parameters():
             param.grad = None
 
-    def update_parameters(self, learning_rate):
-        """Performs gradient step on parameters."""
+    def update_parameters(self, learning_rate, grad_threshold=100):
+        """Performs gradient step on parameters.
+
+        Parameters:
+            grad_threshold - Because arithmetic operations can extremely rarely
+                    return large incorrect results, we zero-out all elements
+                    with magnitude larger than this given threshold. To turn
+                    off thresholding, set to `None`.
+        """
         assert self.training, "module not in training mode"
         with crypten.no_grad(), torch.no_grad():
             for param in self.parameters():
@@ -272,7 +279,18 @@ class Module:
                         "model using encrypted gradients. Encrypt "
                         "model before updating parameters."
                     )
-                param.sub_(param.grad.mul(learning_rate))
+
+                # Threshold gradients to prevent gradient explosion from wrap overflow
+                if self.encrypted and grad_threshold is not None:
+                    # Compute based on square value since abs is more expensive
+                    square_threshold = grad_threshold * grad_threshold
+                    grad = param.grad.mul(
+                        param.grad.square().lt(square_threshold, _scale=False)
+                    )
+                else:
+                    grad = param.grad
+
+                param.sub_(grad.mul_(learning_rate))
 
     def register_buffer(self, name, buffer):
         """
