@@ -207,7 +207,7 @@ class FuncBenchmarks:
     def calc_relative_error(ref, out):
         """Computes average relative error"""
         if ref.dtype == torch.bool:
-            errors = ((out != ref).sum() / ref.nelement()).numpy()
+            errors = ((out != ref).sum() // ref.nelement()).numpy()
             return errors
         errors = torch.abs((out - ref) / ref)
         # remove inf due to division by tiny numbers
