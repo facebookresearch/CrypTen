@@ -80,9 +80,10 @@ class MPCConfig:
     reciprocal_all_pos: bool = False
     reciprocal_initial: any = None
 
-    # tanh configuration
+    # sigmoid / tanh configuration
     sigmoid_tanh_method: str = "reciprocal"
     sigmoid_tanh_terms: int = 32
+    sigmoid_tanh_clip_value: int = 1
 
     # log configuration
     log_iterations: int = 2
@@ -747,12 +748,12 @@ class MPCTensor(CrypTensor):
             result = pos_output * (1 - ltz) + ltz * (1 - pos_output)
             # TODO: Support addition with different encoder scales
             # result = pos_output + ltz - 2 * pos_output * ltz
-            return result
+            return result._truncate_sigmoid()
         else:
             raise ValueError(f"Unrecognized method {method} for sigmoid")
 
     @mode(Ptype.arithmetic)
-    def tanh(self, method="reciprocal", terms=32):
+    def tanh(self):
         r"""Computes the hyperbolic tangent function using the identity
 
         .. math::
@@ -774,11 +775,11 @@ class MPCTensor(CrypTensor):
         """
         method = config.sigmoid_tanh_method
         terms = config.sigmoid_tanh_terms
+        maxval = config.sigmoid_tanh_clip_value
 
         if method == "reciprocal":
             return self.mul(2).sigmoid().mul(2).sub(1)
         elif method == "chebyshev":
-            maxval = 6
             coeffs = crypten.common.util.chebyshev_series(torch.tanh, maxval, terms)[
                 1::2
             ]
@@ -789,22 +790,27 @@ class MPCTensor(CrypTensor):
             out = tanh_polys_flipped.matmul(coeffs)
 
             # truncate outside [-maxval, maxval]
-            out = self._truncate_tanh(maxval, out)
-            return out
+            return out._truncate_tanh()
         else:
             raise ValueError(f"Unrecognized method {method} for tanh")
 
-    def _truncate_tanh(self, maxval, out):
-        """Truncates `out` to +/-1 when self is outside [-maxval, maxval].
+    def _truncate_sigmoid(self, maxval):
+        """Truncates `out` to {0, clip_value} when self is outside [0, clip_value]."""
+        clip_value = config.sigmoid_tanh_clip_value
+        if clip_value is None:
+            return self
+        too_high, too_low = crypten.stack([self, 1 - self]).gt(clip_value)
+        in_range = 1 - too_high - too_low
+        return too_high + self.mul(in_range)
 
-        Args:
-            maxval (int): interval width outside of which to truncate
-            out (torch.tensor or MPCTensor): tensor to truncate
-        """
-        too_high, too_low = crypten.stack([self, -self]).gt(maxval)
-        in_range = -too_high - too_low + 1
-        out = too_high - too_low + out.mul(in_range)
-        return out
+    def _truncate_tanh(self):
+        """Truncates `out` to +/- clip_value when self is outside [-clip_value, clip_value]."""
+        clip_value = config.sigmoid_tanh_clip_value
+        if clip_value is None:
+            return self
+        too_high, too_low = crypten.stack([self, -self]).gt(clip_value)
+        in_range = 1 - too_high - too_low
+        return too_high - too_low + self.mul(in_range)
 
     @mode(Ptype.arithmetic)
     def softmax(self, dim, **kwargs):
