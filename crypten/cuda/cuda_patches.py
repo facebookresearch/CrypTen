@@ -46,3 +46,43 @@ def matmul(x, y, *args, **kwargs):
     z_encoded = torch.matmul(x_enc_span, y_enc_span, *args, **kwargs)
 
     return __decode_as_int64(z_encoded)
+
+
+def __patched_conv(op, x, y, *args, **kwargs):
+    assert op in ["conv1d", "conv2d"]
+
+    x_encoded = __encode_as_fp64(x)
+    y_encoded = __encode_as_fp64(y)
+
+    repeat_idx = [1] * (x_encoded.dim() - 1)
+    x_enc_span = x_encoded.repeat(4, *repeat_idx)
+    y_enc_span = y_encoded.repeat_interleave(repeats=4, dim=0)
+
+    bs, c, *img = x.shape
+    c_out, c_in, *ks = y.shape
+
+    x_enc_span = x_enc_span.transpose_(0, 1).reshape(bs, 16 * c, *img)
+    y_enc_span = y_enc_span.reshape(16 * c_out, c_in, *ks)
+
+    z_encoded = getattr(torch, op)(x_enc_span, y_enc_span, *args, **kwargs, groups=16)
+    z_encoded = z_encoded.reshape(bs, 16, c_out, *z_encoded.shape[2:]).transpose_(0, 1)
+
+    return __decode_as_int64(z_encoded)
+
+
+def __add_patched_operation(op):
+    """
+    Adds function to `MPCTensor` that is applied directly on the underlying
+    `_tensor` attribute, and stores the result in the same attribute.
+    """
+
+    def patched_func(x, y, *args, **kwargs):
+        if op in ["conv1d", "conv2d"]:
+            return __patched_conv(op, x, y, *args, **kwargs)
+
+    globals()[op] = patched_func
+
+
+__patched_ops = ["conv1d", "conv2d"]
+for op in __patched_ops:
+    __add_patched_operation(op)
