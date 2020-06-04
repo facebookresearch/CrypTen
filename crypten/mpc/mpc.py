@@ -540,7 +540,9 @@ class MPCTensor(CrypTensor):
             )
             return result
 
-        result = _argmax_helper(self, dim, config.max_method, _return_max=False)
+        result = _argmax_helper(
+            self, dim, one_hot, config.max_method, _return_max=False
+        )
 
         if not one_hot:
             result = _one_hot_to_index(result, dim, keepdim)
