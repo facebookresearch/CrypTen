@@ -9,6 +9,7 @@ import crypten
 import crypten.communicator as comm
 import torch
 from crypten.common.util import count_wraps
+from crypten.cuda import cuda_patches
 
 
 def __beaver_protocol(op, x, y, *args, **kwargs):
@@ -39,9 +40,13 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
     delta = eps_del[1]
 
     # z = c + (a * delta) + (epsilon * b) + epsilon * delta
-    c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
-    c += getattr(a, op)(delta, *args, **kwargs)
-    c += getattr(torch, op)(epsilon, delta, *args, **kwargs)
+    c._tensor += getattr(cuda_patches, op)(epsilon, b._tensor, *args, **kwargs)
+    c._tensor += getattr(cuda_patches, op)(a._tensor, delta, *args, **kwargs)
+    c += getattr(cuda_patches, op)(epsilon, delta, *args, **kwargs)
+
+    # c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
+    # c += getattr(a, op)(delta, *args, **kwargs)
+    # c += getattr(torch, op)(epsilon, delta, *args, **kwargs)
 
     return c
 
