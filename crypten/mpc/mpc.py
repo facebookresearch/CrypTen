@@ -116,7 +116,7 @@ class ConfigManager(ConfigBase):
 
 
 class MPCTensor(CrypTensor):
-    def __init__(self, tensor, ptype=Ptype.arithmetic, *args, **kwargs):
+    def __init__(self, tensor, ptype=Ptype.arithmetic, device=None, *args, **kwargs):
 
         # take required_grad from kwargs, input tensor, or set to False:
         default = tensor.requires_grad if tensor is torch.is_tensor(tensor) else False
@@ -127,9 +127,11 @@ class MPCTensor(CrypTensor):
         if tensor is None:
             return  # TODO: Can we remove this and do staticmethods differently?
 
+        device = tensor.device if device is None else device
+
         # create the MPCTensor:
         tensor_type = ptype.to_tensor()
-        self._tensor = tensor_type(tensor, *args, **kwargs)
+        self._tensor = tensor_type(tensor, device=device, *args, **kwargs)
         self.ptype = ptype
 
     @staticmethod
@@ -190,6 +192,26 @@ class MPCTensor(CrypTensor):
     def binary(self):
         """Converts self._tensor to binary secret sharing"""
         return self.to(Ptype.binary)
+
+    @property
+    def device(self):
+        return self._tensor.device
+
+    @property
+    def is_cuda(self):
+        return self._tensor.is_cuda
+
+    def to_device(self, device):
+        self.share = self.share.to(device)
+        return self
+
+    def cuda(self):
+        self._tensor = self._tensor.cuda()
+        return self
+
+    def cpu(self):
+        self._tensor = self._tensor.cpu()
+        return self
 
     def get_plain_text(self, dst=None):
         """Decrypts the tensor."""
@@ -286,13 +308,13 @@ class MPCTensor(CrypTensor):
         return MPCTensor.__cat_stack_helper("stack", tensors, *args, **kwargs)
 
     @staticmethod
-    def rand(*sizes):
+    def rand(*sizes, device):
         """
         Returns a tensor with elements uniformly sampled in [0, 1) using the
         trusted third party.
         """
         rand = MPCTensor(None)
-        rand._tensor = crypten.mpc.get_default_provider().rand(*sizes)
+        rand._tensor = crypten.mpc.get_default_provider().rand(*sizes, device=device)
         rand.ptype = Ptype.arithmetic
         return rand
 
@@ -300,7 +322,7 @@ class MPCTensor(CrypTensor):
         """Returns a tensor with elements in {0, 1}. The i-th element of the
         output will be 1 with probability according to the i-th value of the
         input tensor."""
-        return self > MPCTensor.rand(self.size())
+        return self > MPCTensor.rand(self.size(), device=self.device)
 
     # TODO: It seems we can remove all Dropout implementations below?
     def dropout(self, p=0.5, training=True, inplace=False):
@@ -320,7 +342,7 @@ class MPCTensor(CrypTensor):
                 return self
             else:
                 return self.clone()
-        rand_tensor = MPCTensor.rand(self.size())
+        rand_tensor = MPCTensor.rand(self.size(), device=self.device)
         dropout_tensor = rand_tensor > p
         if inplace:
             result_tensor = self.mul_(dropout_tensor).div_(1 - p)
@@ -379,7 +401,7 @@ class MPCTensor(CrypTensor):
         # take first 2 dimensions
         feature_dropout_size = self.size()[0:2]
         # create dropout tensor over the first two dimensions
-        rand_tensor = MPCTensor.rand(feature_dropout_size)
+        rand_tensor = MPCTensor.rand(feature_dropout_size, device=self.device)
         feature_dropout_tensor = rand_tensor > p
         # Broadcast to remaining dimensions
         for i in range(2, self.dim()):
@@ -496,12 +518,14 @@ class MPCTensor(CrypTensor):
             return self.flatten().weighted_index(dim=0).view(self.size())
 
         x = self.cumsum(dim)
-        max_weight = x.index_select(dim, torch.tensor(x.size(dim) - 1))
-        r = MPCTensor.rand(max_weight.size()) * max_weight
+        max_weight = x.index_select(
+            dim, torch.tensor(x.size(dim) - 1, device=self.device)
+        )
+        r = MPCTensor.rand(max_weight.size(), device=self.device) * max_weight
 
         gt = x.gt(r, _scale=False)
         shifted = gt.roll(1, dims=dim)
-        shifted.share.index_fill_(dim, torch.tensor(0), 0)
+        shifted.share.index_fill_(dim, torch.tensor(0, device=self.device), 0)
 
         return gt - shifted
 
@@ -536,7 +560,9 @@ class MPCTensor(CrypTensor):
         # TODO: Make dim an arg.
         if self.dim() == 0:
             result = (
-                MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
+                MPCTensor(torch.ones((), device=self.device))
+                if one_hot
+                else MPCTensor(torch.zeros((), device=self.device))
             )
             return result
 
@@ -815,10 +841,10 @@ class MPCTensor(CrypTensor):
         # 0-d case
         if self.dim() == 0:
             assert dim == 0, "Improper dim argument"
-            return MPCTensor(torch.ones(()))
+            return MPCTensor(torch.ones_like((self.share)))
 
         if self.size(dim) == 1:
-            return MPCTensor(torch.ones(self.size()))
+            return MPCTensor(torch.ones_like(self.share))
 
         maximum_value = self.max(dim, keepdim=True)[0]
         logits = self - maximum_value
@@ -837,10 +863,10 @@ class MPCTensor(CrypTensor):
         # 0-d case
         if self.dim() == 0:
             assert dim == 0, "Improper dim argument"
-            return MPCTensor(torch.zeros(()))
+            return MPCTensor(torch.zeros((), device=self.device))
 
         if self.size(dim) == 1:
-            return MPCTensor(torch.zeros(self.size()))
+            return MPCTensor(torch.zeros_like(self.share))
 
         maximum_value = self.max(dim, keepdim=True)[0]
         logits = self - maximum_value
@@ -880,7 +906,9 @@ class MPCTensor(CrypTensor):
         # Compute terms of polynomial using exponentially growing tree
         terms = crypten.stack([self, self.square()])
         while terms.size(0) < coeffs.size(0):
-            highest_term = terms.index_select(0, torch.tensor(terms.size(0) - 1))
+            highest_term = terms.index_select(
+                0, torch.tensor(terms.size(0) - 1, device=self.device)
+            )
             new_terms = getattr(terms, func)(highest_term)
             terms = crypten.cat([terms, new_terms])
 
@@ -888,6 +916,11 @@ class MPCTensor(CrypTensor):
         terms = terms[: coeffs.size(0)]
         for _ in range(terms.dim() - 1):
             coeffs = coeffs.unsqueeze(1)
+
+        if crypten.is_encrypted_tensor(coeffs):
+            coeffs = coeffs.to_device(self.device)
+        else:
+            coeffs = coeffs.to(self.device)
 
         # Multiply terms by coefficients and sum
         return terms.mul(coeffs).sum(0)
@@ -1051,7 +1084,7 @@ class MPCTensor(CrypTensor):
         elif p == 0:
             # Note: This returns 0 ** 0 -> 1 when inputs have zeros.
             # This is consistent with PyTorch's pow function.
-            return MPCTensor(torch.ones(self.size()))
+            return MPCTensor(torch.ones_like(self.share))
         elif p == 1:
             return self.clone()
         elif p == 2:
@@ -1252,14 +1285,20 @@ class MPCTensor(CrypTensor):
 
     def unbind(self, dim=0):
         shares = self.share.unbind(dim=dim)
-        results = tuple(MPCTensor(0, ptype=self.ptype) for _ in range(len(shares)))
+        results = tuple(
+            MPCTensor(0, ptype=self.ptype, device=self.device)
+            for _ in range(len(shares))
+        )
         for i in range(len(shares)):
             results[i].share = shares[i]
         return results
 
     def split(self, split_size, dim=0):
         shares = self.share.split(split_size, dim=dim)
-        results = tuple(MPCTensor(0, ptype=self.ptype) for _ in range(len(shares)))
+        results = tuple(
+            MPCTensor(0, ptype=self.ptype, device=self.device)
+            for _ in range(len(shares))
+        )
         for i in range(len(shares)):
             results[i].share = shares[i]
         return results

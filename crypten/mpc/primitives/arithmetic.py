@@ -14,6 +14,7 @@ import torch
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor
 from crypten.cryptensor import CrypTensor
+from crypten.cuda import cuda_patches
 from crypten.encoder import FixedPointEncoder
 
 from . import beaver
@@ -33,7 +34,7 @@ class ArithmeticSharedTensor(object):
     """
 
     # constructors:
-    def __init__(self, tensor=None, size=None, precision=None, src=0):
+    def __init__(self, tensor=None, size=None, precision=None, src=0, device=None):
         if src == SENTINEL:
             return
         assert (
@@ -47,8 +48,10 @@ class ArithmeticSharedTensor(object):
             tensor = self.encoder.encode(tensor)
             size = tensor.size()
 
+        device = tensor.device if device is None else device
+
         # Generate psuedo-random sharing of zero (PRZS) and add source's tensor
-        self.share = ArithmeticSharedTensor.PRZS(size).share
+        self.share = ArithmeticSharedTensor.PRZS(size, device=device).share
         if self.rank == src:
             assert tensor is not None, "Source must provide a data tensor"
             if hasattr(tensor, "src"):
@@ -56,6 +59,26 @@ class ArithmeticSharedTensor(object):
                     tensor.src == src
                 ), "Source of data tensor must match source of encryption"
             self.share += tensor
+
+    @property
+    def device(self):
+        return self._tensor.device
+
+    @property
+    def is_cuda(self):
+        return self._tensor.is_cuda
+
+    def to_device(self, device):
+        self._tensor = self._tensor.to(device)
+        return self
+
+    def cuda(self):
+        self._tensor = self._tensor.cuda()
+        return self
+
+    def cpu(self):
+        self._tensor = self._tensor.cpu()
+        return self
 
     @property
     def share(self):
@@ -76,7 +99,7 @@ class ArithmeticSharedTensor(object):
         return result
 
     @staticmethod
-    def PRZS(*size):
+    def PRZS(*size, device):
         """
         Generate a Pseudo-random Sharing of Zero (using arithmetic shares)
 
@@ -85,8 +108,12 @@ class ArithmeticSharedTensor(object):
         this number while the other subtracts this number.
         """
         tensor = ArithmeticSharedTensor(src=SENTINEL)
-        current_share = generate_random_ring_element(*size, generator=comm.get().g0)
-        next_share = generate_random_ring_element(*size, generator=comm.get().g1)
+        current_share = generate_random_ring_element(
+            *size, generator=comm.get().g0, device=device
+        )
+        next_share = generate_random_ring_element(
+            *size, generator=comm.get().g1, device=device
+        )
         tensor.share = current_share - next_share
         return tensor
 
@@ -234,6 +261,7 @@ class ArithmeticSharedTensor(object):
 
         if public:
             y = result.encoder.encode(y)
+            y = y.to(self.device)
 
             if additive_func:  # ['add', 'sub']
                 if result.rank == 0:
@@ -241,9 +269,16 @@ class ArithmeticSharedTensor(object):
                 else:
                     result.share = torch.broadcast_tensors(result.share, y)[0]
             elif op == "mul_":  # ['mul_']
-                result.share = result.share.mul_(y)
+                if result.share.is_cuda:
+                    result.share.set_(
+                        getattr(cuda_patches, "mul")(result.share, y, *args, **kwargs)
+                    )
+                else:
+                    result.share = result.share.mul_(y)
             else:  # ['mul', 'matmul', 'convNd', 'conv_transposeNd']
-                result.share = getattr(torch, op)(result.share, y, *args, **kwargs)
+                result.share = getattr(cuda_patches, op)(
+                    result.share, y, *args, **kwargs
+                )
         elif private:
             if additive_func:  # ['add', 'sub', 'add_', 'sub_']
                 result.share = getattr(result.share, op)(y.share)
@@ -291,7 +326,9 @@ class ArithmeticSharedTensor(object):
 
     def mul(self, y):
         """Perform element-wise multiplication"""
-        if isinstance(y, int) or is_int_tensor(y):
+        if is_int_tensor(y):
+            y = y.to(self.device)
+        if isinstance(y, int):
             result = self.clone()
             result.share = self.share * y
             return result
@@ -299,6 +336,8 @@ class ArithmeticSharedTensor(object):
 
     def mul_(self, y):
         """Perform element-wise multiplication"""
+        if is_int_tensor(y):
+            y = y.to(self.device)
         if isinstance(y, int) or is_int_tensor(y):
             self.share *= y
             return self
@@ -488,8 +527,8 @@ class ArithmeticSharedTensor(object):
         """Perform a sum pooling on each 2D matrix of the given tensor"""
         result = self.shallow_copy()
         result.share = torch.nn.functional.avg_pool2d(
-            self.share, *args, **kwargs, divisor_override=1
-        )
+            self.share.cpu(), *args, **kwargs, divisor_override=1
+        ).to(self.device)
         return result
 
     def take(self, index, dimension=None):
@@ -521,13 +560,6 @@ class ArithmeticSharedTensor(object):
         result = self.clone()
         result.share = beaver.square(self).div_(self.encoder.scale).share
         return result
-
-    # copy between CPU and GPU:
-    def cuda(self):
-        raise NotImplementedError("CUDA is not supported for ArithmeticSharedTensors")
-
-    def cpu(self):
-        raise NotImplementedError("CUDA is not supported for ArithmeticSharedTensors")
 
     def dot(self, y, weights=None):
         """Compute a dot product between two tensors"""

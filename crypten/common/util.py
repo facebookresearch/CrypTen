@@ -83,7 +83,7 @@ def pool_reshape(input, kernel_size, padding=None, stride=None, pad_value=0):
     out_size = (n, c, h, w)
 
     # Reshape input to arrange kernels to be represented by rows
-    kernel_indices = torch.tensor(range(k[1]))
+    kernel_indices = torch.tensor(range(k[1]), device=input.device)
     kernel_indices = torch.cat(
         [kernel_indices + i * input.size(3) for i in range(k[0])]
     )
