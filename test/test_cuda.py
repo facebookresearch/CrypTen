@@ -109,6 +109,132 @@ class TestCUDA(object):
             reference = torch.matmul(x, y)
             self._check_int(z, reference, "matmul failed for cuda_patches")
 
+    @unittest.skipIf(torch.cuda.is_available() == False, "requires CUDA")
+    def test_patched_matmul(self):
+        x = get_random_test_tensor(max_value=2 ** 62, is_float=False)
+
+        for width in range(2, x.nelement()):
+            matrix_size = (x.nelement(), width)
+            y = get_random_test_tensor(
+                size=matrix_size, max_value=2 ** 62, is_float=False
+            )
+
+            z = cuda_patches.matmul(x.cuda(), y.cuda())
+            z = z.cpu()
+
+            reference = torch.matmul(x, y)
+            self._check_int(z, reference, "matmul failed for cuda_patches")
+
+    @unittest.skipIf(torch.cuda.is_available() == False, "requires CUDA")
+    def test_conv1d_smaller_signal_one_channel(self):
+        self._patched_conv1d(5, 1)
+
+    @unittest.skipIf(torch.cuda.is_available() == False, "requires CUDA")
+    def test_conv1d_smaller_signal_many_channels(self):
+        self._patched_conv1d(5, 5)
+
+    @unittest.skipIf(torch.cuda.is_available() == False, "requires CUDA")
+    def test_conv1d_larger_signal_one_channel(self):
+        self._patched_conv1d(16, 1)
+
+    @unittest.skipIf(torch.cuda.is_available() == False, "requires CUDA")
+    def test_conv1d_larger_signal_many_channels(self):
+        self._patched_conv1d(16, 5)
+
+    def _patched_conv1d(self, signal_size, in_channels):
+        """Test convolution of encrypted tensor with public/private tensors."""
+        nbatches = [1, 3]
+        kernel_sizes = [1, 2, 3]
+        ochannels = [1, 3, 6]
+        paddings = [0, 1]
+        strides = [1, 2]
+
+        for func_name in ["conv1d", "conv_transpose1d"]:
+            for (
+                batches,
+                kernel_size,
+                out_channels,
+                padding,
+                stride,
+            ) in itertools.product(
+                nbatches, kernel_sizes, ochannels, paddings, strides
+            ):
+                input_size = (batches, in_channels, signal_size)
+                signal = get_random_test_tensor(size=input_size, is_float=False)
+
+                if func_name == "conv1d":
+                    k_size = (out_channels, in_channels, kernel_size)
+                else:
+                    k_size = (in_channels, out_channels, kernel_size)
+                kernel = get_random_test_tensor(size=k_size, is_float=False)
+
+                reference = getattr(F, func_name)(
+                    signal, kernel, padding=padding, stride=stride
+                )
+                result = getattr(cuda_patches, func_name)(
+                    signal.cuda(), kernel.cuda(), padding=padding, stride=stride
+                )
+                result = result.cpu()
+
+                self._check_int(result, reference, f"{func_name} failed")
+
+    @unittest.skipIf(torch.cuda.is_available() == False, "requires CUDA")
+    def test_conv2d_square_image_one_channel(self):
+        self._patched_conv2d((5, 5), 1)
+
+    @unittest.skipIf(torch.cuda.is_available() == False, "requires CUDA")
+    def test_conv2d_square_image_many_channels(self):
+        self._patched_conv2d((5, 5), 5)
+
+    @unittest.skipIf(torch.cuda.is_available() == False, "requires CUDA")
+    def test_conv2d_rectangular_image_one_channel(self):
+        self._patched_conv2d((16, 7), 1)
+
+    @unittest.skipIf(torch.cuda.is_available() == False, "requires CUDA")
+    def test_conv2d_rectangular_image_many_channels(self):
+        self._patched_conv2d((16, 7), 5)
+
+    def _patched_conv2d(self, image_size, in_channels):
+        """Test convolution of encrypted tensor with public/private tensors."""
+        nbatches = [1, 3]
+        kernel_sizes = [(1, 1), (2, 2), (2, 3)]
+        ochannels = [1, 3, 6]
+        paddings = [0, 1, (0, 1)]
+        strides = [1, 2, (1, 2)]
+
+        for func_name in ["conv2d", "conv_transpose2d"]:
+            for (
+                batches,
+                kernel_size,
+                out_channels,
+                padding,
+                stride,
+            ) in itertools.product(
+                nbatches, kernel_sizes, ochannels, paddings, strides
+            ):
+
+                # sample input:
+                input_size = (batches, in_channels, *image_size)
+                input = get_random_test_tensor(size=input_size, is_float=False)
+
+                # sample filtering kernel:
+                if func_name == "conv2d":
+                    k_size = (out_channels, in_channels, *kernel_size)
+                else:
+                    k_size = (in_channels, out_channels, *kernel_size)
+                kernel = get_random_test_tensor(size=k_size, is_float=False)
+
+                result = getattr(cuda_patches, func_name)(
+                    input.cuda(), kernel.cuda(), padding=padding, stride=stride
+                )
+                result = result.cpu()
+
+                # check that result is correct:
+                reference = getattr(F, func_name)(
+                    input, kernel, padding=padding, stride=stride
+                )
+                self._check_int(result, reference, "%s failed" % func_name)
+
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestCUDA):
