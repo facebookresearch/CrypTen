@@ -39,7 +39,7 @@ def mode(ptype, inplace=False):
             # @wraps ensures docstrings are updated
             @wraps(func)
             def convert_wrapper(self, *args, **kwargs):
-                result = self.to(ptype)
+                result = self.to_ptype(ptype)
                 return func(result, *args, **kwargs)
 
             return convert_wrapper
@@ -170,7 +170,7 @@ class MPCTensor(CrypTensor):
         self.ptype = other.ptype
 
     # Handle share types and conversions
-    def to(self, ptype, **kwargs):
+    def to_ptype(self, ptype, **kwargs):
         """Converts self._tensor to the given ptype
 
         Args:
@@ -185,11 +185,11 @@ class MPCTensor(CrypTensor):
 
     def arithmetic(self):
         """Converts self._tensor to arithmetic secret sharing"""
-        return self.to(Ptype.arithmetic)
+        return self.to_ptype(Ptype.arithmetic)
 
     def binary(self):
         """Converts self._tensor to binary secret sharing"""
-        return self.to(Ptype.binary)
+        return self.to_ptype(Ptype.binary)
 
     def get_plain_text(self, dst=None):
         """Decrypts the tensor."""
@@ -266,7 +266,7 @@ class MPCTensor(CrypTensor):
         # Make all inputs MPCTensors of given ptype
         for i, tensor in enumerate(tensors):
             if tensor.ptype != _ptype:
-                tensors[i] = tensor.to(_ptype)
+                tensors[i] = tensor.to_ptype(_ptype)
 
         # Operate on all input tensors
         result = tensors[0].clone()
@@ -398,7 +398,7 @@ class MPCTensor(CrypTensor):
     def _ltz(self, _scale=True):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
         shift = torch.iinfo(torch.long).bits - 1
-        result = (self >> shift).to(Ptype.arithmetic, bits=1)
+        result = (self >> shift).to_ptype(Ptype.arithmetic, bits=1)
         if _scale:
             return result * result.encoder._scale
         else:
@@ -444,7 +444,7 @@ class MPCTensor(CrypTensor):
         x0._tensor = x0._tensor.eq(x1._tensor)
 
         # Convert to Arithmetic sharing
-        result = x0.to(Ptype.arithmetic, bits=1)
+        result = x0.to_ptype(Ptype.arithmetic, bits=1)
 
         # Handle scaling
         if _scale:

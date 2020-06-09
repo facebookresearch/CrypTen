@@ -1452,7 +1452,7 @@ class TestMPC(object):
             encrypted_tensor = MPCTensor(tensor)
             self.assertEqual(encrypted_tensor.ptype, Ptype.arithmetic)
 
-            binary_encrypted_tensor = encrypted_tensor.to(Ptype.binary)
+            binary_encrypted_tensor = encrypted_tensor.to_ptype(Ptype.binary)
             self.assertEqual(binary_encrypted_tensor.ptype, Ptype.binary)
 
             # check original encrypted_tensor was not modified after conversion
@@ -1463,7 +1463,7 @@ class TestMPC(object):
                 "BinarySharedTensor.",
             )
 
-            encrypted_from_binary = binary_encrypted_tensor.to(Ptype.arithmetic)
+            encrypted_from_binary = binary_encrypted_tensor.to_ptype(Ptype.arithmetic)
             self._check(
                 encrypted_from_binary,
                 tensor,

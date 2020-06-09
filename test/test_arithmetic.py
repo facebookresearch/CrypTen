@@ -206,7 +206,7 @@ class TestArithmetic(MultiProcessTestCase):
                 self._check(encrypted_tensor, reference, "division failed")
 
                 divisor = get_random_test_tensor(is_float=float)
-                divisor += (divisor == 0).to(dtype=divisor.dtype)  # div by 0
+                divisor += (divisor == 0).to_ptype(dtype=divisor.dtype)  # div by 0
 
                 reference = tensor.div(divisor)
                 encrypted_tensor = ArithmeticSharedTensor(tensor)
