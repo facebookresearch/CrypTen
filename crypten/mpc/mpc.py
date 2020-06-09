@@ -80,9 +80,10 @@ class MPCConfig:
     reciprocal_all_pos: bool = False
     reciprocal_initial: any = None
 
-    # tanh configuration
+    # sigmoid / tanh configuration
     sigmoid_tanh_method: str = "reciprocal"
     sigmoid_tanh_terms: int = 32
+    sigmoid_tanh_clip_value: int = 1
 
     # log configuration
     log_iterations: int = 2
@@ -725,15 +726,17 @@ class MPCTensor(CrypTensor):
                 using Chebyshev approximation. Must be even and at least 6.
         """  # noqa: W605
         method = config.sigmoid_tanh_method
+        clip_value = config.sigmoid_tanh_clip_value
 
         if method == "chebyshev":
             tanh_approx = self.div(2).tanh()
             return tanh_approx.div(2) + 0.5
         elif method == "reciprocal":
-            ltz = self._ltz(_scale=True)
+            ltz = self._ltz(_scale=False)
             sign = 1 - 2 * ltz
 
-            input = self.mul(sign)
+            pos_input = self.mul(sign)
+            denominator = pos_input.neg().exp().add(1)
             with ConfigManager(
                 "exp_iterations",
                 9,
@@ -744,9 +747,14 @@ class MPCTensor(CrypTensor):
                 "reciprocal_initial",
                 0.75,
             ):
-                denominator = input.neg().exp().add(1)
                 pos_output = denominator.reciprocal()
-            result = pos_output * (1 - ltz) + ltz * (1 - pos_output)
+
+            # Clip values outside of acceptable range
+            if clip_value is not None:
+                in_range = pos_output.le(clip_value, _scale=False)
+                pos_output = pos_output.where(in_range, clip_value)
+
+            result = pos_output.where(1 - ltz, 1 - pos_output)
             # TODO: Support addition with different encoder scales
             # result = pos_output + ltz - 2 * pos_output * ltz
             return result
@@ -754,7 +762,7 @@ class MPCTensor(CrypTensor):
             raise ValueError(f"Unrecognized method {method} for sigmoid")
 
     @mode(Ptype.arithmetic)
-    def tanh(self, method="reciprocal", terms=32):
+    def tanh(self):
         r"""Computes the hyperbolic tangent function using the identity
 
         .. math::
@@ -776,11 +784,11 @@ class MPCTensor(CrypTensor):
         """
         method = config.sigmoid_tanh_method
         terms = config.sigmoid_tanh_terms
+        maxval = config.sigmoid_tanh_clip_value
 
         if method == "reciprocal":
             return self.mul(2).sigmoid().mul(2).sub(1)
         elif method == "chebyshev":
-            maxval = 6
             coeffs = crypten.common.util.chebyshev_series(torch.tanh, maxval, terms)[
                 1::2
             ]
@@ -791,22 +799,18 @@ class MPCTensor(CrypTensor):
             out = tanh_polys_flipped.matmul(coeffs)
 
             # truncate outside [-maxval, maxval]
-            out = self._truncate_tanh(maxval, out)
-            return out
+            return out._truncate_tanh()
         else:
             raise ValueError(f"Unrecognized method {method} for tanh")
 
-    def _truncate_tanh(self, maxval, out):
-        """Truncates `out` to +/-1 when self is outside [-maxval, maxval].
-
-        Args:
-            maxval (int): interval width outside of which to truncate
-            out (torch.tensor or MPCTensor): tensor to truncate
-        """
-        too_high, too_low = crypten.stack([self, -self]).gt(maxval)
-        in_range = -too_high - too_low + 1
-        out = too_high - too_low + out.mul(in_range)
-        return out
+    def _truncate_tanh(self):
+        """Truncates `out` to +/- clip_value when self is outside [-clip_value, clip_value]."""
+        clip_value = config.sigmoid_tanh_clip_value
+        if clip_value is None:
+            return self
+        too_high, too_low = crypten.stack([self, -self]).gt(clip_value)
+        in_range = 1 - too_high - too_low
+        return (too_high - too_low) * clip_value + self.mul(in_range)
 
     @mode(Ptype.arithmetic)
     def softmax(self, dim, **kwargs):

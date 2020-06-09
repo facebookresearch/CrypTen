@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
-from crypten.mpc import MPCTensor, ptype as Ptype
+from crypten.mpc import ConfigManager, MPCTensor, ptype as Ptype
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 
@@ -1836,20 +1836,16 @@ class TestMPC(object):
 
     def test_truncate_tanh(self):
         """Tests truncation outside of given interval"""
-        sizes = [(1, 10), (3, 5), (3, 5, 10)]
-        maxvalues = [2, 8, 40]
+        # Generate tensor with range [-2, 2]
+        tensor = torch.tensor([0.1 * i for i in range(41)]) - 2
+        tensor_enc = crypten.cryptensor(tensor)
 
-        for size, maxval in itertools.product(sizes, maxvalues):
-            tensor = get_random_test_tensor(size=size, is_float=True)
-            tensor_enc = MPCTensor(tensor)
+        for maxval in [0.1, 0.5, 1.0, 1.5]:
+            reference = tensor.clamp(-maxval, maxval)
+            with ConfigManager("sigmoid_tanh_clip_value", maxval):
+                tensor_enc_truncated = tensor_enc._truncate_tanh()
 
-            out = get_random_test_tensor(size=size, is_float=True)
-            out_enc = MPCTensor(out)
-
-            tensor_enc_truncated = tensor_enc._truncate_tanh(maxval, out_enc)
-            out[tensor > maxval] = 1
-            out[tensor < -maxval] = -1
-            self._check(tensor_enc_truncated, out, "truncation incorrect")
+            self._check(tensor_enc_truncated, reference, "truncation incorrect")
 
 
 # Run all unit tests with both TFP and TTP providers
