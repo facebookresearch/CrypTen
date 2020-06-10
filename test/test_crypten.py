@@ -15,6 +15,7 @@ from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_te
 import crypten
 import torch
 import torch.nn.functional as F
+from crypten.common import serial
 from crypten.common.tensor_types import is_float_tensor
 from torch import nn
 
@@ -213,6 +214,7 @@ class TestCrypten(MultiProcessTestCase):
 
             test_model = model_type(200, 10)
             test_model.set_all_parameters(rank)
+            serial.register_safe_class(model_type)
 
             filename = tempfile.NamedTemporaryFile(delete=True).name
             for src in range(comm.get().get_world_size()):

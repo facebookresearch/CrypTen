@@ -12,6 +12,7 @@ import pickle
 import numpy
 import torch
 import torch.distributed as dist
+from crypten.common import serial
 from torch.distributed import ReduceOp
 
 from .communicator import Communicator, _logging
@@ -272,7 +273,7 @@ class DistributedCommunicator(Communicator):
         data = torch.empty(size=(size,), dtype=torch.int8)
         dist.irecv(data, src=src, group=group).wait()
         buf = data.numpy().tobytes()
-        return pickle.loads(buf)
+        return serial.restricted_loads(buf)
 
     @_logging
     def broadcast_obj(self, obj, src, group=None):
@@ -295,7 +296,7 @@ class DistributedCommunicator(Communicator):
             data = torch.empty(size=(size,), dtype=torch.int8)
             dist.broadcast(data, src, group=group)
             buf = data.numpy().tobytes()
-            obj = pickle.loads(buf)
+            obj = serial.restricted_loads(buf)
         return obj
 
     def get_world_size(self):
