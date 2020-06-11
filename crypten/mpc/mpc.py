@@ -83,7 +83,7 @@ class MPCConfig:
     # sigmoid / tanh configuration
     sigmoid_tanh_method: str = "reciprocal"
     sigmoid_tanh_terms: int = 32
-    sigmoid_tanh_clip_value: int = 1
+    logistic_clip_value: int = 1
 
     # log configuration
     log_iterations: int = 2
@@ -726,7 +726,7 @@ class MPCTensor(CrypTensor):
                 using Chebyshev approximation. Must be even and at least 6.
         """  # noqa: W605
         method = config.sigmoid_tanh_method
-        clip_value = config.sigmoid_tanh_clip_value
+        clip_value = config.logistic_clip_value
 
         if method == "chebyshev":
             tanh_approx = self.div(2).tanh()
@@ -784,7 +784,7 @@ class MPCTensor(CrypTensor):
         """
         method = config.sigmoid_tanh_method
         terms = config.sigmoid_tanh_terms
-        maxval = config.sigmoid_tanh_clip_value
+        maxval = config.logistic_clip_value
 
         if method == "reciprocal":
             return self.mul(2).sigmoid().mul(2).sub(1)
@@ -805,7 +805,7 @@ class MPCTensor(CrypTensor):
 
     def _truncate_tanh(self):
         """Truncates `out` to +/- clip_value when self is outside [-clip_value, clip_value]."""
-        clip_value = config.sigmoid_tanh_clip_value
+        clip_value = config.logistic_clip_value
         if clip_value is None:
             return self
         too_high, too_low = crypten.stack([self, -self]).gt(clip_value)
@@ -816,6 +816,8 @@ class MPCTensor(CrypTensor):
     def softmax(self, dim, **kwargs):
         """Compute the softmax of a tensor's elements along a given dimension
         """
+        clip_value = config.logistic_clip_value
+
         # 0-d case
         if self.dim() == 0:
             assert dim == 0, "Improper dim argument"
@@ -829,7 +831,13 @@ class MPCTensor(CrypTensor):
         numerator = logits.exp()
         with ConfigManager("reciprocal_all_pos", True):
             inv_denominator = numerator.sum(dim, keepdim=True).reciprocal()
-        return numerator * inv_denominator
+
+        result = numerator * inv_denominator
+        if clip_value is not None:
+            result = result.relu()
+            result = result.where(result.lt(clip_value, _scale=False), clip_value)
+
+        return result
 
     @mode(Ptype.arithmetic)
     def log_softmax(self, dim, **kwargs):
