@@ -529,8 +529,14 @@ class Sequential(Graph):
     Sequence of modules.
     """
 
-    def __init__(self, module_list):
+    def __init__(self, *module_list):
         super().__init__("input", "output")
+        if len(module_list) == 1 and isinstance(module_list[0], list):
+            raise DeprecationWarning(
+                "passing crypten.nn.Sequential a list is deprecated. Please "
+                "pass unpacked arguments (e.g. Sequential(*my_modules))."
+            )
+            module_list = module_list[0]
         num_modules = len(module_list)
         for idx, module in enumerate(module_list):
             module_name = "output" if idx + 1 == num_modules else "module_%d" % idx

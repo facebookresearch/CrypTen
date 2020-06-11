@@ -35,11 +35,9 @@ to use these objects to build a CrypTen network:
 .. code-block:: python
        
        model = crypten.nn.Sequential(
-            [
-                crypten.nn.Linear(num_inputs, num_intermediate),
-                crypten.nn.ReLU(),
-                crypten.nn.Linear(num_intermediate, num_outputs),
-            ]
+              crypten.nn.Linear(num_inputs, num_intermediate),
+              crypten.nn.ReLU(),
+              crypten.nn.Linear(num_intermediate, num_outputs),
         )
 
 

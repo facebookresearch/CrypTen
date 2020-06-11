@@ -555,7 +555,7 @@ class TestNN(object):
                 module_list = [
                     crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
                 ]
-                sequential = crypten.nn.Sequential(module_list)
+                sequential = crypten.nn.Sequential(*module_list)
                 sequential.encrypt()
 
                 # check container:
@@ -725,11 +725,9 @@ class TestNN(object):
         learning_rate = 0.1
         batch_size, num_inputs, num_intermediate, num_outputs = 8, 10, 5, 1
         model = crypten.nn.Sequential(
-            [
-                crypten.nn.Linear(num_inputs, num_intermediate),
-                crypten.nn.ReLU(),
-                crypten.nn.Linear(num_intermediate, num_outputs),
-            ]
+            crypten.nn.Linear(num_inputs, num_intermediate),
+            crypten.nn.ReLU(),
+            crypten.nn.Linear(num_intermediate, num_outputs),
         )
         model.train()
         model.encrypt()
@@ -1036,7 +1034,7 @@ class TestNN(object):
                 module_list = [
                     crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
                 ]
-                model = crypten.nn.Sequential(module_list)
+                model = crypten.nn.Sequential(*module_list)
                 if encrypt:
                     model.encrypt()
 
@@ -1049,7 +1047,7 @@ class TestNN(object):
                 module_list = [
                     crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
                 ]
-                new_model = crypten.nn.Sequential(module_list)
+                new_model = crypten.nn.Sequential(*module_list)
                 if encrypt:
                     with self.assertRaises(AssertionError):
                         new_model.load_state_dict(state_dict)
