@@ -16,10 +16,11 @@ class TrustedFirstParty:
     NAME = "TFP"
 
     @staticmethod
-    def generate_additive_triple(size0, size1, op, *args, **kwargs):
+    def generate_additive_triple(size0, size1, op, device=None, *args, **kwargs):
         """Generate multiplicative triples of given sizes"""
-        a = generate_random_ring_element(size0)
-        b = generate_random_ring_element(size1)
+        a = generate_random_ring_element(size0, device=device)
+        b = generate_random_ring_element(size1, device=device)
+
         c = getattr(torch, op)(a, b, *args, **kwargs)
 
         a = ArithmeticSharedTensor(a, precision=0, src=0)
@@ -29,9 +30,9 @@ class TrustedFirstParty:
         return a, b, c
 
     @staticmethod
-    def square(size):
+    def square(size, device=None):
         """Generate square double of given size"""
-        r = generate_random_ring_element(size)
+        r = generate_random_ring_element(size, device=device)
         r2 = r.mul(r)
 
         # Stack to vectorize scatter function
@@ -40,10 +41,10 @@ class TrustedFirstParty:
         return stacked[0], stacked[1]
 
     @staticmethod
-    def generate_binary_triple(size0, size1):
+    def generate_binary_triple(size0, size1, device=None):
         """Generate xor triples of given size"""
-        a = generate_kbit_random_tensor(size0)
-        b = generate_kbit_random_tensor(size1)
+        a = generate_kbit_random_tensor(size0, device=device)
+        b = generate_kbit_random_tensor(size1, device=device)
         c = a & b
 
         a = BinarySharedTensor(a, src=0)
@@ -53,10 +54,13 @@ class TrustedFirstParty:
         return a, b, c
 
     @staticmethod
-    def wrap_rng(size):
+    def wrap_rng(size, device=None):
         """Generate random shared tensor of given size and sharing of its wraps"""
         num_parties = comm.get().get_world_size()
-        r = [generate_random_ring_element(size) for _ in range(num_parties)]
+        r = [
+            generate_random_ring_element(size, device=device)
+            for _ in range(num_parties)
+        ]
         theta_r = count_wraps(r)
 
         shares = comm.get().scatter(r, src=0)
@@ -66,10 +70,10 @@ class TrustedFirstParty:
         return r, theta_r
 
     @staticmethod
-    def B2A_rng(size):
+    def B2A_rng(size, device=None):
         """Generate random bit tensor as arithmetic and binary shared tensors"""
         # generate random bit
-        r = generate_kbit_random_tensor(size, bitlength=1)
+        r = generate_kbit_random_tensor(size, bitlength=1, device=device)
 
         rA = ArithmeticSharedTensor(r, precision=0, src=0)
         rB = BinarySharedTensor(r, src=0)
@@ -77,7 +81,7 @@ class TrustedFirstParty:
         return rA, rB
 
     @staticmethod
-    def rand(*sizes):
+    def rand(*sizes, device=None):
         """Generate random ArithmeticSharedTensor uniform on [0, 1]"""
-        samples = torch.rand(*sizes)
+        samples = torch.rand(*sizes, device=device)
         return ArithmeticSharedTensor(samples, src=0)

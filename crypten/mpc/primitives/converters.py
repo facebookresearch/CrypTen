@@ -41,9 +41,15 @@ def _B2A(binary_tensor, precision=None, bits=None):
         binary_bits = binary_bits & 1
         arithmetic_bits = beaver.B2A_single_bit(binary_bits)
 
-        multiplier = torch.cat([torch.LongTensor([1]) << i for i in range(bits)])
+        multiplier = torch.cat(
+            [
+                torch.tensor([1], dtype=torch.long, device=binary_tensor.device) << i
+                for i in range(bits)
+            ]
+        )
         while multiplier.dim() < arithmetic_bits.dim():
             multiplier = multiplier.unsqueeze(1)
+
         arithmetic_tensor = arithmetic_bits.mul_(multiplier).sum(0)
 
     arithmetic_tensor.encoder = FixedPointEncoder(precision_bits=precision)

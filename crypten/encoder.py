@@ -36,22 +36,28 @@ class FixedPointEncoder:
             precision_bits = FixedPointEncoder.__default_precision_bits
         self._scale = int(2 ** precision_bits)
 
-    def encode(self, x):
+    def encode(self, x, device=None):
         """Helper function to wrap data if needed"""
         if isinstance(x, CrypTensor):
             return x
         elif isinstance(x, int) or isinstance(x, float):
             # Squeeze in order to get a 0-dim tensor with value `x`
-            return torch.LongTensor([self._scale * x]).squeeze()
+            return torch.tensor(
+                [self._scale * x], dtype=torch.long, device=device
+            ).squeeze()
         elif isinstance(x, list):
-            return torch.FloatTensor(x).mul_(self._scale).long()
+            return (
+                torch.tensor(x, dtype=torch.float, device=device)
+                .mul_(self._scale)
+                .long()
+            )
         elif is_float_tensor(x):
             return (self._scale * x).long()
         # For integer types cast to long prior to scaling to avoid overflow.
         elif is_int_tensor(x):
             return self._scale * x.long()
         elif isinstance(x, np.ndarray):
-            return self._scale * torch.from_numpy(x).long()
+            return self._scale * torch.from_numpy(x).long().to(device)
         elif torch.is_tensor(x):
             raise TypeError("Cannot encode input with dtype %s" % x.dtype)
         else:
@@ -72,7 +78,7 @@ class FixedPointEncoder:
         else:
             tensor = nearest_integer_division(tensor, self._scale)
 
-        return tensor
+        return tensor.data
 
     @property
     def scale(self):

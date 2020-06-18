@@ -6,15 +6,21 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
+from crypten.cuda import CUDALongTensor
 
 
 # helper functions that determine if input is float, int, or base tensor:
 def _is_type_tensor(tensor, types):
     """Checks whether the elements of the input tensor are of a given type"""
-    if torch.is_tensor(tensor):
+    if is_tensor(tensor):
         if any(tensor.dtype == type_ for type_ in types):
             return True
     return False
+
+
+def is_tensor(tensor):
+    """ Checks if the input tensor is a Torch tensor or a CUDALongTensor """
+    return torch.is_tensor(tensor) or isinstance(tensor, CUDALongTensor)
 
 
 def is_float_tensor(tensor):

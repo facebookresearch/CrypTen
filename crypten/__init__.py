@@ -15,6 +15,7 @@ import crypten.communicator as comm
 import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
 import torch
+from crypten.cuda import CUDALongTensor
 
 # other imports:
 from . import debug
@@ -27,7 +28,14 @@ enable_grad = CrypTensor.enable_grad
 set_grad_enabled = CrypTensor.set_grad_enabled
 
 
-def init(party_name=None):
+# FIXME: Fix this monkey patch when pytorch include cat and
+# stack in__torch_function__
+# See https://github.com/pytorch/pytorch/issues/34294 for details
+torch.stack = CUDALongTensor.stack
+torch.cat = CUDALongTensor.cat
+
+
+def init(party_name=None, device=None):
     # Initialize communicator
     comm._init(use_threads=False, init_ttp=crypten.mpc.ttp_required())
 
@@ -37,7 +45,7 @@ def init(party_name=None):
 
     # Setup seeds for Random Number Generation
     if comm.get().get_rank() < comm.get().get_world_size():
-        _setup_przs()
+        _setup_przs(device=device)
         if crypten.mpc.ttp_required():
             crypten.mpc.provider.ttp_provider.TTPClient._init()
 
@@ -151,7 +159,7 @@ def is_encrypted_tensor(obj):
     return isinstance(obj, CrypTensor)
 
 
-def _setup_przs():
+def _setup_przs(device=None):
     """
         Generate shared random seeds to generate pseudo-random sharings of
         zero. The random seeds are shared such that each process shares
@@ -165,8 +173,8 @@ def _setup_przs():
         sharing using bitwise-xor rather than addition / subtraction)
     """
     # Initialize RNG Generators
-    comm.get().g0 = torch.Generator()
-    comm.get().g1 = torch.Generator()
+    comm.get().g0 = torch.Generator(device=device)
+    comm.get().g1 = torch.Generator(device=device)
 
     # Generate random seeds for Generators
     # NOTE: Chosen seed can be any number, but we choose as a random 64-bit
@@ -205,7 +213,7 @@ def _setup_przs():
     # Create global generator
     global_seed = torch.tensor(numpy.random.randint(-(2 ** 63), 2 ** 63 - 1, (1,)))
     global_seed = comm.get().broadcast(global_seed, 0)
-    comm.get().global_generator = torch.Generator()
+    comm.get().global_generator = torch.Generator(device=device)
     comm.get().global_generator.manual_seed(global_seed.item())
 
 
@@ -258,7 +266,6 @@ def load_from_party(
             assert (f is None and (preloaded is not None)) or (
                 (f is not None) and preloaded is None
             ), "Exactly one of f and preloaded must not be None"
-
 
             if f is None:
                 result = preloaded
