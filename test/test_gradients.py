@@ -266,16 +266,20 @@ class TestGradients:
                         else:
                             with crypten.mpc.ConfigManager("max_method", method):
                                 self._check_forward_backward(
-                                    reduction,
-                                    tensor,
-                                    dim,
-                                    keepdim=keepdim,
+                                    reduction, tensor, dim, keepdim=keepdim
                                 )
 
     def test_matmul(self):
         """Test matmul with broadcasting."""
         matmul_sizes = [(1, 1), (1, 5), (5, 1), (5, 5)]
         batch_dims = [(), (1,), (5,), (1, 1), (1, 5), (5, 5)]
+
+        matched_sizes = [
+            ((1,), (1,)),
+            ((10,), (10,)),
+            ((10,), (10, 5)),
+            ((5, 10), (10,)),
+        ]
 
         matmul_funcs = ["matmul", "__matmul__", "__imatmul__"]
         torch_funcs = ["matmul", "__matmul__", "__matmul__"]
@@ -291,6 +295,14 @@ class TestGradients:
                     self._check_forward_backward(
                         func, tensor1, tensor2, torch_func_name=torch_funcs[i]
                     )
+
+            for sizes in matched_sizes:
+                tensor1 = get_random_test_tensor(size=sizes[0], is_float=True)
+                tensor2 = get_random_test_tensor(size=sizes[1], is_float=True)
+
+                self._check_forward_backward(
+                    func, tensor1, tensor2, torch_func_name=torch_funcs[i]
+                )
 
     def test_unary_functions(self):
         """Test unary functions on tensors of various sizes."""

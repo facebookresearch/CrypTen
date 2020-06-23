@@ -156,7 +156,7 @@ class AutogradFlip(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        dims, = ctx.saved_tensors
+        (dims,) = ctx.saved_tensors
         return grad_output.flip(dims)
 
 
@@ -194,7 +194,7 @@ class AutogradStack(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        dim, = ctx.saved_tensors
+        (dim,) = ctx.saved_tensors
         return grad_output.unbind(dim=dim)
 
 
@@ -207,7 +207,7 @@ class AutogradView(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input_size, = ctx.saved_tensors
+        (input_size,) = ctx.saved_tensors
         return grad_output.view(input_size)
 
 
@@ -220,7 +220,7 @@ class AutogradReshape(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        size, = ctx.saved_tensors
+        (size,) = ctx.saved_tensors
         return grad_output.reshape(size)
 
 
@@ -233,7 +233,7 @@ class AutogradFlatten(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        size, = ctx.saved_tensors
+        (size,) = ctx.saved_tensors
         return grad_output.reshape(size)
 
 
@@ -352,7 +352,7 @@ class AutogradSqueeze(AutogradFunction):
         # preprocess inputs:
         assert len(args) >= 1
         if len(args) == 1:
-            input, = args  # no dimension to squeeze in args
+            (input,) = args  # no dimension to squeeze in args
             dim = kwargs.get("dim", None)
         else:
             assert len(args) == 2
@@ -373,7 +373,7 @@ class AutogradSqueeze(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        dims, = ctx.saved_tensors
+        (dims,) = ctx.saved_tensors
         grad_input = grad_output
         for dim in dims:
             grad_input = grad_input.unsqueeze(dim)
@@ -389,7 +389,7 @@ class AutogradUnsqueeze(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        dim, = ctx.saved_tensors
+        (dim,) = ctx.saved_tensors
         return grad_output.squeeze(dim)
 
 
@@ -429,7 +429,7 @@ class AutogradReLU(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        mask, = ctx.saved_tensors
+        (mask,) = ctx.saved_tensors
         return grad_output.mul(mask)
 
 
@@ -523,7 +523,7 @@ class AutogradTanh(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        activations, = ctx.saved_tensors
+        (activations,) = ctx.saved_tensors
         return grad_output.mul(activations.square().neg().add(1.0))
 
 
@@ -609,13 +609,39 @@ class AutogradMatMul(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         self_, other = ctx.saved_tensors
+
+        # Cache sizes for invers_broadcast
+        self_size = self_.size()
+        other_size = other.size()
+
+        # Deal with vectors that are represented by a
+        # < 2 dimensional tensor
+        if self_.dim() < 2:
+            self_ = self_.unsqueeze(0)
+            grad_output = grad_output.unsqueeze(0)
+
+        if other.dim() < 2:
+            other = other.unsqueeze(1)
+            grad_output = grad_output.unsqueeze(1)
+
+        # Compute gradients
+        self_grad = grad_output.matmul(other.transpose(-2, -1))
+        other_grad = self_.transpose(-2, -1).matmul(grad_output)
+
+        # Fix gradient sizes for vector inputs
+        if len(self_size) < 2:
+            self_grad = self_grad.squeeze()
+            if self_grad.dim() < 1:
+                self_grad = self_grad.unsqueeze(0)
+
+        if len(other_size) < 2:
+            other_grad = other_grad.squeeze()
+            if other_grad.dim() < 1:
+                other_grad = other_grad.unsqueeze(0)
+
         return (
-            _inverse_broadcast(
-                grad_output.matmul(other.transpose(-2, -1)), self_.size()
-            ),
-            _inverse_broadcast(
-                self_.transpose(-2, -1).matmul(grad_output), other.size()
-            ),
+            _inverse_broadcast(self_grad, self_size),
+            _inverse_broadcast(other_grad, other_size),
         )
 
 
@@ -719,7 +745,7 @@ class AutogradSquare(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
+        (input,) = ctx.saved_tensors
         return grad_output.mul(input.mul(2.0))
 
 
@@ -733,7 +759,7 @@ class AutogradSqrt(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        output, = ctx.saved_tensors
+        (output,) = ctx.saved_tensors
         return grad_output.div(output.mul_(2.0))
 
 
@@ -747,7 +773,7 @@ class AutogradExp(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        output, = ctx.saved_tensors
+        (output,) = ctx.saved_tensors
         return output.mul(grad_output)
 
 
@@ -760,7 +786,7 @@ class AutogradLog(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, = ctx.saved_tensors
+        (input,) = ctx.saved_tensors
         return grad_output.div(input)
 
 
@@ -774,7 +800,7 @@ class AutogradReciprocal(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        reciprocal, = ctx.saved_tensors
+        (reciprocal,) = ctx.saved_tensors
         return grad_output.neg().mul_(reciprocal).mul_(reciprocal)
 
 
@@ -814,7 +840,7 @@ class AutogradSin(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        cos, = ctx.saved_tensors
+        (cos,) = ctx.saved_tensors
         return grad_output.mul(cos)
 
 
@@ -828,7 +854,7 @@ class AutogradCos(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        sin, = ctx.saved_tensors
+        (sin,) = ctx.saved_tensors
         return grad_output.mul(sin.neg_())
 
 
@@ -842,7 +868,7 @@ class AutogradAbs(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        sign, = ctx.saved_tensors
+        (sign,) = ctx.saved_tensors
         return grad_output.mul(sign.mul_(2.0).sub_(1.0))
 
 
@@ -905,7 +931,7 @@ class AutogradSum(AutogradFunction):
         # preprocess inputs:
         assert len(args) >= 1
         if len(args) == 1:
-            input, = args  # no dimension to sum over in args
+            (input,) = args  # no dimension to sum over in args
             dim = kwargs.get("dim", None)
         else:
             assert len(args) == 2
@@ -939,7 +965,7 @@ class AutogradCumsum(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        dim, = ctx.saved_tensors
+        (dim,) = ctx.saved_tensors
         return grad_output.flip(dim).cumsum(dim).flip(dim)
 
 
@@ -952,7 +978,7 @@ class AutogradTrace(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        size, = ctx.saved_tensors
+        (size,) = ctx.saved_tensors
         return grad_output.new(torch.eye(size)).mul_(grad_output)
 
 
@@ -964,7 +990,7 @@ class AutogradMean(AutogradFunction):
         # preprocess inputs:
         assert len(args) >= 1
         if len(args) == 1:
-            input, = args  # no dimension to average over in args
+            (input,) = args  # no dimension to average over in args
             dim = kwargs.get("dim", None)
         else:
             assert len(args) == 2
@@ -1000,7 +1026,7 @@ class AutogradVariance(AutogradFunction):
         # preprocess inputs:
         assert len(args) >= 1
         if len(args) == 1:
-            input, = args  # no dimension to compute variance over in args
+            (input,) = args  # no dimension to compute variance over in args
             dim = kwargs.get("dim", None)
         else:
             assert len(args) == 2
@@ -1032,7 +1058,7 @@ class AutogradMin(AutogradFunction):
         # preprocess inputs:
         assert len(args) >= 1
         if len(args) == 1:
-            input, = args  # no dimension to min over in args
+            (input,) = args  # no dimension to min over in args
             dim = kwargs.get("dim", None)
         else:
             assert len(args) == 2
@@ -1080,7 +1106,7 @@ class AutogradMax(AutogradFunction):
         # preprocess inputs:
         assert len(args) >= 1
         if len(args) == 1:
-            input, = args  # no dimension to max over in args
+            (input,) = args  # no dimension to max over in args
             dim = kwargs.get("dim", None)
         else:
             assert len(args) == 2
@@ -1131,7 +1157,7 @@ class AutogradSigmoid(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        probs, = ctx.saved_tensors
+        (probs,) = ctx.saved_tensors
         return grad_output.mul(probs).mul_(probs.neg().add_(1.0))
 
 
@@ -1181,7 +1207,7 @@ class AutogradPad(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        padding, = ctx.saved_tensors
+        (padding,) = ctx.saved_tensors
         for idx in range(0, len(padding), 2):
             dim = grad_output.dim() - (idx // 2) - 1
             start = padding[idx]
@@ -1544,7 +1570,7 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
         # Compute full forward pass
         log_pos, log_neg = crypten.stack([pred, 1.0 - pred]).log().unbind(dim=0)
         loss_values = target * log_pos + ((1.0 - target) * log_neg)
-        return -loss_values.mean()
+        return -(loss_values.mean())
 
     @staticmethod
     def backward(ctx, grad_output):
@@ -1572,7 +1598,7 @@ class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
             crypten.stack([sigmoid_out, 1.0 - sigmoid_out]).log().unbind(dim=0)
         )
         loss_values = target * log_pos + ((1.0 - target) * log_neg)
-        return -loss_values.mean()
+        return -(loss_values.mean())
 
     @staticmethod
     def backward(ctx, grad_output):

@@ -259,7 +259,6 @@ def load_from_party(
                 (f is not None) and preloaded is None
             ), "Exactly one of f and preloaded must not be None"
 
-
             if f is None:
                 result = preloaded
             if preloaded is None:
