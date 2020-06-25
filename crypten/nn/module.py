@@ -138,6 +138,14 @@ class Module:
                 pre = module_name if prefix is None else prefix + "." + module_name
                 yield from module.named_parameters(recurse=recurse, prefix=pre)
 
+    def to(self, *args, **kwargs):
+        """Moves and/or casts the parameters and buffers."""
+        for name, param in self._parameters.items():
+            self.set_parameter(name, param.to(*args, **kwargs))
+        for module_name, module in self.named_modules():
+            module.to(*args, **kwargs)
+        return self
+
     def _save_to_state_dict(self, destination, prefix, keep_vars):
         """
         Saves module state to `destination` dictionary, containing a state
