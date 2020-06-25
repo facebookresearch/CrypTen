@@ -9,59 +9,20 @@
 import itertools
 import logging
 import unittest
-from test.multiprocess_test_case import get_random_test_tensor
+from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.test_mpc import TestMPC
 
 import crypten
 import torch
 import torch.nn.functional as F
-from crypten.common.tensor_types import is_float_tensor
 from crypten.cuda import CUDALongTensor
-from crypten.mpc import MPCTensor
 
 
 @unittest.skipIf(torch.cuda.is_available() is False, "requires CUDA")
-class TestCUDA(unittest.TestCase):
+class TestCUDA(TestMPC):
     """
         This class tests all functions of CUDALongTensor as well as its integration with MPCTensor.
     """
-
-    def __init__(self, methodName):
-        super().__init__(methodName)
-        crypten.init()
-
-    def _check(self, encrypted_tensor, reference, msg, dst=None, tolerance=None):
-        if tolerance is None:
-            tolerance = getattr(self, "default_tolerance", 0.05)
-        tensor = encrypted_tensor.get_plain_text(dst=dst)
-        if dst is not None and dst != self.rank:
-            self.assertIsNone(tensor)
-            return
-
-        # Check sizes match
-        self.assertTrue(tensor.size() == reference.size(), msg)
-
-        self.assertTrue(is_float_tensor(reference), "reference must be a float")
-
-        if tensor.device != reference.device:
-            tensor = tensor.cpu()
-            reference = reference.cpu()
-
-        diff = (tensor - reference).abs_()
-        norm_diff = diff.div(tensor.abs() + reference.abs()).abs_()
-        test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.1)
-        test_passed = test_passed.gt(0).all().item() == 1
-        if not test_passed:
-            logging.info(msg)
-            logging.info("Result %s" % tensor)
-            logging.info("Reference %s" % reference)
-            logging.info("Result - Reference = %s" % (tensor - reference))
-        self.assertTrue(test_passed, msg=msg)
-
-    def _check_tuple(self, encrypted_tuple, reference, msg, tolerance=None):
-        self.assertTrue(isinstance(encrypted_tuple, tuple))
-        self.assertEqual(len(encrypted_tuple), len(reference))
-        for i in range(len(reference)):
-            self._check(encrypted_tuple[i], reference[i], msg, tolerance=tolerance)
 
     def _check_int(self, result, reference, msg):
         # Check sizes match
@@ -86,66 +47,31 @@ class TestCUDA(unittest.TestCase):
                 size=matrix_size, max_value=2 ** 62, is_float=False
             )
 
-            y_cuda = CUDALongTensor(y.cuda())
-            z = torch.matmul(x_cuda, y_cuda).data
+            y_cuda = CUDALongTensor(y)
+            z = torch.matmul(x_cuda, y_cuda)
+            self.assertTrue(
+                type(z) == CUDALongTensor, "result should be a CUDALongTensor"
+            )
 
             reference = torch.matmul(x, y)
             self._check_int(z.cpu(), reference, "matmul failed for cuda_patches")
 
     def test_conv1d_smaller_signal_one_channel(self):
         self._patched_conv1d(5, 1)
+        self._conv1d(5, 1)
 
     def test_conv1d_smaller_signal_many_channels(self):
         self._patched_conv1d(5, 5)
+        self._conv1d(5, 5)
 
     @unittest.skipIf(torch.cuda.is_available() is False, "requires CUDA")
     def test_conv1d_larger_signal_one_channel(self):
         self._patched_conv1d(16, 1)
+        self._conv1d(16, 1)
 
-    @unittest.skipIf(torch.cuda.is_available() is False, "requires CUDA")
     def test_conv1d_larger_signal_many_channels(self):
         self._patched_conv1d(16, 5)
-
-    def _conv1d(self, signal_size, in_channels):
-        """Test convolution of encrypted tensor with public/private tensors."""
-        nbatches = [1, 3]
-        kernel_sizes = [1, 2, 3]
-        ochannels = [1, 3, 6]
-        paddings = [0, 1]
-        strides = [1, 2]
-
-        for func_name in ["conv1d", "conv_transpose1d"]:
-            for kernel_type in [lambda x: x, MPCTensor]:
-                for (
-                    batches,
-                    kernel_size,
-                    out_channels,
-                    padding,
-                    stride,
-                ) in itertools.product(
-                    nbatches, kernel_sizes, ochannels, paddings, strides
-                ):
-                    input_size = (batches, in_channels, signal_size)
-                    signal = get_random_test_tensor(
-                        size=input_size, is_float=True
-                    ).cuda()
-
-                    if func_name == "conv1d":
-                        k_size = (out_channels, in_channels, kernel_size)
-                    else:
-                        k_size = (in_channels, out_channels, kernel_size)
-                    kernel = get_random_test_tensor(size=k_size, is_float=True).cuda()
-
-                    reference = getattr(F, func_name)(
-                        signal, kernel, padding=padding, stride=stride
-                    )
-                    encrypted_signal = MPCTensor(signal)
-                    encrypted_kernel = kernel_type(kernel)
-                    encrypted_conv = getattr(encrypted_signal, func_name)(
-                        encrypted_kernel, padding=padding, stride=stride
-                    )
-
-                    self._check(encrypted_conv, reference, f"{func_name} failed")
+        self._conv1d(16, 5)
 
     def _patched_conv1d(self, signal_size, in_channels):
         """Test convolution of torch.cuda.LongTensor with cuda_patches technique."""
@@ -174,8 +100,8 @@ class TestCUDA(unittest.TestCase):
                     k_size = (in_channels, out_channels, kernel_size)
                 kernel = get_random_test_tensor(size=k_size, is_float=False)
 
-                signal_cuda = CUDALongTensor(signal.cuda())
-                kernel_cuda = CUDALongTensor(kernel.cuda())
+                signal_cuda = CUDALongTensor(signal)
+                kernel_cuda = CUDALongTensor(kernel)
 
                 reference = getattr(F, func_name)(
                     signal, kernel, padding=padding, stride=stride
@@ -183,21 +109,28 @@ class TestCUDA(unittest.TestCase):
                 result = getattr(F, func_name)(
                     signal_cuda, kernel_cuda, padding=padding, stride=stride
                 )
+                self.assertTrue(
+                    type(result) == CUDALongTensor, "result should be a CUDALongTensor"
+                )
                 result = result.data.cpu()
 
                 self._check_int(result, reference, f"{func_name} failed")
 
     def test_conv2d_square_image_one_channel(self):
         self._patched_conv2d((5, 5), 1)
+        self._conv2d((5, 5), 1)
 
     def test_conv2d_square_image_many_channels(self):
         self._patched_conv2d((5, 5), 5)
+        self._conv2d((5, 5), 5)
 
     def test_conv2d_rectangular_image_one_channel(self):
         self._patched_conv2d((16, 7), 1)
+        self._conv2d((16, 7), 1)
 
     def test_conv2d_rectangular_image_many_channels(self):
         self._patched_conv2d((16, 7), 5)
+        self._conv2d((16, 7), 5)
 
     def _patched_conv2d(self, image_size, in_channels):
         """Test convolution of torch.cuda.LongTensor with cuda_patches technique."""
@@ -229,11 +162,14 @@ class TestCUDA(unittest.TestCase):
                     k_size = (in_channels, out_channels, *kernel_size)
                 kernel = get_random_test_tensor(size=k_size, is_float=False)
 
-                input_cuda = CUDALongTensor(input.cuda())
-                kernel_cuda = CUDALongTensor(kernel.cuda())
+                input_cuda = CUDALongTensor(input)
+                kernel_cuda = CUDALongTensor(kernel)
 
                 result = getattr(F, func_name)(
                     input_cuda, kernel_cuda, padding=padding, stride=stride
+                )
+                self.assertTrue(
+                    type(result) == CUDALongTensor, "result should be a CUDALongTensor"
                 )
                 result = result.data.cpu()
 
@@ -511,3 +447,53 @@ class TestCUDA(unittest.TestCase):
                     "result should be a CUDALongTensor",
                 )
                 self._check_int(result_tuple[i].cpu(), ref_tuple[i], "nonzero failed")
+
+    @unittest.skip("torch.scatter behaves inconsistently on CUDA")
+    def test_scatter(self):
+        """ This test will be skipped for now since torch.scatter provides
+            inconsistent result given the same input on CUDA. This is likely
+            due to a potential bug on pytorch's implementation of scatter
+        """
+        pass
+
+
+# Run all unit tests with both TFP and TTP providers
+class TestTFP(MultiProcessTestCase, TestCUDA):
+    def __init__(self, methodName):
+        super().__init__(methodName)
+        self.device = "cuda"
+
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.CrypTensor.set_grad_enabled(False)
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        super(TestTFP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        crypten.CrypTensor.set_grad_enabled(True)
+        super(TestTFP, self).tearDown()
+
+
+@unittest.skip("TTP is currently not supported for CUDA")
+class TestTTP(MultiProcessTestCase, TestCUDA):
+    def __init__(self, methodName):
+        super().__init__(methodName)
+        self.device = "cuda"
+
+    def setUp(self):
+        self._original_provider = crypten.mpc.get_default_provider()
+        crypten.CrypTensor.set_grad_enabled(False)
+        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
+        super(TestTTP, self).setUp()
+
+    def tearDown(self):
+        crypten.mpc.set_default_provider(self._original_provider)
+        crypten.CrypTensor.set_grad_enabled(True)
+        super(TestTTP, self).tearDown()
+
+
+# This code only runs when executing the file outside the test harness (e.g.
+# via the buck target of another test)
+if __name__ == "__main__":
+    unittest.main()

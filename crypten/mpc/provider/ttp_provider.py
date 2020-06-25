@@ -25,7 +25,7 @@ class TrustedThirdParty:
     NAME = "TTP"
 
     @staticmethod
-    def generate_additive_triple(size0, size1, op, *args, **kwargs):
+    def generate_additive_triple(size0, size1, op, device=None, *args, **kwargs):
         """Generate multiplicative triples of given sizes"""
         generator = TTPClient.get().generator
 
@@ -47,7 +47,7 @@ class TrustedThirdParty:
         return a, b, c
 
     @staticmethod
-    def square(size):
+    def square(size, device=None):
         """Generate square double of given size"""
         generator = TTPClient.get().generator
 
@@ -63,7 +63,7 @@ class TrustedThirdParty:
         return r, r2
 
     @staticmethod
-    def generate_binary_triple(size0, size1):
+    def generate_binary_triple(size0, size1, device=None):
         """Generate binary triples of given size"""
         generator = TTPClient.get().generator
 
@@ -84,7 +84,7 @@ class TrustedThirdParty:
         return a, b, c
 
     @staticmethod
-    def wrap_rng(size):
+    def wrap_rng(size, device=None):
         """Generate random shared tensor of given size and sharing of its wraps"""
         generator = TTPClient.get().generator
 
@@ -100,7 +100,7 @@ class TrustedThirdParty:
         return r, theta_r
 
     @staticmethod
-    def B2A_rng(size):
+    def B2A_rng(size, device=None):
         """Generate random bit tensor as arithmetic and binary shared tensors"""
         generator = TTPClient.get().generator
 
@@ -118,7 +118,7 @@ class TrustedThirdParty:
         return rA, rB
 
     @staticmethod
-    def rand(*sizes, encoder=None):
+    def rand(*sizes, encoder=None, device=None):
         """Generate random ArithmeticSharedTensor uniform on [0, 1]"""
         generator = TTPClient.get().generator
 
@@ -225,7 +225,7 @@ class TTPServer:
         """Create random generator to send to a party"""
         ws = comm.get().get_world_size()
 
-        seeds = [torch.randint(-2 ** 63, 2 ** 63 - 1, size=()) for _ in range(ws)]
+        seeds = [torch.randint(-(2 ** 63), 2 ** 63 - 1, size=()) for _ in range(ws)]
         reqs = [dist.isend(tensor=seeds[i], dst=i, group=self.group) for i in range(ws)]
         self.generators = [torch.Generator() for _ in range(ws)]
 

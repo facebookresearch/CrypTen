@@ -10,6 +10,9 @@ import crypten.communicator as comm
 # dependencies:
 import torch
 from crypten.common.rng import generate_kbit_random_tensor
+from crypten.common.tensor_types import is_tensor
+from crypten.common.util import torch_cat, torch_stack
+from crypten.cuda import CUDALongTensor
 from crypten.encoder import FixedPointEncoder
 
 from . import beaver, circuit
@@ -28,12 +31,15 @@ class BinarySharedTensor(object):
         where n is the number of parties present in the protocol (world_size).
     """
 
-    def __init__(self, tensor=None, size=None, src=0):
+    def __init__(self, tensor=None, size=None, src=0, device=None):
         if src == SENTINEL:
             return
         assert (
             isinstance(src, int) and src >= 0 and src < comm.get().get_world_size()
         ), "invalid tensor source"
+
+        if device is None and hasattr(tensor, "device"):
+            device = tensor.device
 
         #  Assume 0 bits of precision unless encoder is set outside of init
         self.encoder = FixedPointEncoder(precision_bits=0)
@@ -42,7 +48,7 @@ class BinarySharedTensor(object):
             size = tensor.size()
 
         # Generate Psuedo-random Sharing of Zero and add source's tensor
-        self.share = BinarySharedTensor.PRZS(size).share
+        self.share = BinarySharedTensor.PRZS(size, device=device).share
         if self.rank == src:
             assert tensor is not None, "Source must provide a data tensor"
             if hasattr(tensor, "src"):
@@ -55,12 +61,12 @@ class BinarySharedTensor(object):
     def from_shares(share, precision=None, src=0):
         """Generate a BinarySharedTensor from a share from each party"""
         result = BinarySharedTensor(src=SENTINEL)
-        result.share = share
+        result.share = CUDALongTensor(share) if share.is_cuda else share
         result.encoder = FixedPointEncoder(precision_bits=precision)
         return result
 
     @staticmethod
-    def PRZS(*size):
+    def PRZS(*size, device=None):
         """
         Generate a Pseudo-random Sharing of Zero (using arithmetic shares)
 
@@ -70,10 +76,39 @@ class BinarySharedTensor(object):
         numbers together.
         """
         tensor = BinarySharedTensor(src=SENTINEL)
-        current_share = generate_kbit_random_tensor(*size, generator=comm.get().g0)
-        next_share = generate_kbit_random_tensor(*size, generator=comm.get().g1)
+        current_share = generate_kbit_random_tensor(
+            *size, device=device, generator=comm.get().g0
+        )
+        next_share = generate_kbit_random_tensor(
+            *size, device=device, generator=comm.get().g1
+        )
         tensor.share = current_share ^ next_share
         return tensor
+
+    @property
+    def device(self):
+        """Return the `torch.device` of the underlying _tensor"""
+        return self._tensor.device
+
+    @property
+    def is_cuda(self):
+        """Return True if the underlying _tensor is stored on GPU, False otherwise"""
+        return self._tensor.is_cuda
+
+    def to(self, *args, **kwargs):
+        """Call `torch.Tensor.to` on the underlying _tensor"""
+        self._tensor = self._tensor.to(*args, **kwargs)
+        return self
+
+    def cuda(self, *args, **kwargs):
+        """Call `torch.Tensor.cuda` on the underlying _tensor"""
+        self._tensor = CUDALongTensor(self._tensor.cuda(*args, **kwargs))
+        return self
+
+    def cpu(self, *args, **kwargs):
+        """Call `torch.Tensor.cpu` on the underlying _tensor"""
+        self._tensor = self._tensor.cpu(*args, **kwargs)
+        return self
 
     @property
     def rank(self):
@@ -114,7 +149,7 @@ class BinarySharedTensor(object):
 
     def __ixor__(self, y):
         """Bitwise XOR operator (element-wise) in place"""
-        if torch.is_tensor(y) or isinstance(y, int):
+        if is_tensor(y) or isinstance(y, int):
             if self.rank == 0:
                 self.share ^= y
         elif isinstance(y, BinarySharedTensor):
@@ -129,14 +164,14 @@ class BinarySharedTensor(object):
         if isinstance(y, BinarySharedTensor):
             broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
             result.share = broadcast_tensors[0].clone()
-        elif torch.is_tensor(y):
+        elif is_tensor(y):
             broadcast_tensors = torch.broadcast_tensors(result.share, y)
             result.share = broadcast_tensors[0].clone()
         return result.__ixor__(y)
 
     def __iand__(self, y):
         """Bitwise AND operator (element-wise) in place"""
-        if torch.is_tensor(y) or isinstance(y, int):
+        if is_tensor(y) or isinstance(y, int):
             self.share &= y
         elif isinstance(y, BinarySharedTensor):
             self.share.set_(beaver.AND(self, y).share.data)
@@ -151,7 +186,7 @@ class BinarySharedTensor(object):
         if isinstance(y, BinarySharedTensor):
             broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
             result.share = broadcast_tensors[0].clone()
-        elif torch.is_tensor(y):
+        elif is_tensor(y):
             broadcast_tensors = torch.broadcast_tensors(result.share, y)
             result.share = broadcast_tensors[0].clone()
         return result.__iand__(y)
@@ -217,7 +252,7 @@ class BinarySharedTensor(object):
 
     def __setitem__(self, index, value):
         """Set tensor values by index"""
-        if torch.is_tensor(value) or isinstance(value, list):
+        if is_tensor(value) or isinstance(value, list):
             value = BinarySharedTensor(value)
         assert isinstance(
             value, BinarySharedTensor
@@ -232,7 +267,7 @@ class BinarySharedTensor(object):
             seq[0], BinarySharedTensor
         ), "Sequence must contain BinarySharedTensors"
         result = seq[0].shallow_copy()
-        result.share = torch.stack(
+        result.share = torch_stack(
             [BinarySharedTensor.share for BinarySharedTensor in seq], *args, **kwargs
         )
         return result
@@ -254,7 +289,7 @@ class BinarySharedTensor(object):
             x1 = x[(x.size(0) // 2) :]
             x = x0 + x1
             if extra is not None:
-                x.share = torch.cat([x.share, extra.share.unsqueeze(0)])
+                x.share = torch_cat([x.share, extra.share.unsqueeze(0)])
 
         if dim is None:
             x = x.squeeze()
@@ -310,7 +345,7 @@ class BinarySharedTensor(object):
 
         Returns: BinarySharedTensor or torch.tensor.
         """
-        if torch.is_tensor(condition):
+        if is_tensor(condition):
             condition = condition.long()
             is_binary = ((condition == 1) | (condition == 0)).all()
             assert is_binary, "condition values must be 0 or 1"
@@ -335,7 +370,7 @@ class BinarySharedTensor(object):
         is specified by its index in `src` for `dimension != dim` and by the
         corresponding value in `index` for `dimension = dim`.
         """
-        if torch.is_tensor(src):
+        if is_tensor(src):
             src = BinarySharedTensor(src)
         assert isinstance(
             src, BinarySharedTensor
