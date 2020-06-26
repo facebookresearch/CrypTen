@@ -1057,6 +1057,38 @@ class TestNN(object):
                 # check new model:
                 _check_state_dict(model, state_dict)
 
+    def test_to(self):
+        """Test Module.to, Module.cpu, and Module.cuda"""
+        module_list = [crypten.nn.Linear(10, 10) for _ in range(3)]
+        model = crypten.nn.Sequential(*module_list)
+
+        model_cpu = model.to("cpu")
+        cpu = torch.device("cpu")
+        for param in model_cpu.parameters():
+            self.assertEqual(param.device, cpu)
+        for buffer in model_cpu.buffers():
+            self.assertEqual(buffer.device, cpu)
+
+        model_cpu = model.cpu()
+        for param in model_cpu.parameters():
+            self.assertEqual(param.device, cpu)
+        for buffer in model_cpu.buffers():
+            self.assertEqual(buffer.device, cpu)
+
+        if torch.cuda.is_available():
+            cuda = torch.device("cuda:0")
+            model_cuda = model.cuda()
+            for param in model_cuda.parameters():
+                self.assertEqual(param.device, cuda)
+            for buffer in model_cuda.buffers():
+                self.assertEqual(buffer.device, cuda)
+
+            model_cuda = model.to("cuda:0")
+            for param in model_cuda.parameters():
+                self.assertEqual(param.device, cuda)
+            for buffer in model_cuda.buffers():
+                self.assertEqual(buffer.device, cuda)
+
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestNN):

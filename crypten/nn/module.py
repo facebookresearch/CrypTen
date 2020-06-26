@@ -327,6 +327,65 @@ class Module:
                 pre = module_name if prefix is None else prefix + "." + module_name
                 yield from module.named_buffers(recurse=recurse, prefix=pre)
 
+    def to(self, *args, **kwargs):
+        """
+        Moves and/or casts the parameters and buffers.
+
+        This can be called as
+
+        `to(device=None, dtype=None, non_blocking=False)`
+        `to(dtype, non_blocking=False)`
+        `to(tensor, non_blocking=False)`
+        `to(memory_format=torch.channels_last)`
+
+        Args:
+            device (torch.device) – the desired device of the parameters
+            and buffers in this module
+            dtype (torch.dtype) – the desired floating point type of the
+            floating point parameters and buffers in this module
+            tensor (torch.Tensor) – Tensor whose dtype and device are the
+            desired dtype and device for all parameters and buffers in this module
+            memory_format (torch.memory_format) – the desired memory format
+            for 4D parameters and buffers in this module (keyword only argument)
+
+        """
+        for name, param in self._parameters.items():
+            self.set_parameter(name, param.to(*args, **kwargs))
+        for name, buffer in self._buffers.items():
+            self.set_buffer(name, buffer.to(*args, **kwargs))
+
+        for module in self.modules():
+            module.to(*args, **kwargs)
+        return self
+
+    def cuda(self, device=None):
+        """
+        Moves all model parameters and buffers to the GPU.
+
+        Args:
+            device (int, optional) – if specified, all parameters will be copied
+            to that device
+        """
+        for name, param in self._parameters.items():
+            self.set_parameter(name, param.cuda(device=device))
+        for name, buffer in self._buffers.items():
+            self.set_buffer(name, buffer.cuda(device=device))
+
+        for module in self.modules():
+            module.cuda(device=device)
+        return self
+
+    def cpu(self):
+        """Moves all model parameters and buffers to the CPU."""
+        for name, param in self._parameters.items():
+            self.set_parameter(name, param.cpu())
+        for name, buffer in self._buffers.items():
+            self.set_buffer(name, buffer.cpu())
+
+        for module in self.modules():
+            module.cpu()
+        return self
+
     def _apply(self, fn):
         """Applies a function recursively on all modules."""
         for module in self.modules():

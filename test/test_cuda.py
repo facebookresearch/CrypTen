@@ -14,8 +14,28 @@ from test.test_mpc import TestMPC
 
 import crypten
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from crypten.cuda import CUDALongTensor
+
+
+class MLP(nn.Module):
+    def __init__(self, in_dim=128):
+        super().__init__()
+        self.linear1 = nn.Linear(in_dim, 128)
+        self.relu1 = nn.ReLU()
+        self.linear2 = nn.Linear(128, 128)
+        self.relu2 = nn.ReLU()
+        self.linear3 = nn.Linear(128, 1)
+
+    def forward(self, x):
+        x = self.linear1(x)
+        x = self.relu1(x)
+        x = self.linear2(x)
+        x = self.relu2(x)
+        x = self.linear3(x)
+
+        return x
 
 
 @unittest.skipIf(torch.cuda.is_available() is False, "requires CUDA")
@@ -37,6 +57,24 @@ class TestCUDA(TestMPC):
             logging.info("Result - Reference = %s" % (result - reference))
 
         self.assertTrue(is_eq, msg=msg)
+
+    def test_mlp(self):
+        """Test the forward/backward pass of MLP on GPU"""
+        model = MLP()
+        dummy_input = torch.empty((32, 128))
+        model = crypten.nn.from_pytorch(model, dummy_input=dummy_input)
+        model = model.to(self.device)
+        model.encrypt()
+        model.train()
+
+        rand_in = crypten.cryptensor(
+            torch.rand([32, 128], device=self.device), requires_grad=True
+        )
+        output = model(rand_in)
+
+        model.zero_grad()
+        output.backward()
+        model.update_parameters(learning_rate=1e-3)
 
     def test_patched_matmul(self):
         x = get_random_test_tensor(max_value=2 ** 62, is_float=False)

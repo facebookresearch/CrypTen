@@ -38,7 +38,7 @@ def count_wraps(share_list):
     We compute this by counting the number of overflows and underflows as we
     traverse the list of shares.
     """
-    result = torch.zeros(size=share_list[0].size(), dtype=torch.long)
+    result = torch.zeros_like(share_list[0], dtype=torch.long)
     prev = share_list[0]
     for cur in share_list[1:]:
         next = cur + prev
