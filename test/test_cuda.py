@@ -513,7 +513,6 @@ class TestTFP(MultiProcessTestCase, TestCUDA):
         super(TestTFP, self).tearDown()
 
 
-@unittest.skip("TTP is currently not supported for CUDA")
 class TestTTP(MultiProcessTestCase, TestCUDA):
     def __init__(self, methodName):
         super().__init__(methodName)
