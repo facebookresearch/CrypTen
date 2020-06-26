@@ -27,6 +27,10 @@ class Module:
         self.encrypted = False
         self.train()
 
+    def __repr__(self):
+        encrypted_str = "encrypted" if self.encrypted else "unencrypted"
+        return f"{type(self).__name__} {encrypted_str} module"
+
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         """
@@ -414,13 +418,16 @@ class Module:
 
             # encrypt / decrypt buffers:
             for name, buffer in self.named_buffers(recurse=False):
-                if mode:  # encrypt buffer
+                # encrypt buffer only if it's a torch tensor (not shapes)
+                if mode and torch.is_tensor(buffer):
                     self.set_buffer(
                         name,
                         crypten.cryptensor(buffer, **{"src": src}, requires_grad=False),
                     )
-                else:  # decrypt buffer
+                # decrypt buffer if it's a cryptensor
+                elif isinstance(buffer, crypten.CrypTensor):
                     self.set_buffer(name, buffer.get_plain_text())
+                    self._buffers[name].requires_grad = False
 
             # apply encryption recursively:
             return self._apply(lambda m: m.encrypt(mode=mode, src=src))
@@ -944,17 +951,15 @@ class Reshape(Module):
     dimensions and the number of elements in :attr:`self`.
 
     Args:
-        input (tuple of ints): the new shape
+        input (tuple): contains input tensor and shape (torch.Size)
     """
 
     def forward(self, input):
         assert isinstance(input, (list, tuple)), "input must be list or tuple"
         tensor, shape = input
+        assert isinstance(shape, torch.Size), "shape must be torch.Size"
 
-        # shape is not data so we can get plain text
-        if crypten.is_encrypted_tensor(shape):
-            shape = shape.get_plain_text()
-        return tensor.reshape(shape.long().tolist())
+        return tensor.reshape(shape)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
