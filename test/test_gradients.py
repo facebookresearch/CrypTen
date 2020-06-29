@@ -702,38 +702,42 @@ class TestGradients:
         """
         Tests batchnorm forward and backward steps with training on / off.
         """
-        # sizes for 1D, 2D, and 3D batchnorm
-        # batch_size (dim=0) > 500 and increase tolerance to avoid flaky precision
-        # errors in inv_var, which involves sqrt and reciprocal
-        sizes = [(800, 5), (500, 8, 15), (600, 10, 3, 15)]
-        tolerance = 0.5
-
+        tolerance = 0.1
+        sizes = [(8, 5), (16, 3), (32, 5), (8, 6, 4), (8, 4, 3, 5)]
         for size in sizes:
-            for is_trainning in (False, True):
-                tensor = get_random_test_tensor(size=size, is_float=True)
-                tensor.requires_grad = True
-                encrypted_input = crypten.cryptensor(tensor)
+            for is_training in (False, True):
 
+                # sample input data, weight, and bias:
+                tensor = get_random_test_tensor(size=size, is_float=True)
+                encrypted_input = crypten.cryptensor(tensor)
                 C = size[1]
                 weight = get_random_test_tensor(size=[C], max_value=1, is_float=True)
                 bias = get_random_test_tensor(size=[C], max_value=1, is_float=True)
                 weight.requires_grad = True
                 bias.requires_grad = True
 
-                # dimensions for mean and variance
+                # dimensions over which means and variances are computed:
                 stats_dimensions = list(range(tensor.dim()))
-                # perform on C dimension for tensor of shape (N, C, +)
                 stats_dimensions.pop(1)
 
+                # dummy running mean and variance:
                 running_mean = tensor.mean(stats_dimensions).detach()
                 running_var = tensor.var(stats_dimensions).detach()
-                enc_running_mean = encrypted_input.mean(stats_dimensions)
-                enc_running_var = encrypted_input.var(stats_dimensions)
+                enc_running_mean = crypten.cryptensor(running_mean)
+                enc_running_var = crypten.cryptensor(running_var)
 
+                # compute reference output:
+                tensor.requires_grad = True
                 reference = torch.nn.functional.batch_norm(
-                    tensor, running_mean, running_var, weight=weight, bias=bias
+                    tensor,
+                    running_mean,
+                    running_var,
+                    weight=weight,
+                    bias=bias,
+                    training=is_training,
                 )
 
+                # compute CrypTen output:
                 encrypted_input.requires_grad = True
                 ctx = AutogradContext()
                 batch_norm_fn = crypten.gradients.get_grad_fn("batchnorm")
@@ -742,7 +746,7 @@ class TestGradients:
                     encrypted_input,
                     weight,
                     bias,
-                    training=is_trainning,
+                    training=is_training,
                     running_mean=enc_running_mean,
                     running_var=enc_running_var,
                 )
@@ -751,12 +755,12 @@ class TestGradients:
                 self._check(
                     encrypted_out,
                     reference,
-                    "batchnorm forward failed with trainning "
-                    f"{is_trainning} on {tensor.dim()}-D",
+                    "batchnorm forward failed with training "
+                    f"{is_training} on {tensor.dim()}-D",
                     tolerance=tolerance,
                 )
 
-                # check backward (input, weight, and bias gradients)
+                # check backward (input, weight, and bias gradients):
                 reference.backward(reference)
                 encrypted_grad = batch_norm_fn.backward(ctx, encrypted_out)
                 TorchGrad = namedtuple("TorchGrad", ["name", "value"])
@@ -765,13 +769,12 @@ class TestGradients:
                     TorchGrad("weight gradient", weight.grad),
                     TorchGrad("bias gradient", bias.grad),
                 ]
-
                 for i, torch_gradient in enumerate(torch_gradients):
                     self._check(
                         encrypted_grad[i],
                         torch_gradient.value,
-                        f"batchnorm backward {torch_gradient.name} failed"
-                        f"with training {is_trainning} on {tensor.dim()}-D",
+                        f"batchnorm backward {torch_gradient.name} failed "
+                        f"with training {is_training} on {tensor.dim()}-D",
                         tolerance=tolerance,
                     )
 

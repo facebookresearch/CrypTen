@@ -1479,20 +1479,18 @@ class AutogradBatchNorm(AutogradFunction):
         Returns: (weight * normalized input + bias) of shape `(N, C, +)`.
         """
 
-        # determine dimensions over which means and variances are computed
-        # for an input of shape (N, C, +), stats are computed over the C dimension
+        # determine dimensions over which means and variances are computed:
         stats_dimensions = list(range(x.dim()))
-        # remove C dimension
         stats_dimensions.pop(1)
-        # shape for broadcasting stats with x
+
+        # shape for broadcasting statistics with input:
         broadcast_shape = [1] * x.dim()
         broadcast_shape[1] = x.shape[1]
 
+        # compute mean and variance, track batch statistics:
         if training:
-            # track batch statistics
             mean = x.mean(stats_dimensions)
             variance = x.var(stats_dimensions)
-
             if running_mean is not None and running_var is not None:
                 running_var.set(running_var * (1.0 - momentum) + variance * momentum)
                 running_mean.set(running_mean * (1.0 - momentum) + mean * momentum)
@@ -1504,20 +1502,23 @@ class AutogradBatchNorm(AutogradFunction):
             mean = running_mean
             variance = running_var
 
+        # compute inverse variance:
         if torch.is_tensor(variance):
-            inv_var = 1 / torch.sqrt(variance + eps)
+            inv_var = 1.0 / torch.sqrt(variance + eps)
         else:
             inv_var = (variance + eps).pos_pow(-0.5)
 
-        # reshape shape (C) to broadcastable (1, C, 1, +)
+        # reshape shape (C) to broadcastable (1, C, 1, +):
         mean = mean.reshape(broadcast_shape)
         inv_var = inv_var.reshape(broadcast_shape)
         weight = weight.reshape(broadcast_shape)
         bias = bias.reshape(broadcast_shape)
 
+        # compute z-scores:
         x_norm = (x - mean) * inv_var
 
-        ctx.save_multiple_for_backward((x_norm, weight, inv_var))
+        # save context and return:
+        ctx.save_multiple_for_backward((x_norm, weight, inv_var, training))
         return x_norm * weight + bias
 
     @staticmethod
@@ -1541,21 +1542,48 @@ class AutogradBatchNorm(AutogradFunction):
                 with shape (C).
             bias_grad (cryptensor): gradient with respect to bias of shape (C).
         """
-        x_norm, weight, inv_var = ctx.saved_tensors
-        # determine dimensions over which means and variances are computed
-        # statistics are computed over C dimension for input shape: (N, C, +)
+
+        # retrieve context:
+        x_norm, weight, inv_var, training = ctx.saved_tensors
+
+        # determine dimensions over which means and variances are computed:
         stats_dimensions = list(range(len(grad_output.shape)))
         stats_dimensions.pop(1)
 
-        x_grad = grad_output * weight * inv_var
+        # shape for broadcasting statistics with output gradient:
+        broadcast_shape = [1] * grad_output.dim()
+        broadcast_shape[1] = grad_output.shape[1]
 
-        weight_grad = grad_output.mul(x_norm)
-        weight_grad = weight_grad.sum(stats_dimensions)
+        # compute gradient w.r.t. weight:
+        grad_weight = grad_output.mul(x_norm)
+        grad_weight = grad_weight.sum(stats_dimensions)
 
-        bias_grad = grad_output.clone()
-        bias_grad = bias_grad.sum(stats_dimensions)
+        # compute gradient w.r.t. bias:
+        grad_bias = grad_output.sum(stats_dimensions)
 
-        return (x_grad, weight_grad, bias_grad)
+        # compute gradient with respect to the input:
+        grad_output = grad_output.mul(weight)
+        grad_input = grad_output.mul(inv_var)
+        if training:
+
+            # compute gradient term that is due to the mean:
+            num_element = reduce(
+                lambda x, y: x * y, [grad_output.size(d) for d in stats_dimensions]
+            )
+            grad_mean = grad_output.sum(stats_dimensions)
+            grad_mean = grad_mean.reshape(broadcast_shape)
+            grad_mean = grad_mean.mul(inv_var.div(-num_element))
+
+            # compute gradient term that is due to the standard deviation:
+            grad_std = x_norm.mul(grad_output).sum(stats_dimensions)
+            grad_std = grad_std.reshape(broadcast_shape)
+            grad_std = x_norm.mul(grad_std).mul(inv_var.div(-num_element))
+
+            # put all the terms together:
+            grad_input = grad_input.add(grad_mean).add(grad_std)
+
+        # return gradients:
+        return (grad_input, grad_weight, grad_bias)
 
 
 @register_function("binary_cross_entropy")
