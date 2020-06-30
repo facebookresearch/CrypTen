@@ -1593,7 +1593,7 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
         ctx.mark_non_differentiable(target)
         ctx.save_multiple_for_backward([pred, target])
         if skip_forward:
-            return pred.clone()
+            return pred.sub(pred).sum()
 
         # Compute full forward pass
         log_pos, log_neg = crypten.stack([pred, 1.0 - pred]).log().unbind(dim=0)
@@ -1619,7 +1619,7 @@ class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
         ctx.mark_non_differentiable(target)
         ctx.save_multiple_for_backward([target, sigmoid_out])
         if skip_forward:
-            return sigmoid_out  # TODO: Return None CrypTensor here?
+            return sigmoid_out.sub(sigmoid_out).sum()
 
         # Compute full forward pass
         log_pos, log_neg = (
@@ -1643,7 +1643,7 @@ class AutogradCrossEntropy(AutogradFunction):
         ctx.save_multiple_for_backward([softmax, target])
         ctx.mark_non_differentiable(target)
         if skip_forward:
-            return softmax
+            return softmax.sub(softmax).sum()
 
         # Compute full forward pass
         loss_values = softmax.log().mul_(target).neg_()

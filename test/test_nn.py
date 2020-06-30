@@ -478,7 +478,7 @@ class TestNN(object):
 
                 # test backward pass:
                 reference.backward(torch.ones(reference.size()))
-                encr_output.backward()
+                encr_output.backward(torch.ones(encr_output.size()))
                 if compute_gradients:
                     self._check(
                         encr_input.grad,
@@ -528,7 +528,7 @@ class TestNN(object):
 
                 # test backward pass:
                 reference.backward(torch.ones(reference.size()))
-                encr_output.backward()
+                encr_output.backward(torch.ones(encr_output.size()))
                 if compute_gradients:
                     self._check(
                         encr_input.grad, input.grad, "Linear backward on input failed"
