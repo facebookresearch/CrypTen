@@ -520,11 +520,10 @@ class ArithmeticSharedTensor(object):
 
     def sum_pool2d(self, *args, **kwargs):
         """Perform a sum pooling on each 2D matrix of the given tensor"""
-        # TODO: Implement avg_pool2d in CUDALongTensor
         result = self.shallow_copy()
         result.share = torch.nn.functional.avg_pool2d(
-            self.share.cpu(), *args, **kwargs, divisor_override=1
-        ).to(self.device)
+            self.share, *args, **kwargs, divisor_override=1
+        )
         return result
 
     def take(self, index, dimension=None):
