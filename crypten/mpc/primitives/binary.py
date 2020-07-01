@@ -58,9 +58,10 @@ class BinarySharedTensor(object):
             self.share ^= tensor
 
     @staticmethod
-    def from_shares(share, precision=None, src=0):
+    def from_shares(share, precision=None, src=0, device=None):
         """Generate a BinarySharedTensor from a share from each party"""
         result = BinarySharedTensor(src=SENTINEL)
+        share = share.to(device) if device is not None else share
         result.share = CUDALongTensor(share) if share.is_cuda else share
         result.encoder = FixedPointEncoder(precision_bits=precision)
         return result

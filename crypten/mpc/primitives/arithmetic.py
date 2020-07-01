@@ -98,9 +98,10 @@ class ArithmeticSharedTensor(object):
         self._tensor = value
 
     @staticmethod
-    def from_shares(share, precision=None, src=0):
+    def from_shares(share, precision=None, src=0, device=None):
         """Generate an ArithmeticSharedTensor from a share from each party"""
         result = ArithmeticSharedTensor(src=SENTINEL)
+        share = share.to(device) if device is not None else share
         result.share = CUDALongTensor(share) if share.is_cuda else share
         result.encoder = FixedPointEncoder(precision_bits=precision)
         return result

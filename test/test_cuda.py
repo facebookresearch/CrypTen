@@ -221,7 +221,7 @@ class TestCUDA(TestMPC):
         """Test torch arithmetic on CUDALongTensor"""
         funcs = ["add", "sub", "mul", "div"]
         a = get_random_test_tensor(is_float=False)
-        b = get_random_test_tensor(is_float=False)
+        b = get_random_test_tensor(min_value=1, is_float=False)
 
         a_cuda = CUDALongTensor(a)
         b_cuda = CUDALongTensor(b)
@@ -542,7 +542,6 @@ class TestTFP(MultiProcessTestCase, TestCUDA):
         super(TestTFP, self).tearDown()
 
 
-@unittest.skip("TTP is currently not supported for CUDA")
 class TestTTP(MultiProcessTestCase, TestCUDA):
     def __init__(self, methodName):
         super().__init__(methodName)

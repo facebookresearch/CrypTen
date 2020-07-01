@@ -41,9 +41,9 @@ class TrustedThirdParty:
             c_size = getattr(torch, op)(a, b, *args, **kwargs).size()
             c = generate_random_ring_element(c_size, generator=generator)
 
-        a = ArithmeticSharedTensor.from_shares(a, precision=0)
-        b = ArithmeticSharedTensor.from_shares(b, precision=0)
-        c = ArithmeticSharedTensor.from_shares(c, precision=0)
+        a = ArithmeticSharedTensor.from_shares(a, precision=0, device=device)
+        b = ArithmeticSharedTensor.from_shares(b, precision=0, device=device)
+        c = ArithmeticSharedTensor.from_shares(c, precision=0, device=device)
         return a, b, c
 
     @staticmethod
@@ -58,8 +58,8 @@ class TrustedThirdParty:
         else:
             r2 = generate_random_ring_element(size, generator=generator)
 
-        r = ArithmeticSharedTensor.from_shares(r, precision=0)
-        r2 = ArithmeticSharedTensor.from_shares(r2, precision=0)
+        r = ArithmeticSharedTensor.from_shares(r, precision=0, device=device)
+        r2 = ArithmeticSharedTensor.from_shares(r2, precision=0, device=device)
         return r, r2
 
     @staticmethod
@@ -78,9 +78,9 @@ class TrustedThirdParty:
             c = generate_kbit_random_tensor(size2, generator=generator)
 
         # Stack to vectorize scatter function
-        a = BinarySharedTensor.from_shares(a)
-        b = BinarySharedTensor.from_shares(b)
-        c = BinarySharedTensor.from_shares(c)
+        a = BinarySharedTensor.from_shares(a, device=device)
+        b = BinarySharedTensor.from_shares(b, device=device)
+        c = BinarySharedTensor.from_shares(c, device=device)
         return a, b, c
 
     @staticmethod
@@ -95,8 +95,10 @@ class TrustedThirdParty:
         else:
             theta_r = generate_random_ring_element(size, generator=generator)
 
-        r = ArithmeticSharedTensor.from_shares(r, precision=0)
-        theta_r = ArithmeticSharedTensor.from_shares(theta_r, precision=0)
+        r = ArithmeticSharedTensor.from_shares(r, precision=0, device=device)
+        theta_r = ArithmeticSharedTensor.from_shares(
+            theta_r, precision=0, device=device
+        )
         return r, theta_r
 
     @staticmethod
@@ -113,8 +115,8 @@ class TrustedThirdParty:
         else:
             rA = generate_random_ring_element(size, generator=generator)
 
-        rA = ArithmeticSharedTensor.from_shares(rA, precision=0)
-        rB = BinarySharedTensor.from_shares(rB)
+        rA = ArithmeticSharedTensor.from_shares(rA, precision=0, device=device)
+        rB = BinarySharedTensor.from_shares(rB, device=device)
         return rA, rB
 
     @staticmethod
@@ -133,7 +135,7 @@ class TrustedThirdParty:
             samples = TTPClient.get().ttp_request("rand", *sizes, encoder=encoder)
         else:
             samples = generate_random_ring_element(sizes, generator=generator)
-        return ArithmeticSharedTensor.from_shares(samples)
+        return ArithmeticSharedTensor.from_shares(samples, device=device)
 
     @staticmethod
     def _init():
