@@ -263,6 +263,35 @@ class TestCUDA(TestMPC):
             self._check_int(result1.cpu(), reference, "%s comparator failed" % comp)
             self._check_int(result2.cpu(), reference, "%s comparator failed" % comp)
 
+    def test_torch_avg_pool2d(self):
+        """Test avg_pool2d on CUDALongTensor"""
+        for width in range(2, 5):
+            for kernel_size in range(1, width):
+                matrix_size = (1, 4, 5, width)
+                matrix = get_random_test_tensor(size=matrix_size, is_float=False)
+                matrix_cuda = CUDALongTensor(matrix)
+                for stride in range(1, kernel_size + 1):
+                    for padding in range(kernel_size // 2 + 1):
+                        for divisor_override in [None, 1, 2]:
+                            reference = F.avg_pool2d(
+                                matrix,
+                                kernel_size,
+                                stride=stride,
+                                padding=padding,
+                                divisor_override=divisor_override,
+                            )
+                            result = F.avg_pool2d(
+                                matrix_cuda,
+                                kernel_size,
+                                stride=stride,
+                                padding=padding,
+                                divisor_override=divisor_override,
+                            )
+
+                            self._check_int(
+                                result.cpu(), reference, "avg_pool2d failed"
+                            )
+
     def test_torch_stack_cat(self):
         """Test torch.cat/torch.stack on CUDALongTensor"""
         funcs = ["stack", "cat"]

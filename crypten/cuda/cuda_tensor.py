@@ -253,6 +253,36 @@ class CUDALongTensor(object):
         )
 
     @staticmethod
+    @implements(torch.nn.functional.avg_pool2d)
+    def avg_pool2d(x, kernel_size, divisor_override=None, *args, **kwargs):
+        x_encoded = CUDALongTensor.__encode_as_fp64(x).data
+
+        bs, c, h, w = x.shape
+        x_encoded = x_encoded.reshape(3 * bs, c, h, w)
+
+        z_encoded = torch.nn.functional.avg_pool2d(
+            x_encoded, kernel_size, divisor_override=1, *args, **kwargs
+        )
+
+        z_enc = z_encoded.reshape(3, bs, *z_encoded.shape[1:]).long()
+
+        z = z_enc[2] << 44
+        z += z_enc[1] << 22
+        z += z_enc[0]
+
+        if isinstance(kernel_size, (int, float)):
+            pool_size = kernel_size ** 2
+        else:
+            pool_size = kernel_size[0] * kernel_size[1]
+
+        if divisor_override is not None:
+            z //= divisor_override
+        else:
+            z //= pool_size
+
+        return CUDALongTensor(z)
+
+    @staticmethod
     @implements(torch.broadcast_tensors)
     def broadcast_tensors(*tensors):
         tensor_list = [t.data for t in tensors]
