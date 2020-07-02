@@ -8,6 +8,8 @@
 import logging
 import timeit
 
+import torch
+
 
 class Communicator:
     """
@@ -145,6 +147,50 @@ class Communicator:
 
     def _log_communication_time(self, comm_time):
         self.comm_time += comm_time
+
+    def get_g0(self, device=None):
+        assert hasattr(
+            self, "g0"
+        ), "Generator g0 is not initialized, call crypten.init() first"
+        assert device is None or isinstance(
+            device, (str, torch.device)
+        ), "device must either be a string or a torch.device"
+
+        is_cuda = (isinstance(device, torch.device) and device.type == "cuda") or (
+            isinstance(device, str) and device.startswith("cuda")
+        )
+        if is_cuda:
+            assert (
+                torch.cuda.is_available()
+            ), "Specifying a GPU device but cuda is not available"
+            assert hasattr(
+                self, "g0_cuda"
+            ), "Generator g0_cuda is not initialized, call crypten.init() first"
+            return self.g0_cuda
+
+        return self.g0
+
+    def get_g1(self, device=None):
+        assert hasattr(
+            self, "g1"
+        ), "Generator g1 is not initialized, call crypten.init() first"
+        assert device is None or isinstance(
+            device, (str, torch.device)
+        ), "device must either be a string or a torch.device"
+
+        is_cuda = (isinstance(device, torch.device) and device.type == "cuda") or (
+            isinstance(device, str) and device.startswith("cuda")
+        )
+        if is_cuda:
+            assert (
+                torch.cuda.is_available()
+            ), "Specifying a GPU device but cuda is not available"
+            assert hasattr(
+                self, "g1_cuda"
+            ), "Generator g1_cuda is not initialized, call crypten.init() first"
+            return self.g1_cuda
+
+        return self.g1
 
 
 def _logging(func):

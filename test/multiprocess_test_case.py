@@ -184,7 +184,7 @@ class MultiProcessTestCase(unittest.TestCase):
         for key, val in communicator_args.items():
             os.environ[key] = str(val)
 
-        crypten.init(device=self.device)
+        crypten.init()
         self.setUp()
 
         # We're retrieving a corresponding test and executing it.
