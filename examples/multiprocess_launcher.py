@@ -56,7 +56,10 @@ class MultiProcessLauncher:
         os.environ["RANK"] = str(rank)
         orig_logging_level = logging.getLogger().level
         logging.getLogger().setLevel(logging.INFO)
-        crypten.init()
+        if hasattr(fn_args, "device"):
+            crypten.init(device=fn_args.device)
+        else:
+            crypten.init()
         logging.getLogger().setLevel(orig_logging_level)
         if fn_args is None:
             run_process_fn()

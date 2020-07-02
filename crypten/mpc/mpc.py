@@ -195,7 +195,10 @@ class MPCTensor(CrypTensor):
             return retval
         else:
             device = input
-            self.share = self.share.to(device)
+            share = self.share.to(device)
+            if share.is_cuda:
+                share = CUDALongTensor(share)
+            self.share = share
             return self
 
     def arithmetic(self):

@@ -104,9 +104,11 @@ class FuncBenchmarks:
     # for exponential, sin, and cos
     TRUNCATED_DOMAIN = torch.arange(start=0.001, end=10, step=0.001)
 
-    def __init__(self, tensor_size=(100, 100)):
+    def __init__(self, tensor_size=(100, 100), device=None):
         self.tensor_size = tensor_size
-        crypten.init()
+        self.device = device
+
+        crypten.init(device=device)
         # dataframe for benchmarks
         self.df = None
 
@@ -131,7 +133,10 @@ class FuncBenchmarks:
 
     def get_runtimes(self):
         """Returns plain text and crypten runtimes"""
-        x, y = torch.rand(self.tensor_size), torch.rand(self.tensor_size)
+        x, y = (
+            torch.rand(self.tensor_size, device=self.device),
+            torch.rand(self.tensor_size, device=self.device),
+        )
         x_enc, y_enc = crypten.cryptensor(x), crypten.cryptensor(y)
 
         runtimes, runtimes_enc = [], []
@@ -178,8 +183,8 @@ class FuncBenchmarks:
     def random_conv2d_inputs(self):
         """Returns random input and weight tensors for 2d convolutions"""
         filter_size = [size // 10 for size in self.tensor_size]
-        x_conv2d = torch.rand(1, 1, *self.tensor_size)
-        weight2d = torch.rand(1, 1, *filter_size)
+        x_conv2d = torch.rand(1, 1, *self.tensor_size, device=self.device)
+        weight2d = torch.rand(1, 1, *filter_size, device=self.device)
         x_conv2d_enc = crypten.cryptensor(x_conv2d)
         weight2d_enc = crypten.cryptensor(weight2d)
         return x_conv2d, x_conv2d_enc, weight2d, weight2d_enc
@@ -188,8 +193,8 @@ class FuncBenchmarks:
         """Returns random input and weight tensors for 1d convolutions"""
         size = self.tensor_size[0]
         filter_size = size // 10
-        (x_conv1d,) = torch.rand(1, 1, size)
-        weight1d = torch.rand(1, 1, filter_size)
+        (x_conv1d,) = torch.rand(1, 1, size, device=self.device)
+        weight1d = torch.rand(1, 1, filter_size, device=self.device)
         x_conv1d_enc = crypten.cryptensor(x_conv1d)
         weight1d_enc = crypten.cryptensor(weight1d)
         return x_conv1d, x_conv1d_enc, weight1d, weight1d_enc
@@ -198,20 +203,20 @@ class FuncBenchmarks:
     def calc_abs_error(ref, out):
         """Computes total absolute error"""
         if ref.dtype == torch.bool:
-            errors = (out != ref).sum().numpy()
+            errors = (out != ref).sum().cpu().numpy()
             return errors
-        errors = torch.abs(out - ref).numpy()
+        errors = torch.abs(out - ref).cpu().numpy()
         return errors.sum()
 
     @staticmethod
     def calc_relative_error(ref, out):
         """Computes average relative error"""
         if ref.dtype == torch.bool:
-            errors = ((out != ref).sum() // ref.nelement()).numpy()
+            errors = ((out != ref).sum() // ref.nelement()).cpu().numpy()
             return errors
         errors = torch.abs((out - ref) / ref)
         # remove inf due to division by tiny numbers
-        errors = errors[errors != float("inf")].numpy()
+        errors = errors[errors != float("inf")].cpu().numpy()
         return errors.mean()
 
     def call_function_on_domain(self, func):
@@ -224,7 +229,11 @@ class FuncBenchmarks:
             FuncBenchmarks.DOMAIN,
             FuncBenchmarks.TRUNCATED_DOMAIN,
         )
-        y = torch.rand(DOMAIN.shape)
+        DOMAIN, TRUNCATED_DOMAIN = (
+            DOMAIN.to(self.device),
+            TRUNCATED_DOMAIN.to(self.device),
+        )
+        y = torch.rand(DOMAIN.shape, device=self.device)
         DOMAIN_enc, y_enc = crypten.cryptensor(DOMAIN), crypten.cryptensor(y)
         TRUNCATED_DOMAIN_enc = crypten.cryptensor(TRUNCATED_DOMAIN)
 
@@ -317,8 +326,11 @@ class ModelBenchmarks:
         lr_rate (float): learning rate.
     """
 
-    def __init__(self, advanced_models=False):
+    def __init__(self, device=None, advanced_models=False):
         self.df = None
+        self.device = device
+
+        crypten.init(device=device)
 
         self.models = models.MODELS
         if not advanced_models:
@@ -352,6 +364,9 @@ class ModelBenchmarks:
         criterion = getattr(torch.nn, loss)()
         optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
+        x, y = x.to(self.device), y.to(self.device)
+        model = model.to(self.device)
+
         for _ in range(epochs):
             model.zero_grad()
             output = model(x)
@@ -379,6 +394,11 @@ class ModelBenchmarks:
         assert isinstance(model, crypten.nn.Module), "must be a CrypTen model"
         criterion = getattr(crypten.nn, loss)()
 
+        x, y = x.to(self.device), y.to(self.device)
+
+        model = model.to(self.device)
+        model = model.encrypt()
+
         for _ in range(epochs):
             model.zero_grad()
             output = model(x)
@@ -400,7 +420,8 @@ class ModelBenchmarks:
             runtimes.append(runtime)
 
             x_enc, y_enc = model.data.x_enc, model.data.y_enc
-            model_enc = model.crypten().encrypt()
+            x_enc, y_enc = x_enc.to(self.device), y_enc.to(self.device)
+            model_enc = model.crypten()
             runtime_enc, _ = self.train_crypten(
                 model_enc, x_enc, y_enc, 1, model.lr, model.loss
             )
@@ -410,6 +431,12 @@ class ModelBenchmarks:
 
     @time_me(n_loops=3)
     def predict(self, model, x):
+        x = x.to(self.device)
+        model = model.to(self.device)
+
+        if isinstance(model, crypten.nn.Module):
+            model.encrypt()
+
         y = model(x)
         return y
 
@@ -423,7 +450,7 @@ class ModelBenchmarks:
             runtime, _ = self.predict(model_plain, model.data.x)
             runtimes.append(runtime)
 
-            model_enc = model.crypten().encrypt()
+            model_enc = model.crypten()
             runtime_enc, _ = self.predict(model_enc, model.data.x_enc)
             runtimes_enc.append(runtime_enc)
 
@@ -442,7 +469,7 @@ class ModelBenchmarks:
         """
         predicted = (output > threshold).float()
         correct = (predicted == y).sum().float()
-        accuracy = float((correct / y.shape[0]).numpy())
+        accuracy = float((correct / y.shape[0]).cpu().numpy())
         return accuracy
 
     def evaluate(self):
@@ -457,15 +484,16 @@ class ModelBenchmarks:
             )
 
             x_test, y_test = model.data.x_test, model.data.y_test
+            x_test, y_test = x_test.to(self.device), y_test.to(self.device)
             accuracy = ModelBenchmarks.calc_accuracy(model_plain(x_test), y_test)
             accuracies.append(accuracy)
 
-            model_crypten = model.crypten().encrypt()
+            model_crypten = model.crypten()
             x_enc, y_enc = model.data.x_enc, model.data.y_enc
             _, model_crypten = self.train_crypten(
                 model_crypten, x_enc, y_enc, model.epochs, model.lr, model.loss
             )
-            x_test_enc = model.data.x_test_enc
+            x_test_enc = model.data.x_test_enc.to(self.device)
 
             output = model_crypten(x_test_enc).get_plain_text()
             accuracy = ModelBenchmarks.calc_accuracy(output, y_test)
@@ -537,6 +565,12 @@ def get_args():
         action="store_true",
         help="run advanced model (resnet, transformer, etc.) benchmarks",
     )
+    parser.add_argument(
+        "--device",
+        required=False,
+        default=None,
+        help="the device to run the benchmarks",
+    )
     args = parser.parse_args()
     return args
 
@@ -548,7 +582,6 @@ def multiprocess_caller(args):
         rank = comm.get().get_rank()
         if rank == 0:
             pd.set_option("display.precision", 3)
-            print(benchmark)
             if args.path:
                 benchmark.save(args.path)
 
@@ -557,8 +590,8 @@ def main():
     """Runs benchmarks and saves if path is provided"""
     args = get_args()
     benchmarks = [
-        FuncBenchmarks(),
-        ModelBenchmarks(advanced_models=args.advanced_models),
+        FuncBenchmarks(device=args.device),
+        ModelBenchmarks(device=args.device, advanced_models=args.advanced_models),
     ]
 
     if args.only_functions:
@@ -577,7 +610,6 @@ def main():
         pd.set_option("display.precision", 3)
         for benchmark in benchmarks:
             benchmark.run()
-            print(benchmark)
             if args.path:
                 benchmark.save(args.path)
 

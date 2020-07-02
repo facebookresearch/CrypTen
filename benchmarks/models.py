@@ -93,7 +93,6 @@ def resnet18():
 def resnet18_enc():
     model = torch.hub.load("pytorch/vision:v0.5.0", "resnet18", pretrained=True)
     dummy_input = torch.rand([1, 3, 224, 224])
-    crypten.init()
     model_enc = crypten.nn.from_pytorch(model, dummy_input)
     return model_enc
 
