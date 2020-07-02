@@ -77,15 +77,35 @@ class TestCUDA(TestMPC):
         model.update_parameters(learning_rate=1e-3)
 
     def test_patched_matmul(self):
-        x = get_random_test_tensor(max_value=2 ** 62, is_float=False)
-        x_cuda = CUDALongTensor(x.cuda())
-        for width in range(2, x.nelement()):
-            matrix_size = (x.nelement(), width)
-            y = get_random_test_tensor(
-                size=matrix_size, max_value=2 ** 62, is_float=False
-            )
+        """Test torch.matmul on CUDALongTensor"""
+        input_sizes = [
+            (5,),
+            (5, 5),
+            (5,),
+            (5, 5),
+            (5, 5, 5),
+            (5,),
+            (5, 5, 5, 5),
+            (5, 5),
+        ]
+        other_sizes = [
+            (5,),
+            (5, 5),
+            (5, 5),
+            (5,),
+            (5,),
+            (5, 5, 5),
+            (5, 5),
+            (5, 5, 5, 5),
+        ]
 
+        for x_size, y_size in zip(input_sizes, other_sizes):
+            x = get_random_test_tensor(size=x_size, max_value=2 ** 62, is_float=False)
+            x_cuda = CUDALongTensor(x)
+
+            y = get_random_test_tensor(size=y_size, max_value=2 ** 62, is_float=False)
             y_cuda = CUDALongTensor(y)
+
             z = torch.matmul(x_cuda, y_cuda)
             self.assertTrue(
                 type(z) == CUDALongTensor, "result should be a CUDALongTensor"
