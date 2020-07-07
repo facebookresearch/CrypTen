@@ -171,10 +171,14 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                         self.grad.add_(grad_input)  # ... or accumulate gradient...
                     return  # ... and do not proceed.
 
-                # TODO: Remove the default grad_input value currently set to all_ones
                 # if undefined, set gradient input to all ones:
                 if grad_input is None:
-                    grad_input = self.new(torch.ones_like(self.share))
+                    if self.nelement() == 1:
+                        grad_input = self.new(torch.ones_like(self.share))
+                    else:
+                        raise RuntimeError(
+                            "grad can be implicitly created only for scalar outputs"
+                        )
 
                 # check that we can actually backpropagate:
                 if self.grad_fn is None:
