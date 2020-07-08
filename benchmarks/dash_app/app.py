@@ -11,6 +11,7 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output
@@ -29,11 +30,13 @@ PATH = pathlib.Path(__file__).parent
 DATA_PATH = PATH.joinpath("data").resolve()
 
 available_dates = get_available_dates(DATA_PATH)
-func_df, model_df = read_data(DATA_PATH, available_dates)
+func_df_cpu, model_df_cpu = read_data(DATA_PATH, available_dates)
+func_df_gpu, model_df_gpu = read_data(DATA_PATH, available_dates, cuda=True)
+func_df = pd.concat([func_df_cpu, func_df_gpu])
+model_df = pd.concat([model_df_cpu, model_df_gpu])
 
+colors_discrete = px.colors.qualitative.Set2
 template = "simple_white"
-green, blue = "#229954", "#1E88E5"
-
 
 # Since we're adding callbacks to elements that don't exist in the app.layout,
 # Dash will raise an exception to warn us that we might be
@@ -68,8 +71,10 @@ index_page = html.Div(
                     [
                         html.Div(
                             [
-                                html.H2("CrypTen", style={"margin-bottom": "0px"}),
-                                html.H4("Benchmarks", style={"margin-top": "0px"}),
+                                html.H2("CrypTen", style={
+                                        "margin-bottom": "0px"}),
+                                html.H4("Benchmarks", style={
+                                        "margin-top": "0px"}),
                             ]
                         )
                     ],
@@ -79,7 +84,8 @@ index_page = html.Div(
                 html.Div(
                     [
                         html.A(
-                            html.Button("Compare Dates", id="learn-more-button"),
+                            html.Button("Compare Dates",
+                                        id="learn-more-button"),
                             href="/compare",
                         )
                     ],
@@ -106,17 +112,17 @@ index_page = html.Div(
                         html.H3("Functions"),
                         dcc.Markdown(
                             """To reproduce or view assumptions see
-[benchmarks](
-https://github.com/facebookresearch/CrypTen/blob/master/benchmarks/benchmark.py#L68)
-                        """
+                            [benchmarks](
+                            https://github.com/facebookresearch/CrypTen/blob/master/benchmarks/benchmark.py#L68)
+                            """
                         ),
                         html.H5("Runtimes"),
                         dcc.Markdown(
                             """
-* function runtimes are averaged over 10 runs using a random tensor of size (100, 100).
-* `max` and `argmax` are excluded as they take considerably longer.
-    * As of 02/25/2020, `max` / `argmax` take 3min 13s ± 4.73s
-""",
+                            * function runtimes are averaged over 10 runs using a random tensor of size (100, 100).
+                            * `max` and `argmax` are excluded as they take considerably longer.
+                                * As of 02/25/2020, `max` / `argmax` take 3min 13s ± 4.73s
+                            """,
                             className="bullets",
                         ),
                     ]
@@ -137,9 +143,9 @@ https://github.com/facebookresearch/CrypTen/blob/master/benchmarks/benchmark.py#
                 html.H5("Errors"),
                 dcc.Markdown(
                     """
-                * function errors are over the domain (0, 100] with step size 0.01
-                    * exp, sin, and cos are over the domain (0, 10) with step size 0.001
-                """,
+                    * function errors are over the domain (0, 100] with step size 0.01
+                        * exp, sin, and cos are over the domain (0, 10) with step size 0.001
+                    """,
                     className="bullets",
                 ),
                 html.Div(
@@ -159,36 +165,44 @@ https://github.com/facebookresearch/CrypTen/blob/master/benchmarks/benchmark.py#
                         html.H3("Models"),
                         dcc.Markdown(
                             """
-For model details or to reproduce see
-[models](https://github.com/facebookresearch/CrypTen/blob/master/benchmarks/models.py)
-and
-[training details](
-https://github.com/facebookresearch/CrypTen/blob/master/benchmarks/benchmark.py#L293).
-* trained on Gaussian clusters for binary classification
-    * uses SGD with 5k samples, 20 features, over 20 epochs, and 0.1 learning rate
-* feedforward has three hidden layers with intermediary RELU and
-  final sigmoid activations
-* note benchmarks run with world size 1 using CPython
-""",
+                            For model details or to reproduce see
+                            [models](https://github.com/facebookresearch/CrypTen/blob/master/benchmarks/models.py)
+                            and
+                            [training details](
+                            https://github.com/facebookresearch/CrypTen/blob/master/benchmarks/benchmark.py#L293).
+                            * trained on Gaussian clusters for binary classification
+                                * uses SGD with 5k samples, 20 features, over 20 epochs, and 0.1 learning rate
+                            * feedforward has three hidden layers with intermediary RELU and
+                            final sigmoid activations
+                            * note benchmarks run with world size 1 using CPython
+                            """,
                             className="bullets",
                         ),
+                        dcc.Dropdown(
+                            id="select_comparison",
+                            options=[
+                                {"label": comp, "value": comp}
+                                for comp in ["CPU vs GPU", "CPU vs Plaintext", "GPU vs Plaintext"]
+                            ],
+                            value="CPU vs GPU",
+                        ),
+                        html.Div(
+                            [
+                                html.Div(
+                                    [dcc.Graph(id="model-training-time")],
+                                    className="six columns",
+                                ),
+                                html.Div(
+                                    [dcc.Graph(id="model-inference-time")],
+                                    className="six columns",
+                                ),
+                                html.Div(
+                                    [dcc.Graph(id="model-accuracy")], className="six columns"
+                                ),
+                            ],
+                            className="row",
+                        ),
                     ]
-                ),
-                html.Div(
-                    [
-                        html.Div(
-                            [dcc.Graph(id="model-training-time")],
-                            className="six columns",
-                        ),
-                        html.Div(
-                            [dcc.Graph(id="model-inference-time")],
-                            className="six columns",
-                        ),
-                        html.Div(
-                            [dcc.Graph(id="model-accuracy")], className="six columns"
-                        ),
-                    ],
-                    className="row",
                 ),
             ]
         ),
@@ -221,8 +235,10 @@ comparison_layout = html.Div(
                     [
                         html.Div(
                             [
-                                html.H2("CrypTen", style={"margin-bottom": "0px"}),
-                                html.H4("Benchmarks", style={"margin-top": "0px"}),
+                                html.H2("CrypTen", style={
+                                        "margin-bottom": "0px"}),
+                                html.H4("Benchmarks", style={
+                                        "margin-top": "0px"}),
                             ]
                         )
                     ],
@@ -275,10 +291,10 @@ comparison_layout = html.Div(
                         ),
                         dcc.Markdown(
                             """
-* function runtimes are averaged over 10 runs using a random tensor of size (100, 100).
-* `max` and `argmax` are excluded as they take considerably longer.
-    * As of 02/25/2020, `max` / `argmax` take 3min 13s ± 4.73s
-""",
+                            * function runtimes are averaged over 10 runs using a random tensor of size (100, 100).
+                            * `max` and `argmax` are excluded as they take considerably longer.
+                                * As of 02/25/2020, `max` / `argmax` take 3min 13s ± 4.73s
+                            """,
                             className="bullets",
                         ),
                     ]
@@ -288,7 +304,8 @@ comparison_layout = html.Div(
                         html.Div(
                             [dcc.Graph(id="runtime-diff")], className="six columns"
                         ),
-                        html.Div([dcc.Graph(id="error-diff")], className="six columns"),
+                        html.Div([dcc.Graph(id="error-diff")],
+                                 className="six columns"),
                     ],
                     className="row",
                 ),
@@ -318,23 +335,28 @@ comparison_layout = html.Div(
 def update_runtime_crypten(selected_date):
     filter_df = func_df[func_df["date"] == selected_date]
     filter_df["runtime in seconds"] = filter_df["runtime crypten"]
+
     fig = px.bar(
         filter_df,
         x="runtime in seconds",
         y="function",
+        color="device",
         orientation="h",
         error_x="runtime crypten error plus",
         error_x_minus="runtime crypten error minus",
-        color_discrete_sequence=[green],
+        color_discrete_sequence=colors_discrete,
         template=template,
         title="Crypten",
+        barmode="group",
     )
+
     fig.update_layout(height=500)
     return fig
 
 
 @app.callback(
-    Output("func-runtime-crypten-v-plain", "figure"), [Input("select_date", "value")]
+    Output("func-runtime-crypten-v-plain",
+           "figure"), [Input("select_date", "value")]
 )
 def update_runtime_crypten_v_plain(selected_date):
     filter_df = func_df[func_df["date"] == selected_date]
@@ -342,12 +364,14 @@ def update_runtime_crypten_v_plain(selected_date):
         filter_df,
         x="runtime gap",
         y="function",
+        color="device",
         orientation="h",
         error_x="runtime gap error plus",
         error_x_minus="runtime gap error minus",
-        color_discrete_sequence=[blue],
+        color_discrete_sequence=colors_discrete,
         template=template,
         title="Crypten vs. Plaintext",
+        barmode="group",
     )
 
     fig.update_layout(height=500)
@@ -361,12 +385,14 @@ def update_abs_error(selected_date):
         filter_df,
         x="total abs error",
         text="total abs error",
+        color="device",
         log_x=True,
         y="function",
         orientation="h",
-        color_discrete_sequence=["#C8E6C9"],
+        color_discrete_sequence=colors_discrete,
         template=template,
         title="Crypten Absolute Error",
+        barmode="group",
     )
     fig.update_traces(texttemplate="%{text:.1f}", textposition="outside")
     fig.update_layout(height=500)
@@ -381,50 +407,102 @@ def update_abs_error(selected_date):
         x="average relative error",
         text="average relative error",
         y="function",
+        color="device",
         orientation="h",
-        color_discrete_sequence=["#C8E6C9"],
+        color_discrete_sequence=colors_discrete,
         template=template,
         title="Crypten Relative Error",
+        barmode="group",
     )
     fig.update_traces(texttemplate="%{text:%}", textposition="outside")
     fig.update_layout(height=500)
     return fig
 
 
-@app.callback(Output("model-training-time", "figure"), [Input("select_date", "value")])
-def update_training_time(selected_date):
-    filter_df = model_df[model_df["date"] == selected_date]
-    filter_df["type"] = np.where(filter_df["is plain text"], "Plain Text", "CrypTen")
+def process_comparison_options(filter_df, option):
+    color = "type"
+    if option == "CPU vs Plaintext":
+        filter_df = filter_df[filter_df["device"] == "cpu"]
+        filter_df["type"] = np.where(
+            filter_df["is plain text"], "Plain Text", "CrypTen")
+    elif option == "GPU vs Plaintext":
+        filter_df = filter_df[filter_df["device"] == "gpu"]
+        if not filter_df.empty:
+            filter_df["type"] = np.where(
+                filter_df["is plain text"], "Plain Text", "CrypTen")
+    elif option == "CPU vs GPU":
+        color = "device"
+
+    return filter_df, color
+
+
+def render_emtpy_figure():
+    return {
+        "layout": {
+            "xaxis": {
+                "visible": False
+            },
+            "yaxis": {
+                "visible": False
+            },
+            "annotations": [
+                {
+                    "text": "No matching data found",
+                    "xref": "paper",
+                    "yref": "paper",
+                    "showarrow": False,
+                    "font": {
+                        "size": 28
+                    }
+                }
+            ]
+        }
+    }
+
+
+@app.callback(Output("model-training-time", "figure"), [Input("select_date", "value"), Input("select_comparison", "value")])
+def update_training_time(selected_date, option):
+    filter_df = model_df[(model_df["date"] == selected_date)]
+    filter_df, color = process_comparison_options(filter_df, option)
+
+    if filter_df.empty:
+        return render_emtpy_figure()
+
     fig = px.bar(
         filter_df,
         x="seconds per epoch",
         text="seconds per epoch",
         y="model",
-        color="type",
+        color=color,
         orientation="h",
         barmode="group",
-        color_discrete_sequence=[blue, green],
+        color_discrete_sequence=colors_discrete,
         template=template,
         title="Model Training Time",
     )
-    fig.update_layout(xaxis={"range": [0, filter_df["seconds per epoch"].max() * 1.1]})
+    fig.update_layout(
+        xaxis={"range": [0, filter_df["seconds per epoch"].max() * 1.1]})
     fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
     return fig
 
 
-@app.callback(Output("model-inference-time", "figure"), [Input("select_date", "value")])
-def update_training_time(selected_date):
-    filter_df = model_df[model_df["date"] == selected_date]
-    filter_df["type"] = np.where(filter_df["is plain text"], "Plain Text", "CrypTen")
+@app.callback(Output("model-inference-time", "figure"), [Input("select_date", "value"), Input("select_comparison", "value")])
+def update_training_time(selected_date, option):
+    filter_df = model_df[(model_df["date"] == selected_date)]
+    filter_df, color = process_comparison_options(filter_df, option)
+
+    if filter_df.empty:
+        return render_emtpy_figure()
+
     fig = px.bar(
         filter_df,
         x="inference time",
         text="inference time",
         y="model",
-        color="type",
+        color=color,
         orientation="h",
         barmode="group",
-        color_discrete_sequence=[blue, green],
+        color_discrete_sequence=colors_discrete,
         template=template,
         title="Model Inference Time",
     )
@@ -436,19 +514,23 @@ def update_training_time(selected_date):
     return fig
 
 
-@app.callback(Output("model-accuracy", "figure"), [Input("select_date", "value")])
-def update_model_accuracy(selected_date):
-    filter_df = model_df[model_df["date"] == selected_date]
-    filter_df["type"] = np.where(filter_df["is plain text"], "Plain Text", "CrypTen")
+@app.callback(Output("model-accuracy", "figure"), [Input("select_date", "value"), Input("select_comparison", "value")])
+def update_model_accuracy(selected_date, option):
+    filter_df = model_df[(model_df["date"] == selected_date)]
+    filter_df, color = process_comparison_options(filter_df, option)
+
+    if filter_df.empty:
+        return render_emtpy_figure()
+
     fig = px.bar(
         filter_df,
         x="accuracy",
         text="accuracy",
         y="model",
-        color="type",
+        color=color,
         orientation="h",
         barmode="group",
-        color_discrete_sequence=[blue, green],
+        color_discrete_sequence=colors_discrete,
         template=template,
         title="Model Accuracy",
     )
@@ -459,7 +541,8 @@ def update_model_accuracy(selected_date):
 
 @app.callback(
     Output("runtime-diff", "figure"),
-    [Input("start_date", "value"), Input("end_date", "value"), Input("funcs", "value")],
+    [Input("start_date", "value"), Input(
+        "end_date", "value"), Input("funcs", "value")],
 )
 def update_runtime_diff(start_date, end_date, funcs):
     if type(funcs) is str:
@@ -472,7 +555,8 @@ def update_runtime_diff(start_date, end_date, funcs):
     )
     for i, func in enumerate(funcs):
         runtime = end_df[end_df["function"] == func]["runtime crypten"]
-        runtime_prev = start_df[start_df["function"] == func]["runtime crypten"]
+        runtime_prev = start_df[start_df["function"]
+                                == func]["runtime crypten"]
         func_text = func.capitalize()
 
         fig.add_trace(
@@ -500,7 +584,8 @@ def update_runtime_diff(start_date, end_date, funcs):
 
 @app.callback(
     Output("error-diff", "figure"),
-    [Input("start_date", "value"), Input("end_date", "value"), Input("funcs", "value")],
+    [Input("start_date", "value"), Input(
+        "end_date", "value"), Input("funcs", "value")],
 )
 def update_error_diff(start_date, end_date, funcs):
     if type(funcs) is str:
