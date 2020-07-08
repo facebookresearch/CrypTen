@@ -468,6 +468,16 @@ class MPCTensor(CrypTensor):
         return 1 - self.ne(y, _scale=_scale)
 
     @mode(Ptype.arithmetic)
+    def ne(self, y, _scale=True):
+        """Returns self != y"""
+        if comm.get().get_world_size() == 2:
+            return 1 - self.eq(y, _scale=_scale)
+
+        difference = self - y
+        difference.share = torch_stack([difference.share, -(difference.share)])
+        return difference._ltz(_scale=_scale).sum(0)
+
+    @mode(Ptype.arithmetic)
     def _eqz_2PC(self, _scale=True):
         """Returns self == 0"""
         # Create BinarySharedTensors from shares
@@ -476,23 +486,15 @@ class MPCTensor(CrypTensor):
 
         # Perform equality testing using binary shares
         x0._tensor = x0._tensor.eq(x1._tensor)
+        x0.encoder = x0.encoder if _scale else self.encoder
 
         # Convert to Arithmetic sharing
         result = x0.to(Ptype.arithmetic, bits=1)
 
-        # Handle scaling
-        if _scale:
-            return result * result.encoder._scale
-        else:
+        if not _scale:
             result.encoder._scale = 1
-            return result
 
-    @mode(Ptype.arithmetic)
-    def ne(self, y, _scale=True):
-        """Returns self != y"""
-        difference = self - y
-        difference.share = torch_stack([difference.share, -(difference.share)])
-        return difference._ltz(_scale=_scale).sum(0)
+        return result
 
     @mode(Ptype.arithmetic)
     def sign(self, _scale=True):
