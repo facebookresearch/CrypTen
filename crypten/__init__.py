@@ -28,6 +28,20 @@ set_grad_enabled = CrypTensor.set_grad_enabled
 
 
 def init(party_name=None, device=None):
+    """
+    Initialize CrypTen. It will initialize communicator, setup party
+    name for file save / load, and setup seeds for Random Number Generatiion.
+    By default the function will initialize a set of RNG generators on CPU.
+    If torch.cuda.is_available() returns True, it will initialize an additional
+    set of RNG generators on GPU. Users can specify the GPU device the generators are
+    initialized with device.
+
+    Args:
+        party_name (str): party_name for file save and load, default is None
+        device (int, str, torch.device): Specify device for RNG generators on
+        GPU. Must be a GPU device.
+    """
+
     # Initialize communicator
     comm._init(use_threads=False, init_ttp=crypten.mpc.ttp_required())
 
@@ -165,8 +179,16 @@ def _setup_przs(device=None):
         sharing using bitwise-xor rather than addition / subtraction)
     """
     # Initialize RNG Generators
-    comm.get().g0 = torch.Generator(device=device)
-    comm.get().g1 = torch.Generator(device=device)
+    comm.get().g0 = torch.Generator()
+    comm.get().g1 = torch.Generator()
+
+    device = "cuda" if device is None else device
+    device = torch.device(device)
+    assert device.type == "cuda", "Must be a GPU device"
+
+    if torch.cuda.is_available():
+        comm.get().g0_cuda = torch.Generator(device=device)
+        comm.get().g1_cuda = torch.Generator(device=device)
 
     # Generate random seeds for Generators
     # NOTE: Chosen seed can be any number, but we choose as a random 64-bit
@@ -205,7 +227,7 @@ def _setup_przs(device=None):
     # Create global generator
     global_seed = torch.tensor(numpy.random.randint(-(2 ** 63), 2 ** 63 - 1, (1,)))
     global_seed = comm.get().broadcast(global_seed, 0)
-    comm.get().global_generator = torch.Generator(device=device)
+    comm.get().global_generator = torch.Generator()
     comm.get().global_generator.manual_seed(global_seed.item())
 
 

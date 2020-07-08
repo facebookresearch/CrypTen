@@ -117,10 +117,10 @@ class ArithmeticSharedTensor(object):
         """
         tensor = ArithmeticSharedTensor(src=SENTINEL)
         current_share = generate_random_ring_element(
-            *size, generator=comm.get().g0, device=device
+            *size, generator=comm.get().get_generator(0, device=device), device=device
         )
         next_share = generate_random_ring_element(
-            *size, generator=comm.get().g1, device=device
+            *size, generator=comm.get().get_generator(1, device=device), device=device
         )
         tensor.share = current_share - next_share
         return tensor

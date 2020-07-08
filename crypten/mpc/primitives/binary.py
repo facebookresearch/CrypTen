@@ -78,10 +78,10 @@ class BinarySharedTensor(object):
         """
         tensor = BinarySharedTensor(src=SENTINEL)
         current_share = generate_kbit_random_tensor(
-            *size, device=device, generator=comm.get().g0
+            *size, device=device, generator=comm.get().get_generator(0, device=device)
         )
         next_share = generate_kbit_random_tensor(
-            *size, device=device, generator=comm.get().g1
+            *size, device=device, generator=comm.get().get_generator(1, device=device)
         )
         tensor.share = current_share ^ next_share
         return tensor

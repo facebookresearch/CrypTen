@@ -8,6 +8,8 @@
 import logging
 import timeit
 
+import torch
+
 
 class Communicator:
     """
@@ -145,6 +147,45 @@ class Communicator:
 
     def _log_communication_time(self, comm_time):
         self.comm_time += comm_time
+
+    def get_generator(self, idx, device=None):
+        """
+            Get the corresponding RNG generator, as specified by its index and device
+
+            Args:
+                idx: The index of the generator, can be either 0 or 1
+                device: The device that the generator lives in.
+        """
+
+        if device is None:
+            device = torch.device("cpu")
+        else:
+            device = torch.device(device)
+
+        if idx == 0:
+            if device.type == "cuda":
+                assert hasattr(
+                    self, "g0_cuda"
+                ), "Generator g0_cuda is not initialized, call crypten.init() first"
+                return self.g0_cuda
+            else:
+                assert hasattr(
+                    self, "g0"
+                ), "Generator g0 is not initialized, call crypten.init() first"
+                return self.g0
+        elif idx == 1:
+            if device.type == "cuda":
+                assert hasattr(
+                    self, "g1_cuda"
+                ), "Generator g1_cuda is not initialized, call crypten.init() first"
+                return self.g1_cuda
+            else:
+                assert hasattr(
+                    self, "g1"
+                ), "Generator g1 is not initialized, call crypten.init() first"
+                return self.g1
+        else:
+            raise RuntimeError(f"Generator idx {idx} out of bounds.")
 
 
 def _logging(func):
