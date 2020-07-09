@@ -22,29 +22,44 @@ def get_available_dates(data_dir):
     return available_dates
 
 
-def read_data(data_dir, dates):
+def read_data(data_dir, dates, cuda=False):
     """Builds dataframe for model and func benchmarks Assumes directory is structured as
      DATA_PATH
         |_2020-02-20
             |_func_benchmarks.csv
             |_model_benchmarks.csv
-
+            |_func_benchmarks_cuda.csv (optional)
+            |_model_benchmarks_cuda.csv (optional)
     Args:
         data_dir (pathlib.path): path containing month subdirectories
         dates (list of str): containing dates / subdirectories available
-
     Returns: tuple of pd.DataFrames containing func and model benchmarks with dates
     """
     func_df, model_df = None, None
-
+    postfix = "_cuda" if cuda else ""
     for date in dates:
         path = os.path.join(data_dir, date)
-        tmp_func_df = pd.read_csv(os.path.join(path, "func_benchmarks.csv"))
-        tmp_model_df = pd.read_csv(os.path.join(path, "model_benchmarks.csv"))
-        tmp_func_df["date"], tmp_model_df["date"] = date, date
+
+        func_path = os.path.join(path, f"func_benchmarks{postfix}.csv")
+        model_path = os.path.join(path, f"model_benchmarks{postfix}.csv")
+
+        if os.path.exists(func_path):
+            tmp_func_df = pd.read_csv(func_path)
+            tmp_func_df["date"] = date
+            tmp_func_df["device"] = "gpu" if cuda else "cpu"
+        else:
+            tmp_func_df = None
+
+        if os.path.exists(model_path):
+            tmp_model_df = pd.read_csv(model_path)
+            tmp_model_df["date"] = date
+            tmp_model_df["device"] = "gpu" if cuda else "cpu"
+        else:
+            tmp_model_df = None
+
         if func_df is None:
-            func_df = tmp_func_df.copy()
-            model_df = tmp_model_df.copy()
+            func_df = tmp_func_df.copy() if tmp_func_df is not None else None
+            model_df = tmp_model_df.copy() if tmp_model_df is not None else None
         else:
             func_df = func_df.append(tmp_func_df)
             model_df = model_df.append(tmp_model_df)
