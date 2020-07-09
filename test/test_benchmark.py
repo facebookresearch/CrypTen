@@ -7,6 +7,8 @@
 
 import unittest
 
+import crypten
+
 
 try:
     from ..benchmarks import benchmark
@@ -17,6 +19,10 @@ except ValueError:
 
 
 class TestBenchmark(unittest.TestCase):
+    def __init__(self, methodName):
+        super().__init__(methodName)
+        crypten.init()
+
     def test_func_benchmarks_run(self):
         """Ensure function benchmarks run without an exception"""
         func_benchmarks = benchmark.FuncBenchmarks()

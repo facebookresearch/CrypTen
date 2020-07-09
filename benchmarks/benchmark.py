@@ -10,14 +10,21 @@ Generate function and model benchmarks
 To Run:
 $ python benchmark.py
 
-# only function benchmarks
+# Only function benchmarks
 $ python benchmark.py --only-functions
 $ python benchmark.py --only-functions --world-size 2
 
-# benchmark functions and all models
+# Benchmark functions and all models
 $ python benchmark.py --advanced-models
 
-# save benchmarks to csv
+# Run benchmarks on GPU
+$ python benchmark.py --device cuda
+$ python benchmark.py --device cuda --world-size 2
+
+# Run benchmarks on different GPUs for each party
+$ python benchmark.py --world-size=2 --multi-gpu
+
+# Save benchmarks to csv
 $ python benchmark.py -p ~/Downloads/
 """
 
@@ -104,9 +111,10 @@ class FuncBenchmarks:
     # for exponential, sin, and cos
     TRUNCATED_DOMAIN = torch.arange(start=0.001, end=10, step=0.001)
 
-    def __init__(self, tensor_size=(100, 100)):
+    def __init__(self, tensor_size=(100, 100), device="cpu"):
+        self.device = torch.device(device)
         self.tensor_size = tensor_size
-        crypten.init()
+
         # dataframe for benchmarks
         self.df = None
 
@@ -131,7 +139,10 @@ class FuncBenchmarks:
 
     def get_runtimes(self):
         """Returns plain text and crypten runtimes"""
-        x, y = torch.rand(self.tensor_size), torch.rand(self.tensor_size)
+        x, y = (
+            torch.rand(self.tensor_size, device=self.device),
+            torch.rand(self.tensor_size, device=self.device),
+        )
         x_enc, y_enc = crypten.cryptensor(x), crypten.cryptensor(y)
 
         runtimes, runtimes_enc = [], []
@@ -178,8 +189,8 @@ class FuncBenchmarks:
     def random_conv2d_inputs(self):
         """Returns random input and weight tensors for 2d convolutions"""
         filter_size = [size // 10 for size in self.tensor_size]
-        x_conv2d = torch.rand(1, 1, *self.tensor_size)
-        weight2d = torch.rand(1, 1, *filter_size)
+        x_conv2d = torch.rand(1, 1, *self.tensor_size, device=self.device)
+        weight2d = torch.rand(1, 1, *filter_size, device=self.device)
         x_conv2d_enc = crypten.cryptensor(x_conv2d)
         weight2d_enc = crypten.cryptensor(weight2d)
         return x_conv2d, x_conv2d_enc, weight2d, weight2d_enc
@@ -188,8 +199,8 @@ class FuncBenchmarks:
         """Returns random input and weight tensors for 1d convolutions"""
         size = self.tensor_size[0]
         filter_size = size // 10
-        (x_conv1d,) = torch.rand(1, 1, size)
-        weight1d = torch.rand(1, 1, filter_size)
+        (x_conv1d,) = torch.rand(1, 1, size, device=self.device)
+        weight1d = torch.rand(1, 1, filter_size, device=self.device)
         x_conv1d_enc = crypten.cryptensor(x_conv1d)
         weight1d_enc = crypten.cryptensor(weight1d)
         return x_conv1d, x_conv1d_enc, weight1d, weight1d_enc
@@ -197,6 +208,7 @@ class FuncBenchmarks:
     @staticmethod
     def calc_abs_error(ref, out):
         """Computes total absolute error"""
+        ref, out = ref.cpu(), out.cpu()
         if ref.dtype == torch.bool:
             errors = (out != ref).sum().numpy()
             return errors
@@ -206,6 +218,7 @@ class FuncBenchmarks:
     @staticmethod
     def calc_relative_error(ref, out):
         """Computes average relative error"""
+        ref, out = ref.cpu(), out.cpu()
         if ref.dtype == torch.bool:
             errors = ((out != ref).sum() // ref.nelement()).numpy()
             return errors
@@ -224,7 +237,11 @@ class FuncBenchmarks:
             FuncBenchmarks.DOMAIN,
             FuncBenchmarks.TRUNCATED_DOMAIN,
         )
-        y = torch.rand(DOMAIN.shape)
+        DOMAIN, TRUNCATED_DOMAIN = (
+            DOMAIN.to(device=self.device),
+            TRUNCATED_DOMAIN.to(device=self.device),
+        )
+        y = torch.rand(DOMAIN.shape, device=self.device)
         DOMAIN_enc, y_enc = crypten.cryptensor(DOMAIN), crypten.cryptensor(y)
         TRUNCATED_DOMAIN_enc = crypten.cryptensor(TRUNCATED_DOMAIN)
 
@@ -278,7 +295,11 @@ class FuncBenchmarks:
         return ref, out_enc
 
     def save(self, path):
-        self.df.to_csv(os.path.join(path, "func_benchmarks.csv"), index=False)
+        if self.device.type == "cuda":
+            csv_path = os.path.join(path, "func_benchmarks_cuda.csv")
+        else:
+            csv_path = os.path.join(path, "func_benchmarks.csv")
+        self.df.to_csv(csv_path, index=False)
 
     def run(self):
         """Runs and stores benchmarks in self.df"""
@@ -317,9 +338,9 @@ class ModelBenchmarks:
         lr_rate (float): learning rate.
     """
 
-    def __init__(self, advanced_models=False):
+    def __init__(self, device="cpu", advanced_models=False):
+        self.device = torch.device(device)
         self.df = None
-
         self.models = models.MODELS
         if not advanced_models:
             self.remove_advanced_models()
@@ -395,12 +416,14 @@ class ModelBenchmarks:
 
         for model in self.models:
             x, y = model.data.x, model.data.y
-            model_plain = model.plain()
+            x, y = x.to(device=self.device), y.to(device=self.device)
+            model_plain = model.plain().to(device=self.device)
             runtime, _ = self.train(model_plain, x, y, 1, model.lr, model.loss)
             runtimes.append(runtime)
 
-            x_enc, y_enc = model.data.x_enc, model.data.y_enc
-            model_enc = model.crypten().encrypt()
+            x_enc = crypten.cryptensor(x, device=self.device)
+            y_enc = crypten.cryptensor(y, device=self.device)
+            model_enc = model.crypten().to(device=self.device).encrypt()
             runtime_enc, _ = self.train_crypten(
                 model_enc, x_enc, y_enc, 1, model.lr, model.loss
             )
@@ -419,12 +442,14 @@ class ModelBenchmarks:
         runtimes_enc = []
 
         for model in self.models:
-            model_plain = model.plain()
-            runtime, _ = self.predict(model_plain, model.data.x)
+            model_plain = model.plain().to(device=self.device)
+            runtime, _ = self.predict(model_plain, model.data.x.to(device=self.device))
             runtimes.append(runtime)
 
-            model_enc = model.crypten().encrypt()
-            runtime_enc, _ = self.predict(model_enc, model.data.x_enc)
+            model_enc = model.crypten()
+            model_enc = model_enc.to(device=self.device).encrypt()
+            x_enc = crypten.cryptensor(model.data.x, device=self.device)
+            runtime_enc, _ = self.predict(model_enc, x_enc)
             runtimes_enc.append(runtime_enc)
 
         return runtimes, runtimes_enc
@@ -440,6 +465,7 @@ class ModelBenchmarks:
 
         Returns (float): percent accuracy
         """
+        output, y = output.cpu(), y.cpu()
         predicted = (output > threshold).float()
         correct = (predicted == y).sum().float()
         accuracy = float((correct / y.shape[0]).numpy())
@@ -450,22 +476,26 @@ class ModelBenchmarks:
         accuracies, accuracies_crypten = [], []
 
         for model in self.models:
-            model_plain = model.plain()
+            model_plain = model.plain().to(device=self.device)
             x, y = model.data.x, model.data.y
+            x, y = x.to(device=self.device), y.to(device=self.device)
             _, model_plain = self.train(
                 model_plain, x, y, model.epochs, model.lr, model.loss
             )
 
-            x_test, y_test = model.data.x_test, model.data.y_test
+            x_test = model.data.x_test.to(device=self.device)
+            y_test = model.data.y_test.to(device=self.device)
             accuracy = ModelBenchmarks.calc_accuracy(model_plain(x_test), y_test)
             accuracies.append(accuracy)
 
-            model_crypten = model.crypten().encrypt()
-            x_enc, y_enc = model.data.x_enc, model.data.y_enc
+            model_crypten = model.crypten()
+            model_crypten = model_crypten.to(device=self.device).encrypt()
+            x_enc = crypten.cryptensor(x, device=self.device)
+            y_enc = crypten.cryptensor(y, device=self.device)
             _, model_crypten = self.train_crypten(
                 model_crypten, x_enc, y_enc, model.epochs, model.lr, model.loss
             )
-            x_test_enc = model.data.x_test_enc
+            x_test_enc = crypten.cryptensor(model.data.x_test, device=self.device)
 
             output = model_crypten(x_test_enc).get_plain_text()
             accuracy = ModelBenchmarks.calc_accuracy(output, y_test)
@@ -474,7 +504,11 @@ class ModelBenchmarks:
         return accuracies, accuracies_crypten
 
     def save(self, path):
-        self.df.to_csv(os.path.join(path, "model_benchmarks.csv"), index=False)
+        if self.device.type == "cuda":
+            csv_path = os.path.join(path, "model_benchmarks_cuda.csv")
+        else:
+            csv_path = os.path.join(path, "model_benchmarks.csv")
+        self.df.to_csv(csv_path, index=False)
 
     def run(self):
         """Runs and stores benchmarks in self.df"""
@@ -531,6 +565,21 @@ def get_args():
         help="world size for number of parties",
     )
     parser.add_argument(
+        "--device",
+        "-d",
+        required=False,
+        default="cpu",
+        help="the device to run the benchmarks",
+    )
+    parser.add_argument(
+        "--multi-gpu",
+        "-mg",
+        required=False,
+        default=False,
+        action="store_true",
+        help="use different gpu for each party. Will override --device if selected",
+    )
+    parser.add_argument(
         "--advanced-models",
         required=False,
         default=False,
@@ -543,29 +592,47 @@ def get_args():
 
 def multiprocess_caller(args):
     """Runs multiparty benchmarks and prints/saves from source 0"""
-    for benchmark in args.benchmarks:
+    rank = comm.get().get_rank()
+    if args.multi_gpu:
+        assert (
+            args.world_size >= torch.cuda.device_count()
+        ), f"Got {args.world_size} parties, but only {torch.cuda.device_count()} GPUs found"
+        device = torch.device(f"cuda:{rank}")
+    else:
+        device = torch.device(args.device)
+
+    benchmarks = [
+        FuncBenchmarks(device=device),
+        ModelBenchmarks(device=device, advanced_models=args.advanced_models),
+    ]
+
+    if args.only_functions:
+        benchmarks = [FuncBenchmarks(device=device)]
+
+    for benchmark in benchmarks:
         benchmark.run()
         rank = comm.get().get_rank()
         if rank == 0:
             pd.set_option("display.precision", 3)
-            print(benchmark)
             if args.path:
                 benchmark.save(args.path)
 
 
 def main():
     """Runs benchmarks and saves if path is provided"""
+    crypten.init()
     args = get_args()
+    device = torch.device(args.device)
+
     benchmarks = [
-        FuncBenchmarks(),
-        ModelBenchmarks(advanced_models=args.advanced_models),
+        FuncBenchmarks(device=device),
+        ModelBenchmarks(device=device, advanced_models=args.advanced_models),
     ]
 
     if args.only_functions:
-        benchmarks = [FuncBenchmarks()]
+        benchmarks = [FuncBenchmarks(device=device)]
 
     if args.world_size > 1:
-        args.benchmarks = benchmarks
         launcher = multiprocess_launcher.MultiProcessLauncher(
             args.world_size, multiprocess_caller, fn_args=args
         )

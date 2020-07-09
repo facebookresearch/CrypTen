@@ -45,6 +45,7 @@ class BinarySharedTensor(object):
         self.encoder = FixedPointEncoder(precision_bits=0)
         if tensor is not None:
             tensor = self.encoder.encode(tensor)
+            tensor = tensor.to(device=device)
             size = tensor.size()
 
         # Generate Psuedo-random Sharing of Zero and add source's tensor

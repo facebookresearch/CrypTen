@@ -50,6 +50,7 @@ class ArithmeticSharedTensor(object):
             if is_int_tensor(tensor) and precision != 0:
                 tensor = tensor.float()
             tensor = self.encoder.encode(tensor)
+            tensor = tensor.to(device=device)
             size = tensor.size()
 
         # Generate psuedo-random sharing of zero (PRZS) and add source's tensor

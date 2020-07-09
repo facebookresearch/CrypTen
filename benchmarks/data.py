@@ -29,12 +29,6 @@ class GaussianClusters:
         self.x, self.y = x, y
         self.x_test, self.y_test = x_test, y_test
 
-        crypten.init()
-        self.x_enc = crypten.cryptensor(self.x)
-        self.y_enc = crypten.cryptensor(self.y)
-        self.x_test_enc = crypten.cryptensor(self.x_test)
-        self.y_test_enc = crypten.cryptensor(self.y_test)
-
     @staticmethod
     def generate_data(n_samples, n_features):
         """Generates Glussian clusters for binary classes
@@ -65,14 +59,6 @@ class Images:
         class_id = 463
         self.y = torch.tensor([class_id]).long()
         self.x_test, self.y_test = self.x, self.y
-
-        crypten.init()
-        self.x_enc = crypten.cryptensor(self.x)
-        y_one_hot = torch.zeros(1, 1000)
-        y_one_hot[0][class_id] = 1
-        self.y_enc = crypten.cryptensor(y_one_hot)
-        self.x_test_enc = crypten.cryptensor(self.x_test)
-        self.y_test_enc = crypten.cryptensor(self.y_test)
 
     def preprocess_image(self):
         """Preprocesses sample image"""
