@@ -580,6 +580,14 @@ def get_args():
         help="use different gpu for each party. Will override --device if selected",
     )
     parser.add_argument(
+        "--ttp",
+        "-ttp",
+        required=False,
+        default=False,
+        action="store_true",
+        help="initialize a trusted third party (TTP) as beaver triples' provider, world_size should be greater than 2",
+    )
+    parser.add_argument(
         "--advanced-models",
         required=False,
         default=False,
@@ -633,6 +641,8 @@ def main():
         benchmarks = [FuncBenchmarks(device=device)]
 
     if args.world_size > 1:
+        if args.ttp:
+            crypten.mpc.set_default_provider("TTP")
         launcher = multiprocess_launcher.MultiProcessLauncher(
             args.world_size, multiprocess_caller, fn_args=args
         )
