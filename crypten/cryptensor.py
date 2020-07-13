@@ -160,6 +160,15 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         if self.requires_grad:
             with CrypTensor.no_grad():  # disable autograd for backward pass
 
+                # if undefined, set gradient input to one:
+                if grad_input is None:
+                    if self.nelement() == 1:
+                        grad_input = self.new(torch.ones_like(self.share))
+                    else:
+                        raise RuntimeError(
+                            "grad can be implicitly created only for scalar outputs"
+                        )
+
                 # if we are in a leaf or if not all parents have backpropagated:
                 parents_done = all(parent.grad_computed for parent in self.parents)
                 if len(self.children) == 0 or (not top_node and not parents_done):
@@ -170,15 +179,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                     else:
                         self.grad.add_(grad_input)  # ... or accumulate gradient...
                     return  # ... and do not proceed.
-
-                # if undefined, set gradient input to all ones:
-                if grad_input is None:
-                    if self.nelement() == 1:
-                        grad_input = self.new(torch.ones_like(self.share))
-                    else:
-                        raise RuntimeError(
-                            "grad can be implicitly created only for scalar outputs"
-                        )
 
                 # check that we can actually backpropagate:
                 if self.grad_fn is None:
@@ -269,14 +269,17 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 else:
                     remove_tuple = False
 
-                # wrap results and maintain references to children and context:
-                for res in result:
-                    res.requires_grad = requires_grad and ctx.is_differentiable(res)
-                    if res.requires_grad:
-                        res.children = children
-                        res.grad_fn = grad_fn
-                        res.ctx = ctx
-                    self.parents.append(res)
+                # we only need to build up forward graph if requires_grad is True:
+                if requires_grad:
+
+                    # maintain references to children and context:
+                    for res in result:
+                        res.requires_grad = ctx.is_differentiable(res)
+                        if res.requires_grad:
+                            res.children = children
+                            res.grad_fn = grad_fn
+                            res.ctx = ctx
+                        self.parents.append(res)
 
                 # return result:
                 if remove_tuple:
