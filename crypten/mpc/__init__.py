@@ -46,6 +46,7 @@ def set_default_provider(new_default_provider):
     assert_msg = "Provider %s is not supported" % new_default_provider
     if isinstance(new_default_provider, str):
         assert new_default_provider in __SUPPORTED_PROVIDERS.keys(), assert_msg
+        new_default_provider = __SUPPORTED_PROVIDERS[new_default_provider]
     else:
         assert new_default_provider in __SUPPORTED_PROVIDERS.values(), assert_msg
     __default_provider = new_default_provider
