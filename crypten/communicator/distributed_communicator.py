@@ -26,7 +26,7 @@ class DistributedCommunicator(Communicator):
     """
 
     BYTES_PER_ELEMENT = 8
-    __instance = None
+    instance = None
 
     def __init__(self, init_ttp=False):
         # no need to do anything if we already initialized the communicator:
@@ -63,6 +63,8 @@ class DistributedCommunicator(Communicator):
 
     @classmethod
     def is_initialized(cls):
+        if cls.instance is None:
+            return False
         return dist.is_initialized()
 
     @classmethod

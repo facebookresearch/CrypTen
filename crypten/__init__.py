@@ -41,6 +41,10 @@ def init(party_name=None, device=None):
         device (int, str, torch.device): Specify device for RNG generators on
         GPU. Must be a GPU device.
     """
+    # Return and raise warning if initialized
+    if comm.is_initialized():
+        warnings.warn("CrypTen is already initialized.", RuntimeWarning)
+        return
 
     # Initialize communicator
     comm._init(use_threads=False, init_ttp=crypten.mpc.ttp_required())

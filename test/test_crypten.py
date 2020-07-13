@@ -269,6 +269,21 @@ class TestCrypten(MultiProcessTestCase):
                 "where failed with private condition",
             )
 
+    def test_is_initialized(self):
+        """Tests that the is_initialized flag is set properly"""
+        comm = crypten.communicator
+
+        self.assertTrue(crypten.is_initialized())
+        self.assertTrue(comm.is_initialized())
+
+        crypten.uninit()
+        self.assertFalse(crypten.is_initialized())
+        self.assertFalse(comm.is_initialized())
+
+        crypten.init()
+        self.assertTrue(crypten.is_initialized())
+        self.assertTrue(comm.is_initialized())
+
 
 # Modules used for testing saveing / loading of modules
 class TestModule(nn.Module):
