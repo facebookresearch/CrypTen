@@ -161,6 +161,7 @@ class FromOnnx:
 
             crypten_class = self._get_operator_class(node.op_type, attributes)
 
+            parameters = _sync_tensorflow_parameters(parameters, node.op_type)
             # add CrypTen module to graph
             crypten_module = crypten_class.from_onnx(
                 parameters=parameters, attributes=attributes
@@ -322,7 +323,10 @@ def _sync_tensorflow_parameters(parameter_map, module_name):
 
     new_parameter_map = {}
     if module_name == "Conv":
-        module_param_names = ["weight", "bias"]
+        module_param_names = [
+            "weight",
+            "bias",
+        ]
         _map_module_parameters(parameter_map, module_param_names)
     elif module_name == "BatchNormalization":
         module_param_names = [
