@@ -237,10 +237,11 @@ class FuncBenchmarks:
             FuncBenchmarks.DOMAIN,
             FuncBenchmarks.TRUNCATED_DOMAIN,
         )
-        DOMAIN, TRUNCATED_DOMAIN = (
-            DOMAIN.to(device=self.device),
-            TRUNCATED_DOMAIN.to(device=self.device),
-        )
+        if hasattr(DOMAIN, "to") and hasattr(TRUNCATED_DOMAIN, "to"):
+            DOMAIN, TRUNCATED_DOMAIN = (
+                DOMAIN.to(self.device),
+                TRUNCATED_DOMAIN.to(self.device),
+            )
         y = torch.rand(DOMAIN.shape, device=self.device)
         DOMAIN_enc, y_enc = crypten.cryptensor(DOMAIN), crypten.cryptensor(y)
         TRUNCATED_DOMAIN_enc = crypten.cryptensor(TRUNCATED_DOMAIN)
@@ -416,14 +417,22 @@ class ModelBenchmarks:
 
         for model in self.models:
             x, y = model.data.x, model.data.y
-            x, y = x.to(device=self.device), y.to(device=self.device)
-            model_plain = model.plain().to(device=self.device)
+            x, y = x.to(self.device), y.to(self.device)
+            model_plain = model.plain()
+            if hasattr(model_plain, "to"):
+                model_plain = model_plain.to(self.device)
+
             runtime, _ = self.train(model_plain, x, y, 1, model.lr, model.loss)
             runtimes.append(runtime)
 
-            x_enc = crypten.cryptensor(x, device=self.device)
-            y_enc = crypten.cryptensor(y, device=self.device)
-            model_enc = model.crypten().to(device=self.device).encrypt()
+            x_enc = crypten.cryptensor(x)
+            y_enc = crypten.cryptensor(y)
+
+            model_crypten = model.crypten()
+            if hasattr(model_crypten, "to"):
+                model_crypten = model_crypten.to(self.device)
+            model_enc = model_crypten.encrypt()
+
             runtime_enc, _ = self.train_crypten(
                 model_enc, x_enc, y_enc, 1, model.lr, model.loss
             )
@@ -442,13 +451,19 @@ class ModelBenchmarks:
         runtimes_enc = []
 
         for model in self.models:
-            model_plain = model.plain().to(device=self.device)
-            runtime, _ = self.predict(model_plain, model.data.x.to(device=self.device))
+            x = model.data.x.to(self.device)
+            model_plain = model.plain()
+            if hasattr(model_plain, "to"):
+                model_plain = model_plain.to(self.device)
+            runtime, _ = self.predict(model_plain, x)
             runtimes.append(runtime)
 
-            model_enc = model.crypten()
-            model_enc = model_enc.to(device=self.device).encrypt()
-            x_enc = crypten.cryptensor(model.data.x, device=self.device)
+            model_crypten = model.crypten()
+            if hasattr(model_crypten, "to"):
+                model_crypten = model_crypten.to(self.device)
+            model_enc = model_crypten.encrypt()
+
+            x_enc = crypten.cryptensor(x)
             runtime_enc, _ = self.predict(model_enc, x_enc)
             runtimes_enc.append(runtime_enc)
 
@@ -468,7 +483,7 @@ class ModelBenchmarks:
         output, y = output.cpu(), y.cpu()
         predicted = (output > threshold).float()
         correct = (predicted == y).sum().float()
-        accuracy = float((correct / y.shape[0]).numpy())
+        accuracy = float((correct / y.shape[0]).cpu().numpy())
         return accuracy
 
     def evaluate(self):
@@ -476,26 +491,31 @@ class ModelBenchmarks:
         accuracies, accuracies_crypten = [], []
 
         for model in self.models:
-            model_plain = model.plain().to(device=self.device)
+            model_plain = model.plain()
+            if hasattr(model_plain, "to"):
+                model_plain = model_plain.to(self.device)
             x, y = model.data.x, model.data.y
-            x, y = x.to(device=self.device), y.to(device=self.device)
+            x, y = x.to(self.device), y.to(self.device)
             _, model_plain = self.train(
                 model_plain, x, y, model.epochs, model.lr, model.loss
             )
 
-            x_test = model.data.x_test.to(device=self.device)
-            y_test = model.data.y_test.to(device=self.device)
+            x_test = model.data.x_test.to(self.device)
+            y_test = model.data.y_test.to(self.device)
             accuracy = ModelBenchmarks.calc_accuracy(model_plain(x_test), y_test)
             accuracies.append(accuracy)
 
             model_crypten = model.crypten()
-            model_crypten = model_crypten.to(device=self.device).encrypt()
-            x_enc = crypten.cryptensor(x, device=self.device)
-            y_enc = crypten.cryptensor(y, device=self.device)
+            if hasattr(model_crypten, "to"):
+                model_crypten = model_crypten.to(self.device)
+            model_crypten = model_crypten.encrypt()
+            x_enc = crypten.cryptensor(x)
+            y_enc = crypten.cryptensor(y)
             _, model_crypten = self.train_crypten(
                 model_crypten, x_enc, y_enc, model.epochs, model.lr, model.loss
             )
-            x_test_enc = crypten.cryptensor(model.data.x_test, device=self.device)
+            x_test = model.data.x_test.to(self.device)
+            x_test_enc = crypten.cryptensor(model.data.x_test)
 
             output = model_crypten(x_test_enc).get_plain_text()
             accuracy = ModelBenchmarks.calc_accuracy(output, y_test)
@@ -632,6 +652,13 @@ def main():
     args = get_args()
     device = torch.device(args.device)
 
+    if not hasattr(crypten.nn.Module, "to") or not hasattr(crypten.mpc.MPCTensor, "to"):
+        if device.type == "cuda":
+            print(
+                "GPU computation is not supported for this version of CrypTen, benchmark will be skipped"
+            )
+            return
+
     benchmarks = [
         FuncBenchmarks(device=device),
         ModelBenchmarks(device=device, advanced_models=args.advanced_models),
@@ -642,7 +669,7 @@ def main():
 
     if args.world_size > 1:
         if args.ttp:
-            crypten.mpc.set_default_provider("TTP")
+            crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
         launcher = multiprocess_launcher.MultiProcessLauncher(
             args.world_size, multiprocess_caller, fn_args=args
         )
