@@ -194,6 +194,32 @@ class TestAutograd(object):
             self.assertIsNone(input1.grad, msg)
             self.assertIsNotNone(input2.grad, msg)
 
+    def test_forward_tracking(self):
+        """Tests that requires_grad influences tracking of forward computations."""
+
+        for requires_grad in [True, False]:
+
+            # get test case:
+            input = get_random_test_tensor(size=(12, 5), is_float=True)
+            input = crypten.cryptensor(input, requires_grad=requires_grad)
+
+            # perform forward computation:
+            output = input.exp().sum()
+
+            # setting requires_grad post-hoc should not affect backward behavior:
+            input.requires_grad = True
+            output.requires_grad = True
+            output.backward()
+
+            # check results:
+            msg = "tracking of forward computations does not work as expected"
+            if requires_grad:
+                self.assertIsNotNone(input.grad, msg)
+                self.assertIsNone(output.grad, msg)
+            else:
+                self.assertIsNone(input.grad, msg)
+                self.assertIsNotNone(output.grad, msg)
+
     def test_autograd_accumulation(self):
         """Tests accumulation in autograd."""
 
