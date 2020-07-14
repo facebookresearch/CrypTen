@@ -161,6 +161,8 @@ class FromOnnx:
 
             crypten_class = self._get_operator_class(node.op_type, attributes)
 
+            if TF_AND_TF2ONNX:
+                parameters = _sync_tensorflow_parameters(parameters, node.op_type)
             # add CrypTen module to graph
             crypten_module = crypten_class.from_onnx(
                 parameters=parameters, attributes=attributes

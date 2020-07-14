@@ -162,9 +162,8 @@ class TestOnnxConverter(object):
             graph_def, inputs, outputs = tf2onnx.tf_loader.from_saved_model(
                 saved_model_dir, None, None
             )
-            model_enc = crypten.nn.from_tensorflow(
-                graph_def, list(inputs.keys()), list(outputs.keys())
-            )
+
+            model_enc = crypten.nn.from_tensorflow(graph_def, inputs, outputs)
 
             # encrypt model and run it
             model_enc.encrypt()
