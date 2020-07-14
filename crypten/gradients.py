@@ -1631,7 +1631,7 @@ class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         target, sigmoid_out = ctx.saved_tensors
-        return (sigmoid_out - target).div(target.nelement())
+        return (sigmoid_out - target).div(target.nelement()).mul_(grad_output)
 
 
 @register_function("cross_entropy")
