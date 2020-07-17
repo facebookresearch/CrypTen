@@ -210,7 +210,7 @@ class FuncBenchmarks:
         """Computes total absolute error"""
         ref, out = ref.cpu(), out.cpu()
         if ref.dtype == torch.bool:
-            errors = (out != ref).sum().numpy()
+            errors = (out != ref).numpy().sum()
             return errors
         errors = torch.abs(out - ref).numpy()
         return errors.sum()
@@ -220,7 +220,7 @@ class FuncBenchmarks:
         """Computes average relative error"""
         ref, out = ref.cpu(), out.cpu()
         if ref.dtype == torch.bool:
-            errors = ((out != ref).sum() // ref.nelement()).numpy()
+            errors = (out != ref).numpy().sum() // ref.nelement()
             return errors
         errors = torch.abs((out - ref) / ref)
         # remove inf due to division by tiny numbers
@@ -300,6 +300,9 @@ class FuncBenchmarks:
         else:
             csv_path = os.path.join(path, "func_benchmarks.csv")
         self.df.to_csv(csv_path, index=False)
+
+    def get_results(self):
+        return self.df
 
     def run(self):
         """Runs and stores benchmarks in self.df"""
@@ -510,6 +513,9 @@ class ModelBenchmarks:
             csv_path = os.path.join(path, "model_benchmarks.csv")
         self.df.to_csv(csv_path, index=False)
 
+    def get_results(self):
+        return self.df
+
     def run(self):
         """Runs and stores benchmarks in self.df"""
         training_runtimes, training_runtimes_enc = self.time_training()
@@ -642,7 +648,7 @@ def main():
 
     if args.world_size > 1:
         if args.ttp:
-            crypten.mpc.set_default_provider("TTP")
+            crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
         launcher = multiprocess_launcher.MultiProcessLauncher(
             args.world_size, multiprocess_caller, fn_args=args
         )
