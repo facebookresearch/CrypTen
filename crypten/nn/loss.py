@@ -156,7 +156,7 @@ class CrossEntropyLoss(_Loss):
 
 
 class BCEWithLogitsLoss(_Loss):
-    """
+    r"""
     This loss combines a Sigmoid layer and the BCELoss in one single class.
 
     The loss can be described as:
