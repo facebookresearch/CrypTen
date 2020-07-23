@@ -176,30 +176,59 @@ class MPCTensor(CrypTensor):
         self._tensor.copy_(other._tensor)
         self.ptype = other.ptype
 
-    def to(self, input, **kwargs):
-        """
-        Depending on the input,
-        converts self._tensor to the given ptype or to the
-        given device
+    def to(self, *args, **kwargs):
+        r"""
+        Depending on the input arguments,
+        converts underlying share to the given ptype or
+        performs `torch.to` on the underlying torch tensor
+
+        To convert underlying share to the given ptype, call `to` as:
+            to(ptype, **kwargs)
+
+        It will call MPCTensor.to_ptype with the arguments provided above.
+
+        Otherwise, `to` performs `torch.to` on the underlying
+        torch tensor. See
+        https://pytorch.org/docs/stable/tensors.html?highlight=#torch.Tensor.to
+        for a reference of the parameters that can be passed in.
 
         Args:
             ptype: Ptype.arithmetic or Ptype.binary.
         """
-        if isinstance(input, Ptype):
-            ptype = input
-            retval = self.clone()
-            if retval.ptype == ptype:
-                return retval
-            retval._tensor = convert(self._tensor, ptype, **kwargs)
-            retval.ptype = ptype
-            return retval
+        if "ptype" in kwargs:
+            return self._to_ptype(**kwargs)
+        elif args and isinstance(args[0], Ptype):
+            ptype = args[0]
+            return self._to_ptype(ptype, **kwargs)
         else:
-            device = input
-            share = self.share.to(device)
+            share = self.share.to(*args, **kwargs)
             if share.is_cuda:
                 share = CUDALongTensor(share)
             self.share = share
             return self
+
+    def _to_ptype(self, ptype, **kwargs):
+        r"""
+        Convert MPCTensor's underlying share to the corresponding ptype
+        (ArithmeticSharedTensor, BinarySharedTensor)
+
+        Args:
+            ptype (Ptype.arithmetic or Ptype.binary): The ptype to convert
+                the shares to.
+            precision (int, optional): Precision of the fixed point encoder when
+                converting a binary share to an arithmetic share. It will be ignored
+                if the ptype doesn't match.
+            bits (int, optional): If specified, will only preserve the bottom `bits` bits
+                of a binary tensor when converting from a binary share to an arithmetic share.
+                It will be ignored if the ptype doesn't match.
+        """
+
+        retval = self.clone()
+        if retval.ptype == ptype:
+            return retval
+        retval._tensor = convert(self._tensor, ptype, **kwargs)
+        retval.ptype = ptype
+        return retval
 
     def arithmetic(self):
         """Converts self._tensor to arithmetic secret sharing"""

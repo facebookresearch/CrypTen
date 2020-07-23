@@ -1515,8 +1515,7 @@ class TestMPC(object):
             self._check(
                 encrypted_tensor,
                 tensor,
-                "encrypted_tensor was modified during conversion to "
-                "BinarySharedTensor.",
+                "encrypted_tensor was modified during conversion to BinarySharedTensor.",
             )
 
             encrypted_from_binary = binary_encrypted_tensor.to(Ptype.arithmetic)
@@ -1525,6 +1524,65 @@ class TestMPC(object):
                 tensor,
                 "to failed from BinarySharedTensor to ArithmeticSharedTensor",
             )
+
+        # Test API
+        tensor = self._get_random_test_tensor(size=(5,), is_float=True)
+        encrypted_tensor = MPCTensor(tensor)
+
+        if torch.cuda.is_available():
+            encrypted_tensor = encrypted_tensor.to("cuda")
+            self.assertEqual(encrypted_tensor.device.type, "cuda")
+            self.assertEqual(encrypted_tensor.ptype, Ptype.arithmetic)
+            self._check(
+                encrypted_tensor,
+                tensor,
+                "encrypted_tensor was modified during conversion to cuda",
+            )
+
+            encrypted_tensor = encrypted_tensor.to(device="cuda")
+            self.assertEqual(encrypted_tensor.device.type, "cuda")
+            self.assertEqual(encrypted_tensor.ptype, Ptype.arithmetic)
+            self._check(
+                encrypted_tensor,
+                tensor,
+                "encrypted_tensor was modified during conversion to cuda",
+            )
+
+        encrypted_tensor = encrypted_tensor.to("cpu")
+        self.assertEqual(encrypted_tensor.device.type, "cpu")
+        self.assertEqual(encrypted_tensor.ptype, Ptype.arithmetic)
+        self._check(
+            encrypted_tensor,
+            tensor,
+            "encrypted_tensor was modified during conversion to cpu",
+        )
+
+        encrypted_tensor = encrypted_tensor.to(device="cpu")
+        self.assertEqual(encrypted_tensor.device.type, "cpu")
+        self.assertEqual(encrypted_tensor.ptype, Ptype.arithmetic)
+        self._check(
+            encrypted_tensor,
+            tensor,
+            "encrypted_tensor was modified during conversion to cpu",
+        )
+
+        encrypted_tensor = encrypted_tensor.to(ptype=Ptype.binary)
+        self.assertEqual(encrypted_tensor.device.type, "cpu")
+        self.assertEqual(encrypted_tensor.ptype, Ptype.binary)
+        self._check(
+            encrypted_tensor,
+            tensor,
+            "encrypted_tensor was modified during conversion to BinarySharedTensor.",
+        )
+
+        encrypted_tensor = encrypted_tensor.to(ptype=Ptype.arithmetic)
+        self.assertEqual(encrypted_tensor.device.type, "cpu")
+        self.assertEqual(encrypted_tensor.ptype, Ptype.arithmetic)
+        self._check(
+            encrypted_tensor,
+            tensor,
+            "encrypted_tensor was modified during conversion to ArithmeticSharedTensor.",
+        )
 
     def test_cumsum(self):
         """Tests cumulative sum on encrypted tensors."""
