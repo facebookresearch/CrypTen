@@ -719,6 +719,14 @@ class TestNN(object):
         self.assertTrue(
             isinstance(model.fc1, crypten.nn.Linear), "modules __getattr__ failed"
         )
+        model.fc1.weight = torch.nn.Parameter(torch.zeros((2, 3)))
+        self.assertTrue(
+            torch.all(
+                model.fc1._parameters["weight"].eq(
+                    torch.nn.Parameter(torch.zeros((2, 3)))
+                )
+            )
+        )
 
     def test_training(self):
         """

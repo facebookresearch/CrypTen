@@ -508,6 +508,9 @@ class Module:
             modules[name] = value
         else:
             object.__setattr__(self, name, value)
+            parameters = self.__dict__.get("_parameters")
+            if parameters is not None and name in parameters:
+                parameters[name] = value
 
 
 class Container(Module):
