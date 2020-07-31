@@ -720,6 +720,43 @@ class TestNN(object):
             isinstance(model.fc1, crypten.nn.Linear), "modules __getattr__ failed"
         )
 
+        """
+        assign to model.weight should change model._parameters["weight"]
+        """
+        model.fc1.weight = torch.nn.Parameter(torch.zeros((2, 3)))
+
+        self.assertEqual(
+            model.fc1._parameters["weight"].tolist(),
+            torch.nn.Parameter(torch.zeros((2, 3))).tolist(),
+        )
+
+        """
+        assign to  model._parameters["weight"] should change model.weight
+        """
+        model.fc1._parameters["weight"] = torch.nn.Parameter(torch.ones((2, 3)))
+        self.assertEqual(
+            model.fc1.weight.tolist(), torch.nn.Parameter(torch.ones((2, 3))).tolist()
+        )
+
+        """
+        assign to  model._buffers["bufferedItem"] should change model.bufferedItem
+        """
+        model.fc1._buffers["bufferedItem"] = torch.nn.Parameter(torch.ones((2, 3)))
+        self.assertEqual(
+            model.fc1.bufferedItem.tolist(),
+            torch.nn.Parameter(torch.ones((2, 3))).tolist(),
+        )
+
+        """
+        assign to model.weight should change model._parameters["weight"]
+        """
+        model.fc1.bufferedItem = torch.nn.Parameter(torch.zeros((2, 3)))
+
+        self.assertEqual(
+            model.fc1._buffers["bufferedItem"].tolist(),
+            torch.nn.Parameter(torch.zeros((2, 3))).tolist(),
+        )
+
     def test_training(self):
         """
         Tests training of simple model in crypten.nn.

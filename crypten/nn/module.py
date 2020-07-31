@@ -507,6 +507,11 @@ class Module:
                 )
             modules[name] = value
         else:
+            for key in ["_parameters", "_modules", "_buffers"]:
+                if key in self.__dict__ and name in self.__dict__[key]:
+                    values = self.__dict__[key]
+                    values[name] = value
+                    return
             object.__setattr__(self, name, value)
 
 
