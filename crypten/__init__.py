@@ -14,6 +14,7 @@ import crypten.common
 import crypten.communicator as comm
 import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
+import crypten.optim  # noqa: F401
 import torch
 
 # other imports:
