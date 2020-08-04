@@ -14,6 +14,7 @@ from pathlib import Path
 import crypten
 import PIL
 import torch
+import torch.nn.functional as F
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
 from torchvision import transforms
@@ -58,6 +59,7 @@ class Images:
         # image net 1k classes
         class_id = 463
         self.y = torch.tensor([class_id]).long()
+        self.y_onehot = F.one_hot(self.y, 1000)
         self.x_test, self.y_test = self.x, self.y
 
     def preprocess_image(self):

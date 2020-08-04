@@ -14,6 +14,8 @@ from typing import Any
 
 import crypten
 import torch
+import torch.nn as nn
+from torchvision import models
 
 
 try:
@@ -85,23 +87,33 @@ class FeedForwardCrypTen(crypten.nn.Module):
         return out
 
 
-def resnet18():
-    model = torch.hub.load("pytorch/vision:v0.5.0", "resnet18", pretrained=True)
-    return model
+class ResNet(nn.Module):
+    def __init__(self, n_layers=18):
+        super().__init__()
+        assert n_layers in [18, 34, 50]
+        self.model = getattr(models, "resnet{}".format(n_layers))(pretrained=True)
+
+    def forward(self, x):
+        return self.model(x)
 
 
-def resnet18_enc():
-    model = torch.hub.load("pytorch/vision:v0.5.0", "resnet18", pretrained=True)
-    dummy_input = torch.rand([1, 3, 224, 224])
-    model_enc = crypten.nn.from_pytorch(model, dummy_input)
-    return model_enc
+class ResNetCrypTen(crypten.nn.Module):
+    def __init__(self, n_layers=18):
+        super().__init__()
+        assert n_layers in [18, 34, 50]
+        model = getattr(models, "resnet{}".format(n_layers))(pretrained=True)
+        dummy_input = torch.rand([1, 3, 224, 224])
+        self.model = crypten.nn.from_pytorch(model, dummy_input)
+
+    def forward(self, x):
+        return self.model(x)
 
 
 MODELS = [
     Model(
         name="logistic regression",
-        plain=LogisticRegression,
-        crypten=LogisticRegressionCrypTen,
+        plain=LogisticRegression(),
+        crypten=LogisticRegressionCrypTen(),
         data=data.GaussianClusters(),
         epochs=50,
         lr=0.1,
@@ -110,8 +122,8 @@ MODELS = [
     ),
     Model(
         name="feedforward neural network",
-        plain=FeedForward,
-        crypten=FeedForwardCrypTen,
+        plain=FeedForward(),
+        crypten=FeedForwardCrypTen(),
         data=data.GaussianClusters(),
         epochs=50,
         lr=0.1,
@@ -119,9 +131,29 @@ MODELS = [
         advanced=False,
     ),
     Model(
-        name="resnet 18",
-        plain=resnet18,
-        crypten=resnet18_enc,
+        name="resnet18",
+        plain=ResNet(n_layers=18),
+        crypten=ResNetCrypTen(n_layers=18),
+        data=data.Images(),
+        epochs=2,
+        lr=0.1,
+        loss="CrossEntropyLoss",
+        advanced=True,
+    ),
+    Model(
+        name="resnet34",
+        plain=ResNet(n_layers=34),
+        crypten=ResNetCrypTen(n_layers=34),
+        data=data.Images(),
+        epochs=2,
+        lr=0.1,
+        loss="CrossEntropyLoss",
+        advanced=True,
+    ),
+    Model(
+        name="resnet50",
+        plain=ResNet(n_layers=50),
+        crypten=ResNetCrypTen(n_layers=50),
         data=data.Images(),
         epochs=2,
         lr=0.1,

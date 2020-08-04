@@ -420,13 +420,15 @@ class ModelBenchmarks:
         for model in self.models:
             x, y = model.data.x, model.data.y
             x, y = x.to(device=self.device), y.to(device=self.device)
-            model_plain = model.plain().to(device=self.device)
+            model_plain = model.plain.to(device=self.device)
             runtime, _ = self.train(model_plain, x, y, 1, model.lr, model.loss)
             runtimes.append(runtime)
 
+            if model.advanced:
+                y = model.data.y_onehot
             x_enc = crypten.cryptensor(x, device=self.device)
             y_enc = crypten.cryptensor(y, device=self.device)
-            model_enc = model.crypten().to(device=self.device).encrypt()
+            model_enc = model.crypten.to(device=self.device).encrypt()
             runtime_enc, _ = self.train_crypten(
                 model_enc, x_enc, y_enc, 1, model.lr, model.loss
             )
@@ -445,11 +447,11 @@ class ModelBenchmarks:
         runtimes_enc = []
 
         for model in self.models:
-            model_plain = model.plain().to(device=self.device)
+            model_plain = model.plain.to(device=self.device)
             runtime, _ = self.predict(model_plain, model.data.x.to(device=self.device))
             runtimes.append(runtime)
 
-            model_enc = model.crypten()
+            model_enc = model.crypten
             model_enc = model_enc.to(device=self.device).encrypt()
             x_enc = crypten.cryptensor(model.data.x, device=self.device)
             runtime_enc, _ = self.predict(model_enc, x_enc)
@@ -479,7 +481,7 @@ class ModelBenchmarks:
         accuracies, accuracies_crypten = [], []
 
         for model in self.models:
-            model_plain = model.plain().to(device=self.device)
+            model_plain = model.plain.to(device=self.device)
             x, y = model.data.x, model.data.y
             x, y = x.to(device=self.device), y.to(device=self.device)
             _, model_plain = self.train(
@@ -491,8 +493,10 @@ class ModelBenchmarks:
             accuracy = ModelBenchmarks.calc_accuracy(model_plain(x_test), y_test)
             accuracies.append(accuracy)
 
-            model_crypten = model.crypten()
+            model_crypten = model.crypten
             model_crypten = model_crypten.to(device=self.device).encrypt()
+            if model.advanced:
+                y = model.data.y_onehot
             x_enc = crypten.cryptensor(x, device=self.device)
             y_enc = crypten.cryptensor(y, device=self.device)
             _, model_crypten = self.train_crypten(
@@ -628,6 +632,7 @@ def multiprocess_caller(args):
         rank = comm.get().get_rank()
         if rank == 0:
             pd.set_option("display.precision", 3)
+            print(benchmark)
             if args.path:
                 benchmark.save(args.path)
 
