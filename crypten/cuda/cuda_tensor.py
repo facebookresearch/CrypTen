@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import functools
+import math
 
 import torch
 
@@ -32,6 +33,20 @@ class CUDALongTensor(object):
         result back to a LongTensor. The computed result will be the same as the original
         expected result.
     """
+
+    __BITS = torch.iinfo(torch.long).bits
+    __N_BLOCKS = 4
+    __BLOCK_SIZE = math.ceil(__BITS / __N_BLOCKS)
+
+    __INDICES = []
+    __SHIFTS = []
+    for i in range(__N_BLOCKS):
+        for j in range(__N_BLOCKS):
+            if (i + j) * __BLOCK_SIZE >= __BITS:
+                continue
+            idx = i * __N_BLOCKS + j
+            __INDICES.append(idx)
+            __SHIFTS.append((i + j) * __BLOCK_SIZE)
 
     def __init__(self, data=None, device=None):
         r"""
@@ -140,10 +155,11 @@ class CUDALongTensor(object):
         """Converts a CUDALongTensor `x` to an encoding of
         torch.cuda.DoubleTensor that represent the same data.
         """
+        bks = CUDALongTensor.__BLOCK_SIZE
+        nb = CUDALongTensor.__N_BLOCKS
 
-        # TODO: Make these numbers constant
         x_block = CUDALongTensor.stack(
-            [(x >> (22 * i)) & (2 ** 22 - 1) for i in range(3)]
+            [(x >> (bks * i)) & (2 ** bks - 1) for i in range(nb)]
         )
 
         return x_block.double()
@@ -155,33 +171,39 @@ class CUDALongTensor(object):
         """
         x_enc = x_enc.long()
 
-        x = (x_enc[2] + x_enc[4] + x_enc[6]) << 44
-        x += (x_enc[1] + x_enc[3]) << 22
-        x += x_enc[0]
+        indices = torch.tensor(CUDALongTensor.__INDICES, device=x_enc.device)
+        shifts = torch.tensor(CUDALongTensor.__SHIFTS, device=x_enc.device)
+        shifts = shifts.view(-1, *([1] * (x_enc.ndim - 1)))
 
-        return CUDALongTensor(x)
+        x = torch.index_select(x_enc, 0, indices)
+        x <<= shifts
+
+        return CUDALongTensor(x.sum(0))
 
     @staticmethod
     def __patched_conv_ops(op, x, y, *args, **kwargs):
+        nb = CUDALongTensor.__N_BLOCKS
+        nb2 = nb ** 2
+
         x_encoded = CUDALongTensor.__encode_as_fp64(x).data
         y_encoded = CUDALongTensor.__encode_as_fp64(y).data
 
         repeat_idx = [1] * (x_encoded.dim() - 1)
-        x_enc_span = x_encoded.repeat(3, *repeat_idx)
-        y_enc_span = torch.repeat_interleave(y_encoded, repeats=3, dim=0)
+        x_enc_span = x_encoded.repeat(nb, *repeat_idx)
+        y_enc_span = torch.repeat_interleave(y_encoded, repeats=nb, dim=0)
 
         bs, c, *img = x.size()
         c_out, c_in, *ks = y.size()
 
-        x_enc_span = x_enc_span.transpose_(0, 1).reshape(bs, 9 * c, *img)
-        y_enc_span = y_enc_span.reshape(9 * c_out, c_in, *ks)
+        x_enc_span = x_enc_span.transpose_(0, 1).reshape(bs, nb2 * c, *img)
+        y_enc_span = y_enc_span.reshape(nb2 * c_out, c_in, *ks)
 
         c_z = c_out if op in ["conv1d", "conv2d"] else c_in
 
         z_encoded = getattr(torch, op)(
-            x_enc_span, y_enc_span, *args, **kwargs, groups=9
+            x_enc_span, y_enc_span, *args, **kwargs, groups=nb2
         )
-        z_encoded = z_encoded.reshape(bs, 9, c_z, *z_encoded.size()[2:]).transpose_(
+        z_encoded = z_encoded.reshape(bs, nb2, c_z, *z_encoded.size()[2:]).transpose_(
             0, 1
         )
 
@@ -206,6 +228,8 @@ class CUDALongTensor(object):
     @staticmethod
     @implements(torch.matmul)
     def matmul(x, y, *args, **kwargs):
+        nb = CUDALongTensor.__N_BLOCKS
+
         # Prepend 1 to the dimension of x or y if it is 1-dimensional
         remove_x, remove_y = False, False
         if x.dim() == 1:
@@ -220,8 +244,8 @@ class CUDALongTensor(object):
 
         # Span x and y for cross multiplication
         repeat_idx = [1] * (x_encoded.dim() - 1)
-        x_enc_span = x_encoded.repeat(3, *repeat_idx)
-        y_enc_span = torch.repeat_interleave(y_encoded, repeats=3, dim=0)
+        x_enc_span = x_encoded.repeat(nb, *repeat_idx)
+        y_enc_span = torch.repeat_interleave(y_encoded, repeats=nb, dim=0)
 
         # Broadcasting
         for _ in range(abs(x_enc_span.ndim - y_enc_span.ndim)):
@@ -270,20 +294,27 @@ class CUDALongTensor(object):
     @staticmethod
     @implements(torch.nn.functional.avg_pool2d)
     def avg_pool2d(x, kernel_size, divisor_override=None, *args, **kwargs):
+        nb = CUDALongTensor.__N_BLOCKS
+        bks = CUDALongTensor.__BLOCK_SIZE
+
         x_encoded = CUDALongTensor.__encode_as_fp64(x).data
 
         bs, c, h, w = x.shape
-        x_encoded = x_encoded.reshape(3 * bs, c, h, w)
+        x_encoded = x_encoded.reshape(nb * bs, c, h, w)
 
         z_encoded = torch.nn.functional.avg_pool2d(
             x_encoded, kernel_size, divisor_override=1, *args, **kwargs
         )
 
-        z_enc = z_encoded.reshape(3, bs, *z_encoded.shape[1:]).long()
+        z_enc = z_encoded.reshape(nb, bs, *z_encoded.shape[1:]).long()
 
-        z = z_enc[2] << 44
-        z += z_enc[1] << 22
-        z += z_enc[0]
+        z = torch.zeros(
+            (nb, bs, *z_encoded.shape[1:]), device=x.device, dtype=torch.long
+        )
+        z += z_enc << torch.tensor([bks * i for i in range(nb)], device=x.device).view(
+            nb, *([1] * nb)
+        )
+        z = z.sum(0)
 
         if isinstance(kernel_size, (int, float)):
             pool_size = kernel_size ** 2
