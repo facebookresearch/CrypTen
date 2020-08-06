@@ -29,18 +29,24 @@ import subprocess
 from dateutil.relativedelta import relativedelta
 
 
-def parse_overwrite():
+def parse_args():
     """Parses command line arguments"""
     parser = argparse.ArgumentParser(description="Run Historical Benchmarks")
     parser.add_argument(
         "--overwrite",
-        type=bool,
         required=False,
         default=False,
+        action="store_true",
         help="overwrite existing data directories",
     )
+    parser.add_argument(
+        "--cuda-toolkit-version",
+        required=False,
+        default="10.1",
+        help="build pytorch with the corresponding version of cuda-toolkit",
+    )
     args = parser.parse_args()
-    return args.overwrite
+    return args
 
 
 def get_dates(day=26):
@@ -66,7 +72,9 @@ def get_dates(day=26):
     return dates
 
 
-overwrite = parse_overwrite()
+args = parse_args()
+overwrite = args.overwrite
+cuda_version = "".join(args.cuda_toolkit_version.split("."))
 dates = get_dates()
 PATH = os.getcwd()
 
@@ -77,18 +85,19 @@ subprocess.call(
 )
 
 # create venv
-subprocess.call("cd /tmp && python -m venv .venv", shell=True)
-venv = "cd /tmp && source .venv/bin/activate && "
+subprocess.call("cd /tmp && python3 -m venv .venv", shell=True)
+venv = "cd /tmp && . .venv/bin/activate && "
 
 # install PyTorch
 subprocess.call(
-    f"{venv} pip install onnx==1.6.0 tensorboard pandas sklearn", shell=True
+    f"{venv} pip3 install onnx==1.6.0 tensorboard pandas sklearn", shell=True
 )
-nightly = "dev20200220"
-nightly_url = "https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html"
-pip_torch = f"pip install torch==1.5.0.{nightly} torchvision==0.6.0.{nightly}"
-subprocess.call(f"{venv} {pip_torch} -f {nightly_url}", shell=True)
+stable_url = "https://download.pytorch.org/whl/torch_stable.html"
+pip_torch = f"pip install torch==1.5.1+cu{cuda_version} torchvision==0.6.1+cu{cuda_version} -f https://download.pytorch.org/whl/torch_stable.html"
+subprocess.call(f"{venv} {pip_torch} -f {stable_url}", shell=True)
 
+
+modes = {"1pc": "", "2pc": "--world-size=2"}
 
 for date in dates:
     path_exists = os.path.exists(f"dash_app/data/{date}/func_benchmarks.csv")
@@ -100,12 +109,18 @@ for date in dates:
         + f"git checkout `git rev-list -n 1 --before='{date} 01:01' master`",
         shell=True,
     )
-    subprocess.call(venv + "pip install CrypTen/.", shell=True)
-    subprocess.call(f"echo Generating {date} Benchmarks", shell=True)
-    subprocess.call(f"mkdir -p dash_app/data/{date}", shell=True)
-    path = os.path.join(PATH, f"dash_app/data/{date}")
-    subprocess.call(venv + f"cd {PATH} && python benchmark.py -p '{path}'", shell=True)
-
+    for mode, arg in modes.items():
+        subprocess.call(venv + "pip3 install CrypTen/.", shell=True)
+        subprocess.call(f"echo Generating {date} Benchmarks for {mode}", shell=True)
+        path = os.path.join(PATH, f"dash_app/data/{date}", mode)
+        subprocess.call(f"mkdir -p {path}", shell=True)
+        subprocess.call(
+            venv + f"cd {PATH} && python3 benchmark.py -p '{path}' {arg}", shell=True
+        )
+        subprocess.call(
+            venv + f"cd {PATH} && python3 benchmark.py -p '{path}' -d 'cuda' {arg}",
+            shell=True,
+        )
 
 # clean up
 shutil.rmtree("/tmp/.venv", ignore_errors=True)
