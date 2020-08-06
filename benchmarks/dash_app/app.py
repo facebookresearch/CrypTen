@@ -15,7 +15,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from dash.dependencies import Input, Output
-from load_data import get_available_dates, read_data
+from load_data import get_aggregated_data, get_available_dates
 from plotly.subplots import make_subplots
 
 
@@ -30,10 +30,8 @@ PATH = pathlib.Path(__file__).parent
 DATA_PATH = PATH.joinpath("data").resolve()
 
 available_dates = get_available_dates(DATA_PATH)
-func_df_cpu, model_df_cpu = read_data(DATA_PATH, available_dates)
-func_df_gpu, model_df_gpu = read_data(DATA_PATH, available_dates, cuda=True)
-func_df = pd.concat([func_df_cpu, func_df_gpu])
-model_df = pd.concat([model_df_cpu, model_df_gpu])
+subdirs = ["1pc", "2pc"]
+func_df, model_df = get_aggregated_data(DATA_PATH, subdirs)
 
 colors_discrete = px.colors.qualitative.Set2
 template = "simple_white"
@@ -93,6 +91,14 @@ index_page = html.Div(
             id="header",
             className="row flex-display",
             style={"margin-bottom": "25px"},
+        ),
+        dcc.Tabs(
+            [
+                dcc.Tab(label="1 party", value="1pc"),
+                dcc.Tab(label="2 party", value="2pc"),
+            ],
+            id="benchmark-tabs",
+            value="1pc",
         ),
         html.Div(
             [
@@ -330,10 +336,20 @@ comparison_layout = html.Div(
 )
 
 
-@app.callback(Output("func-runtime-crypten", "figure"), [Input("select_date", "value")])
-def update_runtime_crypten(selected_date):
-    filter_df = func_df[func_df["date"] == selected_date]
-    filter_df["runtime in seconds"] = filter_df["runtime crypten"]
+@app.callback(
+    Output("func-runtime-crypten", "figure"),
+    [Input("select_date", "value"), Input("benchmark-tabs", "value")],
+)
+def update_runtime_crypten(selected_date, mode):
+    try:
+        filter_df = func_df[func_df["mode"] == mode]
+        filter_df = filter_df[filter_df["date"] == selected_date]
+        filter_df["runtime in seconds"] = filter_df["runtime crypten"]
+    except KeyError:
+        filter_df = pd.DataFrame()
+
+    if filter_df.empty:
+        return render_emtpy_figure()
 
     fig = px.bar(
         filter_df,
@@ -354,10 +370,19 @@ def update_runtime_crypten(selected_date):
 
 
 @app.callback(
-    Output("func-runtime-crypten-v-plain", "figure"), [Input("select_date", "value")]
+    Output("func-runtime-crypten-v-plain", "figure"),
+    [Input("select_date", "value"), Input("benchmark-tabs", "value")],
 )
-def update_runtime_crypten_v_plain(selected_date):
-    filter_df = func_df[func_df["date"] == selected_date]
+def update_runtime_crypten_v_plain(selected_date, mode):
+    try:
+        filter_df = func_df[func_df["mode"] == mode]
+        filter_df = filter_df[filter_df["date"] == selected_date]
+    except KeyError:
+        filter_df = pd.DataFrame()
+
+    if filter_df.empty:
+        return render_emtpy_figure()
+
     fig = px.bar(
         filter_df,
         x="runtime gap",
@@ -376,9 +401,20 @@ def update_runtime_crypten_v_plain(selected_date):
     return fig
 
 
-@app.callback(Output("func-abs-error", "figure"), [Input("select_date", "value")])
-def update_abs_error(selected_date):
-    filter_df = func_df[func_df["date"] == selected_date]
+@app.callback(
+    Output("func-abs-error", "figure"),
+    [Input("select_date", "value"), Input("benchmark-tabs", "value")],
+)
+def update_abs_error(selected_date, mode):
+    try:
+        filter_df = func_df[func_df["mode"] == mode]
+        filter_df = filter_df[filter_df["date"] == selected_date]
+    except KeyError:
+        filter_df = pd.DataFrame()
+
+    if filter_df.empty:
+        return render_emtpy_figure()
+
     fig = px.bar(
         filter_df,
         x="total abs error",
@@ -397,9 +433,20 @@ def update_abs_error(selected_date):
     return fig
 
 
-@app.callback(Output("func-relative-error", "figure"), [Input("select_date", "value")])
-def update_abs_error(selected_date):
-    filter_df = func_df[func_df["date"] == selected_date]
+@app.callback(
+    Output("func-relative-error", "figure"),
+    [Input("select_date", "value"), Input("benchmark-tabs", "value")],
+)
+def update_abs_error(selected_date, mode):
+    try:
+        filter_df = func_df[func_df["mode"] == mode]
+        filter_df = filter_df[filter_df["date"] == selected_date]
+    except KeyError:
+        filter_df = pd.DataFrame()
+
+    if filter_df.empty:
+        return render_emtpy_figure()
+
     fig = px.bar(
         filter_df,
         x="average relative error",
@@ -457,11 +504,19 @@ def render_emtpy_figure():
 
 @app.callback(
     Output("model-training-time", "figure"),
-    [Input("select_date", "value"), Input("select_comparison", "value")],
+    [
+        Input("select_date", "value"),
+        Input("benchmark-tabs", "value"),
+        Input("select_comparison", "value"),
+    ],
 )
-def update_training_time(selected_date, option):
-    filter_df = model_df[(model_df["date"] == selected_date)]
-    filter_df, color = process_comparison_options(filter_df, option)
+def update_training_time(selected_date, mode, comp_opt):
+    try:
+        filter_df = model_df[model_df["mode"] == mode]
+        filter_df = filter_df[filter_df["date"] == selected_date]
+        filter_df, color = process_comparison_options(filter_df, comp_opt)
+    except KeyError:
+        filter_df = pd.DataFrame()
 
     if filter_df.empty:
         return render_emtpy_figure()
@@ -485,11 +540,19 @@ def update_training_time(selected_date, option):
 
 @app.callback(
     Output("model-inference-time", "figure"),
-    [Input("select_date", "value"), Input("select_comparison", "value")],
+    [
+        Input("select_date", "value"),
+        Input("benchmark-tabs", "value"),
+        Input("select_comparison", "value"),
+    ],
 )
-def update_training_time(selected_date, option):
-    filter_df = model_df[(model_df["date"] == selected_date)]
-    filter_df, color = process_comparison_options(filter_df, option)
+def update_training_time(selected_date, mode, comp_opt):
+    try:
+        filter_df = model_df[model_df["mode"] == mode]
+        filter_df = filter_df[filter_df["date"] == selected_date]
+        filter_df, color = process_comparison_options(filter_df, comp_opt)
+    except KeyError:
+        filter_df = pd.DataFrame()
 
     if filter_df.empty:
         return render_emtpy_figure()
@@ -516,13 +579,22 @@ def update_training_time(selected_date, option):
 
 @app.callback(
     Output("model-accuracy", "figure"),
-    [Input("select_date", "value"), Input("select_comparison", "value")],
+    [
+        Input("select_date", "value"),
+        Input("benchmark-tabs", "value"),
+        Input("select_comparison", "value"),
+    ],
 )
-def update_model_accuracy(selected_date, option):
-    filter_df = model_df[(model_df["date"] == selected_date)]
-    filter_df, color = process_comparison_options(filter_df, option)
+def update_model_accuracy(selected_date, mode, comp_opt):
+    try:
+        filter_df = model_df[model_df["mode"] == mode]
+        filter_df = filter_df[filter_df["date"] == selected_date]
+        filter_df, color = process_comparison_options(filter_df, comp_opt)
+    except KeyError:
+        filter_df = pd.DataFrame()
 
     if filter_df.empty:
+        return render_emtpy_figure()
         return render_emtpy_figure()
 
     fig = px.bar(
@@ -549,8 +621,16 @@ def update_model_accuracy(selected_date, option):
 def update_runtime_diff(start_date, end_date, funcs):
     if type(funcs) is str:
         funcs = [funcs]
-    start_df = func_df_cpu[func_df_cpu["date"] == start_date]
-    end_df = func_df_cpu[func_df_cpu["date"] == end_date]
+    try:
+        filter_df = func_df[func_df["mode"] == "1pc"]
+        func_df_cpu = filter_df[filter_df["device"] == "cpu"]
+        start_df = func_df_cpu[func_df_cpu["date"] == start_date]
+        end_df = func_df_cpu[func_df_cpu["date"] == end_date]
+    except KeyError:
+        filter_df = pd.DataFrame()
+
+    if filter_df.empty:
+        return render_emtpy_figure()
 
     fig = make_subplots(
         rows=len(funcs), cols=1, specs=[[{"type": "domain"}] for _ in range(len(funcs))]
@@ -590,8 +670,16 @@ def update_runtime_diff(start_date, end_date, funcs):
 def update_error_diff(start_date, end_date, funcs):
     if type(funcs) is str:
         funcs = [funcs]
-    start_df = func_df_cpu[func_df_cpu["date"] == start_date]
-    end_df = func_df_cpu[func_df_cpu["date"] == end_date]
+    try:
+        filter_df = func_df[func_df["mode"] == "1pc"]
+        func_df_cpu = filter_df[filter_df["device"] == "cpu"]
+        start_df = func_df_cpu[func_df_cpu["date"] == start_date]
+        end_df = func_df_cpu[func_df_cpu["date"] == end_date]
+    except KeyError:
+        filter_df = pd.DataFrame()
+
+    if filter_df.empty:
+        return render_emtpy_figure()
 
     fig = make_subplots(
         rows=len(funcs), cols=1, specs=[[{"type": "domain"}] for _ in range(len(funcs))]
@@ -628,9 +716,11 @@ def update_error_diff(start_date, end_date, funcs):
 def update_runtime_timeseries(funcs):
     if type(funcs) is str:
         funcs = [funcs]
-
-    filtered_df = func_df[func_df["function"].isin(funcs)]
-    filtered_df.sort_values("date", inplace=True)
+    try:
+        filtered_df = func_df[func_df["function"].isin(funcs)]
+        filtered_df.sort_values("date", inplace=True)
+    except KeyError:
+        return render_emtpy_figure()
 
     fig = px.line(
         filtered_df, x="date", y="runtime crypten", template=template, color="function"
@@ -643,9 +733,11 @@ def update_runtime_timeseries(funcs):
 def update_error_timeseries(funcs):
     if type(funcs) is str:
         funcs = [funcs]
-
-    filtered_df = func_df[func_df["function"].isin(funcs)]
-    filtered_df.sort_values("date", inplace=True)
+    try:
+        filtered_df = func_df[func_df["function"].isin(funcs)]
+        filtered_df.sort_values("date", inplace=True)
+    except KeyError:
+        return render_emtpy_figure()
 
     fig = px.line(
         filtered_df, x="date", y="total abs error", template=template, color="function"

@@ -11,6 +11,102 @@ import os
 import pandas as pd
 
 
+def get_aggregated_data(base_dir, subdirs):
+    """Aggregate dataframe for model and func benchmarks assumining directory is structured as
+        DATA_PATH
+        |_2020-02-20
+            |_subdir1
+                |_func_benchmarks.csv
+                |_model_benchmarks.csv
+                |_func_benchmarks_cuda.csv (optional)
+                |_model_benchmarks_cuda.csv (optional)
+            |_subdir2
+                ...
+    Args:
+        base_dir (pathlib.path): path containing month subdirectories
+        subdirs (list): a list of all subdirectories to aggreagate dataframes from
+    Returns: tuple of pd.DataFrames containing func and model benchmarks with dates
+    """
+    available_dates = get_available_dates(base_dir)
+    func_df, model_df = pd.DataFrame(), pd.DataFrame()
+
+    for subdir in subdirs:
+        func_df_cpu, model_df_cpu = read_subdir(base_dir, available_dates, subdir)
+        func_df_gpu, model_df_gpu = read_subdir(
+            base_dir, available_dates, subdir, cuda=True
+        )
+        tmp_func_df = pd.concat([func_df_cpu, func_df_gpu])
+        tmp_model_df = pd.concat([model_df_cpu, model_df_gpu])
+
+        tmp_func_df["mode"] = subdir
+        tmp_model_df["mode"] = subdir
+
+        func_df = func_df.append(tmp_func_df)
+        model_df = model_df.append(tmp_model_df)
+
+    return func_df, model_df
+
+
+def load_df(path, cuda=False):
+    """Load dataframe for model and func benchmarks assumining directory is structured as
+      path
+        |_func_benchmarks.csv
+        |_model_benchmarks.csv
+        |_func_benchmarks_cuda.csv (optional)
+        |_model_benchmarks_cuda.csv (optional)
+    Args:
+        path (str): path containing model and func benchmarks
+        cuda (bool) : if set to true, read the corresponding func and model benchmarks for cuda
+    Returns: tuple of pd.DataFrames containing func and model benchmarks with dates
+    """
+    postfix = "_cuda" if cuda else ""
+    func_path = os.path.join(path, f"func_benchmarks{postfix}.csv")
+    model_path = os.path.join(path, f"model_benchmarks{postfix}.csv")
+
+    func_df, model_df = pd.DataFrame(), pd.DataFrame()
+    if os.path.exists(func_path):
+        func_df = pd.read_csv(func_path)
+    if os.path.exists(model_path):
+        model_df = pd.read_csv(model_path)
+
+    return func_df, model_df
+
+
+def read_subdir(base_dir, dates, subdir="", cuda=False):
+    """Builds dataframe for model and func benchmarks assuming directory is structured as
+     DATA_PATH
+        |_2020-02-20
+            |_subdir
+                |_func_benchmarks.csv
+                |_model_benchmarks.csv
+                |_func_benchmarks_cuda.csv (optional)
+                |_model_benchmarks_cuda.csv (optional)
+    Args:
+        base_dir (pathlib.path): path containing month subdirectories
+        dates (list of str): containing dates / subdirectories available
+        subdir (str) : string indicating the name of the sub directory to read enchmarks from
+        cuda (bool) : if set to true, read the corresponding func and model benchmarks for cuda
+    Returns: tuple of pd.DataFrames containing func and model benchmarks with dates
+    """
+    func_df, model_df = pd.DataFrame(), pd.DataFrame()
+    device = "gpu" if cuda else "cpu"
+
+    for date in dates:
+        path = os.path.join(base_dir, date, subdir)
+
+        tmp_func_df, tmp_model_df = load_df(path, cuda=cuda)
+        set_metadata(tmp_func_df, date, device)
+        set_metadata(tmp_model_df, date, device)
+
+        func_df = func_df.append(tmp_func_df)
+        model_df = model_df.append(tmp_model_df)
+
+    if not func_df.empty:
+        func_df = compute_runtime_gap(func_df)
+        func_df = add_error_bars(func_df)
+    return func_df, model_df
+
+
 def get_available_dates(data_dir):
     """Returns list of available dates in DATA_PATH directory"""
     available_dates = []
@@ -20,47 +116,6 @@ def get_available_dates(data_dir):
             available_dates.append(sub_dir)
 
     return available_dates
-
-
-def read_data(data_dir, dates, cuda=False):
-    """Builds dataframe for model and func benchmarks Assumes directory is structured as
-     DATA_PATH
-        |_2020-02-20
-            |_func_benchmarks.csv
-            |_model_benchmarks.csv
-            |_func_benchmarks_cuda.csv (optional)
-            |_model_benchmarks_cuda.csv (optional)
-    Args:
-        data_dir (pathlib.path): path containing month subdirectories
-        dates (list of str): containing dates / subdirectories available
-    Returns: tuple of pd.DataFrames containing func and model benchmarks with dates
-    """
-    func_df, model_df = pd.DataFrame(), pd.DataFrame()
-    postfix = "_cuda" if cuda else ""
-    device = "gpu" if cuda else "cpu"
-
-    for date in dates:
-        path = os.path.join(data_dir, date)
-
-        func_path = os.path.join(path, f"func_benchmarks{postfix}.csv")
-        model_path = os.path.join(path, f"model_benchmarks{postfix}.csv")
-
-        tmp_func_df, tmp_model_df = None, None
-
-        if os.path.exists(func_path):
-            tmp_func_df = pd.read_csv(func_path)
-            set_metadata(tmp_func_df, date, device)
-        if os.path.exists(model_path):
-            tmp_model_df = pd.read_csv(model_path)
-            set_metadata(tmp_model_df, date, device)
-
-        func_df = func_df.append(tmp_func_df)
-        model_df = model_df.append(tmp_model_df)
-
-    if not func_df.empty:
-        func_df = compute_runtime_gap(func_df)
-        func_df = add_error_bars(func_df)
-    return func_df, model_df
 
 
 def set_metadata(df, date, device):
