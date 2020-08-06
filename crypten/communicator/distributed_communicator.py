@@ -57,6 +57,8 @@ class DistributedCommunicator(Communicator):
                 rank=self.rank,
             )
             self.ttp_group = dist.new_group(list(range(total_ws)))
+            if total_ws > 1:
+                self.ttp_comm_group = dist.new_group([0, total_ws - 1])
             self.main_group = dist.new_group(list(range(self.world_size)))
             self.ttp_initialized = init_ttp
             logging.info("World size = %d" % self.world_size)
@@ -226,23 +228,22 @@ class DistributedCommunicator(Communicator):
         return result
 
     @_logging
-    def broadcast(self, input, src, batched=False):
+    def broadcast(self, input, src, group=None, batched=False):
         """Broadcasts the tensor to all parties."""
         assert dist.is_initialized(), "initialize the communicator first"
+        group = self.main_group if group is None else group
         if batched:
             assert isinstance(input, list), "batched reduce input must be a list"
             reqs = []
             for tensor in input:
-                reqs.append(
-                    dist.broadcast(tensor, src, group=self.main_group, async_op=True)
-                )
+                reqs.append(dist.broadcast(tensor, src, group=group, async_op=True))
             for req in reqs:
                 req.wait()
         else:
             assert torch.is_tensor(
                 input.data
             ), "unbatched input for reduce must be a torch tensor"
-            dist.broadcast(input.data, src, group=self.main_group)
+            dist.broadcast(input.data, src, group=group)
         return input
 
     @_logging
