@@ -33,8 +33,3 @@ class HomomorphicProvider:
     def B2A_rng(size):
         """Generate random bit tensor as arithmetic and binary shared tensors"""
         raise NotImplementedError("HomomorphicProvider not implemented")
-
-    @staticmethod
-    def rand(*sizes):
-        """Generate random ArithmeticSharedTensor uniform on [0, 1]"""
-        raise NotImplementedError("HomomorphicProvider not implemented")

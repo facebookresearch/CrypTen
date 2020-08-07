@@ -34,6 +34,7 @@ class FixedPointEncoder:
     def __init__(self, precision_bits=None):
         if precision_bits is None:
             precision_bits = FixedPointEncoder.__default_precision_bits
+        self.precision_bits = precision_bits
         self._scale = int(2 ** precision_bits)
 
     def encode(self, x, device=None):
