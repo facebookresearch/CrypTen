@@ -8,7 +8,7 @@
 import unittest
 from test.multiprocess_test_case import MultiProcessTestCase
 
-import crypten.mpc.primitives.baseOT as baseOT
+import crypten.mpc.primitives.ot.baseOT as baseOT
 
 
 class TestObliviousTransfer(MultiProcessTestCase):
