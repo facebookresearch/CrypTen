@@ -86,6 +86,11 @@ class MPCConfig:
     reciprocal_all_pos: bool = False
     reciprocal_initial: any = None
 
+    # sqrt configuration
+    sqrt_method: str = "NR"
+    sqrt_nr_iters: int = 3
+    sqrt_nr_initial: any = None
+
     # sigmoid / tanh configuration
     sigmoid_tanh_method: str = "reciprocal"
     sigmoid_tanh_terms: int = 32
@@ -384,26 +389,8 @@ class MPCTensor(CrypTensor):
         u2 = u[n:]
 
         # Radius = sqrt(- 2 * log(u1))
-        def sqrtNR(x):
-            """
-            Newton Raphson method for square root accurate in the range [0, 30]
-            which is enough for the full range of log(u) as computed above.
-
-            https://en.wikipedia.org/wiki/Fast_inverse_square_root#Newton's_method
-            """
-            # Initialize using efficient polynomial
-            y = (1 - (x - 0.5).div(32)).square().square().square() + 0.2
-
-            # Newton Raphson iterations for inverse square root
-            for _ in range(3):
-                y = y.mul_(3 - x * y.square()).div_(2)
-
-            # Multiply by input to get square root.
-            return y * x
-
-        # ln(u) = ln(100u) - ln(100) but log(100u) gives better accuracy in our domain
-        r2 = -2 * (u1.mul(100).log() - 4.605170)
-        r = sqrtNR(r2)
+        r2 = -2 * u1._log01()
+        r = r2.sqrt()
 
         # Theta = cos(2 * pi * u2) or sin(2 * pi * u2)
         cos, sin = u2.sub(0.5).mul(6.28318531).cossin()
@@ -851,9 +838,9 @@ class MPCTensor(CrypTensor):
         .. math::
             \sigma(x) = \frac{1}{2}tanh(\frac{x}{2}) + \frac{1}{2}
 
-        Args:
-            terms (int): highest degree of Chebyshev polynomials for tanh
-                using Chebyshev approximation. Must be even and at least 6.
+        "reciprocal" - computes sigmoid using :math:`1 + e^{-x}` and computing
+            the reciprocal
+
         """  # noqa: W605
         method = config.sigmoid_tanh_method
         clip_value = config.sigmoid_tanh_clip_value
@@ -1082,6 +1069,23 @@ class MPCTensor(CrypTensor):
                 y -= h.polynomial([1 / (i + 1) for i in range(order)])
         return y
 
+    def _log01(self):
+        """
+        Computes the natural logarithm with optimizations to improve efficiency and
+        accuracy for the input domain [0, 1]. This is useful for computing log-probabilities
+        for entropy functions.
+
+        We can shift the domain of convergence by a constant :math:`a` using the following identity:
+
+        .. math::
+
+            \ln{u} = \ln {au} - \ln{a}
+
+        Since the domain of convergence for CrypTen's log() function is approximately [1e-4, 1e2],
+        we can set :math:`a=100`.
+        """
+        return self.mul(100).log() - 4.605170
+
     def reciprocal(self):
         """
         Methods:
@@ -1217,11 +1221,72 @@ class MPCTensor(CrypTensor):
             return self.pow(p)
         return self.log().mul_(p).exp()
 
+    def _inv_sqrt(self):
+        """
+        Computes the inverse square root of the input.
+
+        Methods:
+            'NR' : `Newton-Raphson`_ method computes the reciprocal using iterations
+                    of :math:`y_{i+1} = 0.5y_i(3 - self * xy_i^2)` and uses
+                    :math:`3*exp(-(x-.5)) + 0.003` as an initial guess by default
+
+            'log' : Computes the reciprocal of the input from the observation that:
+                    :math:`x^{-1} = exp(-log(x))`
+
+        Configuration params:
+            sqrt_method (str):  One of 'NR' or 'pow'.
+            sqrt_nr_iters (int):  determines the number of Newton-Raphson iterations to run
+                         for the `NR` method
+            sqrt_initial (tensor): sets the initial value for the
+                Newton-Raphson method. By default, this will be set to allow the method to
+                converge over a fairly large domain.
+
+        .. _Newton-Raphson:
+            https://en.wikipedia.org/wiki/Fast_inverse_square_root#Newton's_method
+        """
+        method = config.sqrt_method
+        if method == "NR":
+            # Initialize using decent approximation
+            if config.sqrt_nr_initial is None:
+                y = self.div(2).add(0.2).neg().exp().mul(2.2).add(0.2)
+                y -= self.div(1024)
+            else:
+                y = config.sqrt_nr_initial
+
+            # Newton Raphson iterations for inverse square root
+            for _ in range(config.sqrt_nr_iters):
+                y = y.mul_(3 - self * y.square()).div_(2)
+            return y
+        elif method == "pow":
+            return self.pos_pow(-0.5)
+        else:
+            raise ValueError(f"Invalid method {method} given for _inv_sqrt function")
+
     def sqrt(self):
         """
-        Computes the square root of the input by raising it to the 0.5 power
+        Computes the square root of the input.
+
+        methods:
+
+
+        Configuration params:
+            sqrt_method (str):  One of 'NR' or 'pow'.
+            sqrt_nr_iters (int):  determines the number of Newton-Raphson iterations to run
+                         for the `NR` method
+            sqrt_initial (tensor): sets the initial value for the
+                Newton-Raphson method. By default, this will be set to allow the method to
+                converge over a fairly large domain.
+
+        .. _Newton-Raphson:
+            https://en.wikipedia.org/wiki/Fast_inverse_square_root#Newton's_method
         """
-        return self.pos_pow(0.5)
+        method = config.sqrt_method
+        if method == "NR":
+            return self._inv_sqrt().mul_(self)
+        elif method == "pow":
+            return self.pos_pow(0.5)
+        else:
+            raise ValueError(f"Invalid method {method} given for sqrt function")
 
     def norm(self, p="fro", dim=None, keepdim=False):
         """Computes the p-norm of the input tensor (or along a dimension)."""
