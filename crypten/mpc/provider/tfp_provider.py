@@ -79,9 +79,3 @@ class TrustedFirstParty:
         rB = BinarySharedTensor(r, src=0)
 
         return rA, rB
-
-    @staticmethod
-    def rand(*sizes, device=None):
-        """Generate random ArithmeticSharedTensor uniform on [0, 1]"""
-        samples = torch.rand(*sizes, device=device)
-        return ArithmeticSharedTensor(samples, src=0)
