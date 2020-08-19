@@ -5,6 +5,8 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import math
+
 import numpy as np
 import torch
 
@@ -34,6 +36,7 @@ class FixedPointEncoder:
     def __init__(self, precision_bits=None):
         if precision_bits is None:
             precision_bits = FixedPointEncoder.__default_precision_bits
+        self._precision_bits = precision_bits
         self._scale = int(2 ** precision_bits)
 
     def encode(self, x, device=None):
@@ -79,6 +82,13 @@ class FixedPointEncoder:
             tensor = nearest_integer_division(tensor, self._scale)
 
         return tensor.data
+
+    def __setattr__(self, name, value):
+        if name == "_precision_bits":
+            dict.__setattr__(self, "_scale", int(2 ** value))
+        elif name == "_scale":
+            dict.__setattr__(self, "_precision_bits", int(math.log2(value)))
+        dict.__setattr__(self, name, value)
 
     @property
     def scale(self):
