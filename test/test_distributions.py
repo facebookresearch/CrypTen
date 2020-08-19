@@ -32,39 +32,41 @@ class TestDistributions(object):
             lb - An expected lower bound on samples from the given distribution. Use None if -Inf.
             ub - An expected uppder bound on samples from the given distribution. Use None if +Inf.
         """
-        for size in [(10000,), (1000, 10), (100, 10, 10)]:
+        name = func.__name__
+        for size in [(10000,), (1000, 10), (101, 11, 11)]:
             sample = func(size)
 
             self.assertTrue(
-                sample.size() == size, "Incorrect size for %s distribution" % func
+                sample.size() == size, "Incorrect size for %s distribution" % name
             )
 
             plain_sample = sample.get_plain_text()
+            mean = plain_sample.mean()
+            var = plain_sample.var()
             self.assertTrue(
-                math.isclose(
-                    plain_sample.mean(), expected_mean, rel_tol=1e-1, abs_tol=1e-1
-                ),
-                "incorrect variance for %s distribution" % func,
+                math.isclose(mean, expected_mean, rel_tol=1e-1, abs_tol=1e-1),
+                "incorrect variance for %s distribution: %f" % (name, mean),
             )
             self.assertTrue(
-                math.isclose(
-                    plain_sample.var(), expected_variance, rel_tol=1e-1, abs_tol=1e-1
-                ),
-                "incorrect variance for %s distribution" % func,
+                math.isclose(var, expected_variance, rel_tol=1e-1, abs_tol=1e-1),
+                "incorrect variance for %s distribution: %f" % (name, var),
             )
             if lb is not None:
                 self.assertTrue(
                     plain_sample.ge(lb).all(),
-                    "Sample detected below lower bound for %s distribution" % func,
+                    "Sample detected below lower bound for %s distribution" % name,
                 )
             if ub is not None:
                 self.assertTrue(
                     plain_sample.le(ub).all(),
-                    "Sample detected below lower bound for %s distribution" % func,
+                    "Sample detected below lower bound for %s distribution" % name,
                 )
 
     def test_uniform(self):
         self._check_distribution(crypten.rand, 0.5, 0.083333, lb=0, ub=1)
+
+    def test_normal(self):
+        self._check_distribution(crypten.randn, 0, 1)
 
     def test_bernoulli(self):
         for p in [0.25 * i for i in range(5)]:
