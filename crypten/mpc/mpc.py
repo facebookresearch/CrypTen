@@ -1122,8 +1122,8 @@ class MPCTensor(CrypTensor):
         if method == "NR":
             if config.reciprocal_initial is None:
                 # Initialization to a decent estimate (found by qualitative inspection):
-                #                1/x = 3exp(.5 - x) + 0.003
-                result = 3 * (0.5 - self).exp() + 0.003
+                #                1/x = 3exp(1 - 2x) + 0.003
+                result = 3 * (1 - 2 * self).exp() + 0.003
             else:
                 result = config.reciprocal_initial
             for _ in range(config.reciprocal_nr_iters):
@@ -1136,6 +1136,16 @@ class MPCTensor(CrypTensor):
             return (-(self.log(iterations=config.reciprocal_log_iters))).exp()
         else:
             raise ValueError(f"Invalid method {method} given for reciprocal function")
+
+    def _reciprocal01(self):
+        """
+        Computes the reciprocal fucntion with optimizations to improve accuracy
+        for the input domain [0, 1]. This is useful for computing gradients
+        of cross-entropy functions
+        """
+        with ConfigManager("reciprocal_all_pos", True):
+            reciprocal = self.mul(64).reciprocal().mul(64)
+        return reciprocal
 
     def div(self, y):
         r"""Divides each element of :attr:`self` with the scalar :attr:`y` or

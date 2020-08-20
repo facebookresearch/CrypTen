@@ -1605,7 +1605,9 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         pred, target = ctx.saved_tensors
-        rec_pos, rec_neg = crypten.stack([pred, 1.0 - pred]).reciprocal().unbind(dim=0)
+        rec_pos, rec_neg = (
+            crypten.stack([pred, 1.0 - pred])._reciprocal01().unbind(dim=0)
+        )
         grad = (rec_neg * (1.0 - target)) - rec_pos * target
         return grad.div_(target.nelement()).mul_(grad_output)
 
