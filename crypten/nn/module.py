@@ -49,7 +49,7 @@ class Module:
         """Sets the module in the specified training mode."""
         for param in self.parameters():
             param.requires_grad = mode
-        self.training = mode
+        object.__setattr__(self, "training", mode)
 
         # Recursively set train mode
         for module in self.modules():
@@ -506,6 +506,8 @@ class Module:
                     )
                 )
             modules[name] = value
+        elif name == "training":
+            self.train(mode=value)
         else:
             for key in ["_parameters", "_modules", "_buffers"]:
                 if key in self.__dict__ and name in self.__dict__[key]:
@@ -1877,6 +1879,9 @@ class _BatchNorm(Module):
         self.eps = eps
         self.momentum = momentum
 
+        # do not precompute inverse variance during training
+        self.inv_var = None
+
     def forward(self, input):
         return input.batchnorm(
             self.weight,
@@ -1886,6 +1891,7 @@ class _BatchNorm(Module):
             training=self.training,
             eps=self.eps,
             momentum=self.momentum,
+            inv_var=self.inv_var,
         )
 
     @staticmethod
@@ -1912,6 +1918,15 @@ class _BatchNorm(Module):
             else:
                 module.set_parameter(key, value)
         return module
+
+    def train(self, mode=True):
+        """Freezes the inverse variance during inference to save computation"""
+        super().train(mode=mode)
+        if self.training:
+            self.inv_var = None
+        else:
+            self.inv_var = self.running_var.add(self.eps)._inv_sqrt()
+        return self
 
 
 class BatchNorm1d(_BatchNorm):
