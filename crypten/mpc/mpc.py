@@ -367,6 +367,57 @@ class MPCTensor(CrypTensor):
         rand.ptype = Ptype.binary
         return rand.to(Ptype.arithmetic, bits=encoder._precision_bits)
 
+    @staticmethod
+    def randn(*sizes, device=None):
+        """
+        Returns a tensor with normally distributed elements. Samples are
+        generated using the Box-Muller transform with optimizations for
+        numerical precision and MPC efficiency.
+        """
+        u = MPCTensor.rand(*sizes).flatten()
+        odd_numel = u.numel() % 2 == 1
+        if odd_numel:
+            u = MPCTensor.cat([u, MPCTensor.rand((1,))])
+
+        n = u.numel() // 2
+        u1 = u[:n]
+        u2 = u[n:]
+
+        # Radius = sqrt(- 2 * log(u1))
+        def sqrtNR(x):
+            """
+            Newton Raphson method for square root accurate in the range [0, 30]
+            which is enough for the full range of log(u) as computed above.
+
+            https://en.wikipedia.org/wiki/Fast_inverse_square_root#Newton's_method
+            """
+            # Initialize using efficient polynomial
+            y = (1 - (x - 0.5).div(32)).square().square().square() + 0.2
+
+            # Newton Raphson iterations for inverse square root
+            for _ in range(3):
+                y = y.mul_(3 - x * y.square()).div_(2)
+
+            # Multiply by input to get square root.
+            return y * x
+
+        # ln(u) = ln(100u) - ln(100) but log(100u) gives better accuracy in our domain
+        r2 = -2 * (u1.mul(100).log() - 4.605170)
+        r = sqrtNR(r2)
+
+        # Theta = cos(2 * pi * u2) or sin(2 * pi * u2)
+        cos, sin = u2.sub(0.5).mul(6.28318531).cossin()
+
+        # Generating 2 independent normal random variables using
+        x = r.mul(sin)
+        y = r.mul(cos)
+        z = MPCTensor.cat([x, y])
+
+        if odd_numel:
+            z = z[1:]
+
+        return z.view(*sizes)
+
     def bernoulli(self):
         """Returns a tensor with elements in {0, 1}. The i-th element of the
         output will be 1 with probability according to the i-th value of the
