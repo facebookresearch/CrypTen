@@ -753,14 +753,14 @@ class AutogradSquare(AutogradFunction):
 class AutogradSqrt(AutogradFunction):
     @staticmethod
     def forward(ctx, input):
-        output = input.sqrt()
-        ctx.save_for_backward(output)
-        return output
+        inv_sqrt = input._inv_sqrt()
+        ctx.save_for_backward(inv_sqrt)
+        return inv_sqrt.mul(input)
 
     @staticmethod
     def backward(ctx, grad_output):
-        (output,) = ctx.saved_tensors
-        return grad_output.div(output.mul_(2.0))
+        (inv_sqrt,) = ctx.saved_tensors
+        return inv_sqrt.div_(2).mul_(grad_output)
 
 
 @register_function("exp")
@@ -801,7 +801,7 @@ class AutogradReciprocal(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         (reciprocal,) = ctx.saved_tensors
-        return grad_output.neg().mul_(reciprocal).mul_(reciprocal)
+        return grad_output.neg().mul_(reciprocal.square())
 
 
 @register_function("dot")
@@ -1506,7 +1506,7 @@ class AutogradBatchNorm(AutogradFunction):
         if torch.is_tensor(variance):
             inv_var = 1.0 / torch.sqrt(variance + eps)
         else:
-            inv_var = (variance + eps).pos_pow(-0.5)
+            inv_var = (variance + eps)._inv_sqrt()
 
         # reshape shape (C) to broadcastable (1, C, 1, +):
         mean = mean.reshape(broadcast_shape)
@@ -1596,7 +1596,7 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
             return pred.new(0)
 
         # Compute full forward pass
-        log_pos, log_neg = crypten.stack([pred, 1.0 - pred]).log().unbind(dim=0)
+        log_pos, log_neg = crypten.stack([pred, 1.0 - pred])._log01().unbind(dim=0)
         loss_values = target * log_pos + ((1.0 - target) * log_neg)
         return -(loss_values.mean())
 
@@ -1623,7 +1623,7 @@ class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
 
         # Compute full forward pass
         log_pos, log_neg = (
-            crypten.stack([sigmoid_out, 1.0 - sigmoid_out]).log().unbind(dim=0)
+            crypten.stack([sigmoid_out, 1.0 - sigmoid_out])._log01().unbind(dim=0)
         )
         loss_values = target * log_pos + ((1.0 - target) * log_neg)
         return -(loss_values.mean())
@@ -1646,7 +1646,7 @@ class AutogradCrossEntropy(AutogradFunction):
             return softmax.new(0)
 
         # Compute full forward pass
-        loss_values = softmax.log().mul_(target).neg_()
+        loss_values = softmax._log01().mul_(target).neg_()
         return loss_values.sum().div_(target.size(0))
 
     @staticmethod
