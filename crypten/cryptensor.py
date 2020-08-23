@@ -152,7 +152,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         self.children = []  # children of node in graph
         self.ctx = AutogradContext()  # contexts for AutogradFunctions
 
-    def backward(self, grad_input=None, top_node=True):
+    def backward(self, grad_input=None):
         """
         Backpropagates gradient through the computation graph. The function
         only maintains the gradients in leaf nodes of the graph.
@@ -169,23 +169,23 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                             "grad can be implicitly created only for scalar outputs"
                         )
 
+                # process gradient input:
+                if self.grad is None:
+                    self.grad = grad_input  # store gradient...
+                else:
+                    self.grad.add_(grad_input)  # ... or accumulate gradient
+
                 # if we are in a leaf or if not all parents have backpropagated:
                 parents_done = all(parent.grad_computed for parent in self.parents)
-                if len(self.children) == 0 or (not top_node and not parents_done):
-
-                    # when you are done, store or accumulate gradient:
-                    if self.grad is None:
-                        self.grad = grad_input  # store gradient...
-                    else:
-                        self.grad.add_(grad_input)  # ... or accumulate gradient...
-                    return  # ... and do not proceed.
+                if len(self.children) == 0 or not parents_done:
+                    return  # ... do not proceed.
 
                 # check that we can actually backpropagate:
                 if self.grad_fn is None:
                     raise ValueError("Cannot call backward() before forward().")
 
                 # perform backpropagation:
-                grad = self.grad_fn.backward(self.ctx, grad_input)
+                grad = self.grad_fn.backward(self.ctx, self.grad)
                 self.grad_computed = True  # mark gradient as computed
                 differentiable_children = [
                     x for x in self.children if self.ctx.is_differentiable(x)
@@ -199,7 +199,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                     grad
                 ), "number of gradients does not match number of children"
                 for idx, child in enumerate(differentiable_children):
-                    child.backward(grad_input=grad[idx], top_node=False)
+                    child.backward(grad_input=grad[idx])
                     # TODO: Confirm that indexing over grad is okay.
 
                 # clean up gradients except in leaf nodes:
