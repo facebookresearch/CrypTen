@@ -976,20 +976,6 @@ class TestMPC(object):
             encrypted_out = getattr(encrypted_tensor, func)()
             self._check(encrypted_out, reference, "%s failed" % func)
 
-    def test_bernoulli(self):
-        """Tests bernoulli sampling"""
-        for size in [(10,), (10, 10), (10, 10, 10)]:
-            probs = MPCTensor(torch.rand(size, device=self.device))
-            randvec = probs.bernoulli()
-            self.assertTrue(randvec.size() == size, "Incorrect size")
-            tensor = randvec.get_plain_text()
-            self.assertTrue(((tensor == 0) + (tensor == 1)).all(), "Invalid values")
-
-        probs = MPCTensor(torch.Tensor(int(1e4)).fill_(0.2).to(self.device))
-        randvec = probs.bernoulli().get_plain_text()
-        frac_zero = float((randvec == 0).sum()) / randvec.nelement()
-        self.assertTrue(math.isclose(frac_zero, 0.8, rel_tol=1e-1, abs_tol=1e-1))
-
     def test_softmax(self):
         """Test softmax and log_softmax function"""
         for softmax_fn in ["softmax", "log_softmax"]:

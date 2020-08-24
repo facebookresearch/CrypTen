@@ -87,6 +87,17 @@ class BinarySharedTensor(object):
         tensor.share = current_share ^ next_share
         return tensor
 
+    @staticmethod
+    def rand(*size, bits=64, device=None):
+        """
+        Generate a uniform random samples with a given size.
+        """
+        tensor = BinarySharedTensor(src=SENTINEL)
+        if isinstance(size[0], (torch.Size, tuple)):
+            size = size[0]
+        tensor.share = generate_kbit_random_tensor(size, bitlength=bits, device=device)
+        return tensor
+
     @property
     def device(self):
         """Return the `torch.device` of the underlying _tensor"""
