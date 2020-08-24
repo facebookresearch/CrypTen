@@ -436,6 +436,15 @@ def rand(*sizes, cryptensor_type=None):
     return __CRYPTENSOR_TYPES__[cryptensor_type].rand(*sizes)
 
 
+def randn(*sizes, cryptensor_type=None):
+    """
+    Returns a tensor with normally distributed elements.
+    """
+    if cryptensor_type is None:
+        cryptensor_type = get_default_cryptensor_type()
+    return __CRYPTENSOR_TYPES__[cryptensor_type].randn(*sizes)
+
+
 def bernoulli(tensor, cryptensor_type=None):
     """
     Returns a tensor with elements in {0, 1}. The i-th element of the
