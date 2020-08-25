@@ -1121,10 +1121,10 @@ class _ConstantPad(Module):
     Module that pads a tensor.
     """
 
-    def __init__(self, padding, value, mode="constant"):
+    def __init__(self, padding, value, ndims, mode="constant"):
         super().__init__()
         if isinstance(padding, (int)):
-            padding = [padding]
+            padding = [padding, padding] * ndims
         self.padding = padding
         self.value = value
         self.mode = mode
@@ -1137,7 +1137,7 @@ class _ConstantPad(Module):
         if attributes is None:
             attributes = {}
         return _ConstantPad(
-            attributes["pads"], attributes["value"], mode=attributes["mode"]
+            attributes["pads"], attributes["value"], None, mode=attributes["mode"]
         )
 
 
@@ -1146,7 +1146,8 @@ class ConstantPad1d(_ConstantPad):
     Module that pads a 1D tensor.
     """
 
-    pass
+    def __init__(self, padding, value, mode="constant"):
+        super(ConstantPad1d, self).__init__(padding, value, 1, mode=mode)
 
 
 class ConstantPad2d(_ConstantPad):
@@ -1154,7 +1155,8 @@ class ConstantPad2d(_ConstantPad):
     Module that pads a 2D tensor.
     """
 
-    pass
+    def __init__(self, padding, value, mode="constant"):
+        super(ConstantPad2d, self).__init__(padding, value, 2, mode=mode)
 
 
 class ConstantPad3d(_ConstantPad):
@@ -1162,7 +1164,8 @@ class ConstantPad3d(_ConstantPad):
     Module that pads a 3D tensor.
     """
 
-    pass
+    def __init__(self, padding, value, mode="constant"):
+        super(ConstantPad3d, self).__init__(padding, value, 3, mode=mode)
 
 
 class Linear(Module):
@@ -1721,7 +1724,7 @@ class _Pool2d(Module):
         https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
     """
 
-    def __init__(self, pool_type, kernel_size, stride=1, padding=0):
+    def __init__(self, pool_type, kernel_size, stride=None, padding=0):
         super().__init__()
         self.pool_type = pool_type
         self.kernel_size = kernel_size
@@ -1808,7 +1811,7 @@ class AvgPool2d(_Pool2d):
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
     """
 
-    def __init__(self, kernel_size, stride=1, padding=0):
+    def __init__(self, kernel_size, stride=None, padding=0):
         super().__init__("average", kernel_size, stride=stride, padding=padding)
 
     @staticmethod
@@ -1823,7 +1826,7 @@ class MaxPool2d(_Pool2d):
     Module that performs 2D max pooling (see :meth:`AvgPool2d`)
     """
 
-    def __init__(self, kernel_size, stride=1, padding=0):
+    def __init__(self, kernel_size, stride=None, padding=0):
         super().__init__("max", kernel_size, stride=stride, padding=padding)
 
     @staticmethod

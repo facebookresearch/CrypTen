@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import itertools
 import logging
 import unittest
 from test.multiprocess_test_case import (
@@ -417,82 +418,90 @@ class TestNN(object):
         }
 
         # loop over all modules:
-        for module_name in module_args.keys():
-            for compute_gradients in [True, False]:
+        for module_name, from_pytorch, compute_gradients in itertools.product(
+            module_args.keys(), [True, False], [True, False]
+        ):
 
-                # generate inputs:
-                input = get_random_test_tensor(
-                    size=input_sizes[module_name], is_float=True
-                )
-                input.requires_grad = True
-                encr_input = crypten.cryptensor(input)
-                encr_input.requires_grad = compute_gradients
+            # generate inputs:
+            input = get_random_test_tensor(size=input_sizes[module_name], is_float=True)
+            input.requires_grad = True
+            encr_input = crypten.cryptensor(input)
+            encr_input.requires_grad = compute_gradients
 
-                # create PyTorch module:
-                module = getattr(torch.nn, module_name)(*module_args[module_name])
-                module.train()
+            # create PyTorch module:
+            args = module_args[module_name]
+            module = getattr(torch.nn, module_name)(*args)
+            module.train()
 
-                # create encrypted CrypTen module:
+            # create encrypted CrypTen module:
+            if from_pytorch:
                 encr_module = crypten.nn.from_pytorch(module, input)
-
-                # check that module properly encrypts / decrypts and
-                # check that encrypting with current mode properly performs no-op
-                for encrypted in [False, True, True, False, True]:
-                    encr_module.encrypt(mode=encrypted)
-                    if encrypted:
-                        self.assertTrue(encr_module.encrypted, "module not encrypted")
-                    else:
-                        self.assertFalse(encr_module.encrypted, "module encrypted")
-                    for key in ["weight", "bias"]:
-                        if hasattr(module, key):  # if PyTorch model has key
-                            encr_param = None
-
-                            # find that key in the crypten.nn.Graph:
-                            if isinstance(encr_module, crypten.nn.Graph):
-                                for encr_node in encr_module.modules():
-                                    if hasattr(encr_node, key):
-                                        encr_param = getattr(encr_node, key)
-                                        break
-
-                            # or get it from the crypten Module directly:
-                            else:
-                                encr_param = getattr(encr_module, key)
-
-                            # compare with reference:
-                            # NOTE: Because some parameters are initialized randomly
-                            # with different values on each process, we only want to
-                            # check that they are consistent with source parameter value
-                            reference = getattr(module, key)
-                            src_reference = comm.get().broadcast(reference, src=0)
-                            msg = "parameter %s in %s incorrect" % (key, module_name)
-                            if not encrypted:
-                                encr_param = crypten.cryptensor(encr_param)
-                            self._check(encr_param, src_reference, msg)
-
-                # compare model outputs:
-                self.assertTrue(encr_module.training, "training value incorrect")
-                reference = module(input)
-                encr_output = encr_module(encr_input)
-                self._check(encr_output, reference, "%s forward failed" % module_name)
-
-                # test backward pass:
-                reference.sum().backward()
-                encr_output.sum().backward()
-                if compute_gradients:
-                    self._check(
-                        encr_input.grad,
-                        input.grad,
-                        "%s backward on input failed" % module_name,
-                    )
-                else:
-                    self.assertIsNone(encr_input.grad)
+            # TODO: Remove continue call once AdaptiveAvgPool2d is supported
+            elif module_name == "AdaptiveAvgPool2d":
+                continue
+            else:
+                encr_module = getattr(crypten.nn, module_name)(*args)
                 for name, param in module.named_parameters():
-                    encr_param = getattr(encr_module, name)
-                    self._check(
-                        encr_param.grad,
-                        param.grad,
-                        "%s backward on %s failed" % (module_name, name),
-                    )
+                    setattr(encr_module, name, param)
+
+            # check that module properly encrypts / decrypts and
+            # check that encrypting with current mode properly performs no-op
+            for encrypted in [False, True, True, False, True]:
+                encr_module.encrypt(mode=encrypted)
+                if encrypted:
+                    self.assertTrue(encr_module.encrypted, "module not encrypted")
+                else:
+                    self.assertFalse(encr_module.encrypted, "module encrypted")
+                for key in ["weight", "bias"]:
+                    if hasattr(module, key):  # if PyTorch model has key
+                        # find that key in the crypten.nn.Graph:
+                        if isinstance(encr_module, crypten.nn.Graph):
+                            for encr_node in encr_module.modules():
+                                if hasattr(encr_node, key):
+                                    encr_param = getattr(encr_node, key)
+                                    break
+
+                        # or get it from the crypten Module directly:
+                        else:
+                            encr_param = getattr(encr_module, key)
+
+                        # compare with reference:
+                        # NOTE: Because some parameters are initialized randomly
+                        # with different values on each process, we only want to
+                        # check that they are consistent with source parameter value
+                        reference = getattr(module, key)
+                        src_reference = comm.get().broadcast(reference, src=0)
+                        msg = "parameter %s in %s incorrect" % (key, module_name)
+                        if not encrypted:
+                            encr_param = crypten.cryptensor(encr_param, src=0)
+                        self._check(encr_param, src_reference, msg)
+
+            # compare model outputs:
+            self.assertTrue(encr_module.training, "training value incorrect")
+            reference = module(input)
+            encr_output = encr_module(encr_input)
+
+            msg = "from_pytorch" if from_pytorch else ""
+            self._check(encr_output, reference, f"{module_name} forward failed {msg}")
+
+            # test backward pass:
+            reference.sum().backward()
+            encr_output.sum().backward()
+            if compute_gradients:
+                self._check(
+                    encr_input.grad,
+                    input.grad,
+                    f"{module_name} backward on input failed {msg}",
+                )
+            else:
+                self.assertIsNone(encr_input.grad)
+            for name, param in module.named_parameters():
+                encr_param = getattr(encr_module, name)
+                self._check(
+                    encr_param.grad,
+                    param.grad,
+                    f"{module_name} backward on {name} failed {msg}",
+                )
 
     def test_linear(self):
         """
