@@ -223,7 +223,7 @@ class TestAutograd(object):
     def test_autograd_accumulation(self):
         """Tests accumulation in autograd."""
 
-        # define test cases that have nodes with multiple parents:
+        # graphs that have nodes with multiple parents, dead leafs, etc.:
         def test_case1(input, encr_input):
             output = input.add(1.0).add(input.exp()).sum()
             encr_output = encr_input.add(1.0).add(encr_input.exp()).sum()
@@ -249,8 +249,102 @@ class TestAutograd(object):
             encr_output = encr_intermediate2.square().sum()
             return output, encr_output
 
+        def test_case4(input, encr_input):
+            intermediate1 = input.mul(3.0).add(2.0).pow(2.0)  # PyTorch
+            intermediate2 = intermediate1.add(1.0).add(intermediate1.mul(2.0))
+            output = intermediate2.pow(2.0).sum()
+            encr_intermediate1 = encr_input.mul(3.0).add(2.0).square()  # CrypTen
+            encr_intermediate2 = encr_intermediate1.add(1.0).add(
+                encr_intermediate1.mul(2.0)
+            )
+            encr_output = encr_intermediate2.square().sum()
+            return output, encr_output
+
+        def test_case5(input, encr_input):
+            intermediate1 = input.mul(3.0)  # PyTorch
+            intermediate2 = input.add(2.0).pow(2.0)
+            intermediate3 = input.pow(2.0)
+            output = (
+                torch.cat([intermediate1, intermediate2, intermediate3]).mul(0.5).sum()
+            )
+            encr_intermediate1 = encr_input.mul(3.0)  # CrypTen
+            encr_intermediate2 = encr_input.add(2.0).square()
+            encr_intermediate3 = encr_input.pow(2.0)
+            encr_output = (
+                crypten.cat(
+                    [encr_intermediate1, encr_intermediate2, encr_intermediate3]
+                )
+                .mul(0.5)
+                .sum()
+            )
+            return output, encr_output
+
+        def test_case6(input, encr_input):
+            idx1 = torch.tensor([[0, 2, 4, 3, 8]], dtype=torch.long)
+            idx2 = torch.tensor([[5, 1, 3, 5, 2]], dtype=torch.long)
+            idx3 = torch.tensor([[2, 3, 1]], dtype=torch.long)
+            intermediate1 = input.gather(0, idx1).gather(1, idx3).pow(2.0)  # PyTorch
+            intermediate2 = input.gather(0, idx2).gather(1, idx3).add(-2.0)
+            output = torch.cat([intermediate1, intermediate2]).mul(0.5).sum()
+            encr_intermediate1 = (
+                encr_input.gather(0, idx1).gather(1, idx3).square()
+            )  # CrypTen
+            encr_intermediate2 = encr_input.gather(0, idx2).gather(1, idx3).add(-2.0)
+            encr_output = (
+                crypten.cat([encr_intermediate1, encr_intermediate2], dim=0)
+                .mul(0.5)
+                .sum()
+            )
+            return output, encr_output
+
+        def test_case7(input, encr_input):
+            intermediate1 = input.add(3.0)  # PyTorch
+            intermediate2 = input.add(2.0).pow(2.0)
+            intermediate3 = intermediate1.add(intermediate2)
+            intermediate4 = intermediate1.add(intermediate2)
+            output = intermediate3.add(intermediate4).sum()
+            encr_intermediate1 = encr_input.add(3.0)  # CrypTen
+            encr_intermediate2 = encr_input.add(2.0).pow(2.0)
+            encr_intermediate3 = encr_intermediate1.add(encr_intermediate2)
+            encr_intermediate4 = encr_intermediate1.add(encr_intermediate2)
+            encr_output = encr_intermediate3.add(encr_intermediate4).sum()
+            return output, encr_output
+
+        def test_case8(input, encr_input):
+            intermediate1 = input.add(3.0)
+            intermediate2 = torch.cat([input, intermediate1])
+            intermediate3 = intermediate2.pow(2.0)
+            output = torch.cat([input, intermediate2, intermediate3]).add(-1).sum()
+
+            encr_intermediate1 = encr_input.add(3.0)
+            encr_intermediate2 = crypten.cat([encr_input, encr_intermediate1])
+            encr_intermediate3 = encr_intermediate2.pow(2.0)
+            encr_output = (
+                crypten.cat([encr_input, encr_intermediate2, encr_intermediate3])
+                .add(-1)
+                .sum()
+            )
+
+            return output, encr_output
+
+        def test_case9(input, encr_input):
+            intermediate1 = torch.cat([input, input])
+            intermediate2 = intermediate1.mean(0, keepdim=True)
+            output = torch.cat([intermediate2, intermediate1], dim=0).sum()
+
+            encr_intermediate1 = crypten.cat([encr_input, encr_input])
+            encr_intermediate2 = encr_intermediate1.mean(0, keepdim=True)
+            encr_output = crypten.cat([encr_intermediate2, encr_intermediate1]).sum()
+
+            return output, encr_output
+
         # loop over test cases:
-        for idx, test_case in enumerate([test_case1, test_case2, test_case2]):
+        test_cases = [
+            value
+            for key, value in locals().items()
+            if callable(value) and key.startswith("test_case")
+        ]
+        for idx, test_case in enumerate(test_cases):
 
             # get input tensors:
             input = get_random_test_tensor(size=(12, 5), is_float=True)

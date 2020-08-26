@@ -56,8 +56,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         "requires_grad",
         "grad",
         "grad_fn",
-        "grad_computed",
-        "parents",
+        "grad_expected",
+        "grad_received",
         "children",
         "ctx",
         "backward",
@@ -147,10 +147,17 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """Resets gradient information in tensor."""
         self.grad = None  # gradient itself
         self.grad_fn = None  # functions to call for gradient
-        self.grad_computed = False  # whether gradient already computed
-        self.parents = []  # parents of node in graph
+        self.grad_expected = 0  # number of gradients expected from parents
+        self.grad_received = 0  # number of gradients received from parents
         self.children = []  # children of node in graph
         self.ctx = AutogradContext()  # contexts for AutogradFunctions
+
+    def _identify_required_grads(self):
+        """Flag all nodes for which gradient needs to be evaluated."""
+        self.grad_expected += 1
+        if self.grad_expected == 1:  # only backpropagate once from each node
+            for child in self.children:
+                child._identify_required_grads()
 
     def backward(self, grad_input=None, top_node=True):
         """
@@ -159,6 +166,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         if self.requires_grad:
             with CrypTensor.no_grad():  # disable autograd for backward pass
+
+                # in initial backward call, identify all required nodes:
+                if top_node:
+                    self._identify_required_grads()
 
                 # if undefined, set gradient input to one:
                 if grad_input is None:
@@ -169,24 +180,23 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                             "grad can be implicitly created only for scalar outputs"
                         )
 
-                # if we are in a leaf or if not all parents have backpropagated:
-                parents_done = all(parent.grad_computed for parent in self.parents)
-                if len(self.children) == 0 or (not top_node and not parents_done):
+                # process gradient input:
+                self.grad_received += 1
+                if self.grad is None:
+                    self.grad = grad_input  # store gradient...
+                else:
+                    self.grad.add_(grad_input)  # ... or accumulate gradient
 
-                    # when you are done, store or accumulate gradient:
-                    if self.grad is None:
-                        self.grad = grad_input  # store gradient...
-                    else:
-                        self.grad.add_(grad_input)  # ... or accumulate gradient...
-                    return  # ... and do not proceed.
+                # if we are in a leaf or if not all parents have backpropagated:
+                if len(self.children) == 0 or self.grad_received < self.grad_expected:
+                    return  # ... do not proceed.
 
                 # check that we can actually backpropagate:
                 if self.grad_fn is None:
                     raise ValueError("Cannot call backward() before forward().")
 
                 # perform backpropagation:
-                grad = self.grad_fn.backward(self.ctx, grad_input)
-                self.grad_computed = True  # mark gradient as computed
+                grad = self.grad_fn.backward(self.ctx, self.grad)
                 differentiable_children = [
                     x for x in self.children if self.ctx.is_differentiable(x)
                 ]
@@ -200,15 +210,15 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 ), "number of gradients does not match number of children"
                 for idx, child in enumerate(differentiable_children):
                     child.backward(grad_input=grad[idx], top_node=False)
-                    # TODO: Confirm that indexing over grad is okay.
 
                 # clean up gradients except in leaf nodes:
                 if len(differentiable_children) > 0:
                     self.grad = None
 
                 # remove node from graph:
-                self.parents = []
                 self.children = []
+                self.grad_expected = 0
+                self.grad_received = 0
 
     def detach_(self):
         """Detaches tensor from the autograd graph (in-place), making it a leaf."""
@@ -245,9 +255,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 # determine if self is a dummy object (the case for staticmethods):
                 is_dummy = getattr(self, "__IS_DUMMY__", False)
 
-                # mark gradient as not computed:
-                self.grad_computed = False
-
                 # only CrypTensors can be children:
                 tensor_args = _find_all_cryptensors(args)
                 children = tensor_args if is_dummy else [self, *tensor_args]
@@ -272,14 +279,13 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 # we only need to build up forward graph if requires_grad is True:
                 if requires_grad:
 
-                    # maintain references to children and context:
+                    # maintain references to children and context in result:
                     for res in result:
                         res.requires_grad = ctx.is_differentiable(res)
                         if res.requires_grad:
                             res.children = children
                             res.grad_fn = grad_fn
                             res.ctx = ctx
-                        self.parents.append(res)
 
                 # return result:
                 if remove_tuple:
