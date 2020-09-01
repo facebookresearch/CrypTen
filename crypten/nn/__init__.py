@@ -8,6 +8,8 @@
 
 from .loss import BCELoss, BCEWithLogitsLoss, CrossEntropyLoss, L1Loss, MSELoss
 from .module import (
+    AdaptiveAvgPool2d,
+    AdaptiveMaxPool2d,
     Add,
     AvgPool2d,
     BatchNorm1d,
@@ -52,6 +54,8 @@ from .onnx_converter import TF_AND_TF2ONNX, from_pytorch, from_tensorflow
 
 # expose contents of package
 __all__ = [
+    "AdaptiveAvgPool2d",
+    "AdaptiveMaxPool2d",
     "Add",
     "AvgPool2d",
     "BatchNorm1d",

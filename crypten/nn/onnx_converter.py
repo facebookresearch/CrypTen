@@ -130,6 +130,8 @@ class FromOnnx:
 
     # mapping from ONNX to crypten.nn for modules with different names:
     ONNX_TO_CRYPTEN = {
+        "adaptive_avg_pool2d": module.AdaptiveAvgPool2d,
+        "adaptive_max_pool2d": module.AdaptiveMaxPool2d,
         "AveragePool": module.AvgPool2d,
         "BatchNormalization": module._BatchNorm,
         "Gemm": module.Linear,
@@ -155,22 +157,49 @@ class FromOnnx:
 
         crypten_model = module.Graph(input_names[0], output_names[0])
 
+        constant_module = None
         for node in self.onnx_model.graph.node:
             attributes = FromOnnx.get_attributes(node)
             parameters, node_input_names = self.get_parameters(node, input_names)
 
             crypten_class = self._get_operator_class(node.op_type, attributes)
 
+            # Get shape from Constant graph input for classes that require a shape
+            reshape_classes = [
+                module.AdaptiveAvgPool2d,
+                module.AdaptiveMaxPool2d,
+                module.Reshape,
+            ]
+            if crypten_class in reshape_classes:
+                assert (
+                    constant_module is not None
+                ), f"Pattern not supported: expected Constant shape before {crypten_class} node."
+                attributes["shape"] = constant_module[1].value.long().tolist()
+                constant_module = None
+
             if TF_AND_TF2ONNX:
                 parameters = _sync_tensorflow_parameters(parameters, node.op_type)
+
             # add CrypTen module to graph
             crypten_module = crypten_class.from_onnx(
                 parameters=parameters, attributes=attributes
             )
             node_output_name = list(node.output)[0]
-            crypten_model.add_module(node_output_name, crypten_module, node_input_names)
 
-        crypten_model = self.modify_shapes_in_graph(crypten_model)
+            # Check if Constant is shape used for next node before adding Constant to module list
+            if crypten_class.__name__ == "Constant":
+                constant_module = (node_output_name, crypten_module, node_input_names)
+            else:
+                # Add Constant modules that are not shape inputs to graph
+                if constant_module is not None:
+                    crypten_model.add_module(*constant_module)
+                    constant_module = None
+
+                # Add CrypTen module to graph
+                crypten_model.add_module(
+                    node_output_name, crypten_module, node_input_names
+                )
+
         crypten_model = FromOnnx._get_model_or_module(crypten_model)
         return crypten_model
 
@@ -290,25 +319,8 @@ class FromOnnx:
             if crypten_module is None:
                 raise ValueError("CrypTen does not support op %s." % node_op_type)
             crypten_class = crypten_module
-        return crypten_class
 
-    @staticmethod
-    def modify_shapes_in_graph(crypten_model):
-        """Transforms how shapes are stored to prevent encryption"""
-        crypten_modules = list(crypten_model.modules())
-        for i, crypten_module in enumerate(crypten_modules):
-            if isinstance(crypten_module, module.Reshape):
-                # shape is stored in a constant module buffer called "value"
-                # convert shape to torch.Size
-                if i == 0 or not isinstance(crypten_modules[i - 1], module.Constant):
-                    raise ValueError(
-                        """Pattern not supported: expected
-                        Constant followed by Reshape node."""
-                    )
-                value = crypten_modules[i - 1].value.long()
-                shape = torch.Size(value)
-                crypten_modules[i - 1].set_buffer("value", shape)
-        return crypten_model
+        return crypten_class
 
 
 def _sync_tensorflow_parameters(parameter_map, module_name):

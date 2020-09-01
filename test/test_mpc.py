@@ -531,25 +531,22 @@ class TestMPC(object):
                     self._check(encr_conv, reference, "%s failed" % func_name)
 
     def test_pooling(self):
-        """Test avg_pool, sum_pool, max_pool of encrypted tensor."""
+        """Test avg_pool, max_pool of encrypted tensor."""
         for width in range(2, 5):
             for kernel_size in range(1, width):
                 matrix_size = (1, 4, 5, width)
                 matrix = self._get_random_test_tensor(size=matrix_size, is_float=True)
-                for stride in range(1, kernel_size + 1):
+                for stride in list(range(1, kernel_size + 1)) + [(1, kernel_size)]:
                     for padding in range(kernel_size // 2 + 1):
-                        for func in ["avg_pool2d", "sum_pool2d"]:
-                            reference = F.avg_pool2d(
-                                matrix, kernel_size, stride=stride, padding=padding
-                            )
-                            if func == "sum_pool2d":
-                                reference *= kernel_size * kernel_size
+                        reference = F.avg_pool2d(
+                            matrix, kernel_size, stride=stride, padding=padding
+                        )
 
-                            encrypted_matrix = MPCTensor(matrix)
-                            encrypted_pool = getattr(encrypted_matrix, func)(
-                                kernel_size, stride=stride, padding=padding
-                            )
-                            self._check(encrypted_pool, reference, "%s failed" % func)
+                        encrypted_matrix = MPCTensor(matrix)
+                        encrypted_pool = encrypted_matrix.avg_pool2d(
+                            kernel_size, stride=stride, padding=padding
+                        )
+                        self._check(encrypted_pool, reference, "avg_pool2d failed")
 
                         # Test max_pool2d
                         for return_indices in [False, True]:
@@ -565,13 +562,42 @@ class TestMPC(object):
                                 kernel_size, **kwargs
                             )
                             if return_indices:
-                                self._check(
-                                    encrypted_pool[0], reference[0], "max_pool2d failed"
-                                )
-                            else:
-                                self._check(
-                                    encrypted_pool, reference, "max_pool2d failed"
-                                )
+                                encrypted_pool = encrypted_pool[0]
+                                reference = reference[0]
+                            self._check(encrypted_pool, reference, "max_pool2d failed")
+
+    def test_adaptive_pooling(self):
+        """test adaptive_avg_pool2d and adaptive_max_pool2d"""
+
+        for in_size in range(1, 11):
+            for out_size in list(range(1, in_size + 1)) + [None]:
+                print((in_size, out_size))
+                input_size = (1, in_size, in_size)
+                output_size = (out_size, out_size)
+
+                tensor = self._get_random_test_tensor(
+                    size=input_size, is_float=True
+                ).unsqueeze(0)
+                encrypted = MPCTensor(tensor)
+
+                # Test adaptive_avg_pool2d
+                reference = F.adaptive_avg_pool2d(tensor, output_size)
+                encrypted_out = encrypted.adaptive_avg_pool2d(output_size)
+                self._check(encrypted_out, reference, "adaptive_avg_pool2d failed")
+
+                # Test adapvite_max_pool2d
+                for return_indices in [False, True]:
+                    reference = F.adaptive_max_pool2d(
+                        tensor, output_size, return_indices=return_indices
+                    )
+                    encrypted_out = encrypted.adaptive_max_pool2d(
+                        output_size, return_indices=return_indices
+                    )
+
+                    if return_indices:
+                        encrypted_out = encrypted_out[0]
+                        reference = reference[0]
+                    self._check(encrypted_out, reference, "adaptive_max_pool2d failed")
 
     def test_take(self):
         """Tests take function on encrypted tensor"""
@@ -1891,7 +1917,7 @@ class TestMPC(object):
                                 self._check(
                                     encr_tensor,
                                     tensor,
-                                    f"out-of-place dropout modifies input",
+                                    "out-of-place dropout modifies input",
                                 )
                             # Check that channels that are zeroed are all zeros
                             if dropout_fn in [

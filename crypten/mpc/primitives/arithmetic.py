@@ -507,24 +507,25 @@ class ArithmeticSharedTensor(object):
             raise TypeError("scatter_add second tensor of unsupported type")
         return self
 
-    def avg_pool2d(self, kernel_size, *args, **kwargs):
+    def avg_pool2d(self, kernel_size, stride=None, padding=0):
         """Perform an average pooling on each 2D matrix of the given tensor
 
         Args:
             kernel_size (int or tuple): pooling kernel size.
         """
-        z = self.sum_pool2d(kernel_size, *args, **kwargs)
+        z = self._sum_pool2d(kernel_size, stride=stride, padding=padding)
         if isinstance(kernel_size, (int, float)):
             pool_size = kernel_size ** 2
         else:
             pool_size = kernel_size[0] * kernel_size[1]
         return z / pool_size
 
-    def sum_pool2d(self, *args, **kwargs):
+    def _sum_pool2d(self, kernel_size, stride=None, padding=0):
         """Perform a sum pooling on each 2D matrix of the given tensor"""
         result = self.shallow_copy()
+
         result.share = torch.nn.functional.avg_pool2d(
-            self.share, *args, **kwargs, divisor_override=1
+            self.share, kernel_size, stride=stride, padding=padding, divisor_override=1
         )
         return result
 

@@ -276,7 +276,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 else:
                     remove_tuple = False
 
-                # we only need to build up forward graph if requires_grad is True:
                 if requires_grad:
 
                     # maintain references to children and context in result:
