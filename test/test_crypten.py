@@ -57,15 +57,18 @@ class TestCrypten(MultiProcessTestCase):
         encrypted1 = crypten.cryptensor(tensor1)
         encrypted2 = crypten.cryptensor(tensor2)
 
-        for op in ["cat", "stack"]:
-            reference = getattr(torch, op)([tensor1, tensor2])
-            encrypted_out = getattr(crypten, op)([encrypted1, encrypted2])
-            self._check(encrypted_out, reference, "%s failed" % op)
-
-            for dim in range(4):
-                reference = getattr(torch, op)([tensor1, tensor2], dim=dim)
-                encrypted_out = getattr(crypten, op)([encrypted1, encrypted2], dim=dim)
+        for module in [crypten, torch]:  # torch.cat on CrypTensor runs crypten.cat
+            for op in ["cat", "stack"]:
+                reference = getattr(torch, op)([tensor1, tensor2])
+                encrypted_out = getattr(module, op)([encrypted1, encrypted2])
                 self._check(encrypted_out, reference, "%s failed" % op)
+
+                for dim in range(4):
+                    reference = getattr(torch, op)([tensor1, tensor2], dim=dim)
+                    encrypted_out = getattr(module, op)(
+                        [encrypted1, encrypted2], dim=dim
+                    )
+                    self._check(encrypted_out, reference, "%s failed" % op)
 
     def test_rand(self):
         """Tests uniform random variable generation on [0, 1)"""
