@@ -285,6 +285,20 @@ class AutogradTake(AutogradFunction):
         return grad
 
 
+@register_function("index_select")
+class AutogradIndexSelect(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input, dim, index):
+        ctx.save_multiple_for_backward([input.size(), dim, index])
+        return input.index_select(dim, index)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        size, dim, index = ctx.saved_tensors
+        index = index.unsqueeze(0) if index.dim() == 0 else index
+        return grad_output.new(torch.zeros(size)).index_add_(dim, index, grad_output)
+
+
 @register_function("gather")
 class AutogradGather(AutogradFunction):
     @staticmethod
@@ -1219,7 +1233,7 @@ class AutogradPad(AutogradFunction):
 @register_function("avg_pool2d")
 class AutogradAvgPool2D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, kernel_size, padding=0, stride=None):
+    def forward(ctx, input, kernel_size, stride=None, padding=0):
 
         # preprocess inputs:
         if stride is None:
@@ -1244,10 +1258,8 @@ class AutogradAvgPool2D(AutogradFunction):
     def backward(ctx, grad_output):
         """Computes the gradient with respect to the input"""
         input_shape, output, kernel_size, padding, stride = ctx.saved_tensors
-        assert stride[0] == stride[1], "stride must be same in all axes"
-        assert padding[0] == padding[1], "padding must be same in all axes"
 
-        in_channels = input_shape[1]
+        in_channels = input_shape[-3]
         # compute as d conv2d / d input with kernel as average filter
         kernel = torch.ones(in_channels, 1, kernel_size[0], kernel_size[1]) / (
             kernel_size[0] * kernel_size[1]
@@ -1313,7 +1325,6 @@ class AutogradMaxPool2D(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         output_size, indices, kernel_size, padding, stride = ctx.saved_tensors
-        assert stride[0] == stride[1], "stride must be same in all axes"
         assert padding[0] == padding[1], "padding must be same in all axes"
         return grad_output._max_pool2d_backward(
             indices,
