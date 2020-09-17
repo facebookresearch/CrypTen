@@ -571,25 +571,22 @@ class TestArithmetic(MultiProcessTestCase):
 
     def test_pooling(self):
         """Test avgPool of encrypted tensor."""
-        for func in ["avg_pool2d", "sum_pool2d"]:
-            for width in range(2, 5):
-                for width2 in range(1, width):
-                    matrix_size = (1, 4, 5, width)
-                    matrix = get_random_test_tensor(size=matrix_size, is_float=True)
-                    pool_size = width2
-                    for stride in range(1, width2):
-                        for padding in range(2):
-                            reference = F.avg_pool2d(
-                                matrix, pool_size, stride=stride, padding=padding
-                            )
-                            if func == "sum_pool2d":
-                                reference *= width2 * width2
+        for width in range(2, 5):
+            for width2 in range(1, width):
+                matrix_size = (1, 4, 5, width)
+                matrix = get_random_test_tensor(size=matrix_size, is_float=True)
+                pool_size = width2
+                for stride in range(1, width2):
+                    for padding in range(2):
+                        reference = F.avg_pool2d(
+                            matrix, pool_size, stride=stride, padding=padding
+                        )
 
-                            encrypted_matrix = ArithmeticSharedTensor(matrix)
-                            encrypted_pool = getattr(encrypted_matrix, func)(
-                                pool_size, stride=stride, padding=padding
-                            )
-                            self._check(encrypted_pool, reference, "%s failed" % func)
+                        encrypted_matrix = ArithmeticSharedTensor(matrix)
+                        encrypted_pool = encrypted_matrix.avg_pool2d(
+                            pool_size, stride=stride, padding=padding
+                        )
+                        self._check(encrypted_pool, reference, "avg_pool2d failed")
 
     def test_take(self):
         """Tests take function of encrypted tensor"""
@@ -931,8 +928,8 @@ class TestArithmetic(MultiProcessTestCase):
                     )
 
                 split = (5,)
-                reference, = tensor.split(split, dim=dim)
-                encrypted_out, = encrypted.split(split, dim=dim)
+                (reference,) = tensor.split(split, dim=dim)
+                (encrypted_out,) = encrypted.split(split, dim=dim)
                 self._check(
                     encrypted_out, reference, f"split failed with input {split}"
                 )

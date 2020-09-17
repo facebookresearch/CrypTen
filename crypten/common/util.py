@@ -7,6 +7,7 @@
 
 import abc
 import functools
+import math
 
 import numpy as np
 import torch
@@ -67,7 +68,7 @@ def pool_reshape(input, kernel_size, padding=None, stride=None, pad_value=0):
     assert len(k) == 2, "kernel_size must be an int or tuple pair"
     assert len(s) == 2, "stride must be an int or tuple pair"
     assert isinstance(pad_value, int), "pad_value must be an integer"
-    assert input.dim() == 4, "pool input must be a 4-d tensor"
+    assert input.dim() >= 2, "Pooling input dimension should be at least 2"
 
     # Apply padding if necessary
     if padding is not None:
@@ -77,35 +78,141 @@ def pool_reshape(input, kernel_size, padding=None, stride=None, pad_value=0):
         input = torch.nn.functional.pad(input, padding, value=pad_value)
 
     # Compute output size based on parameters
-    n = input.size(0)
-    c = input.size(1)
-    h = (input.size(2) - k[0]) // s[0] + 1
-    w = (input.size(3) - k[1]) // s[1] + 1
-    out_size = (n, c, h, w)
+    n = input.size()[:-2]
+    h = (input.size(-2) - k[0]) // s[0] + 1
+    w = (input.size(-1) - k[1]) // s[1] + 1
+    out_size = tuple(n + (h, w))
 
     # Reshape input to arrange kernels to be represented by rows
     kernel_indices = torch.tensor(range(k[1]), device=input.device)
     kernel_indices = torch.cat(
-        [kernel_indices + i * input.size(3) for i in range(k[0])]
+        [kernel_indices + i * input.size(-1) for i in range(k[0])]
     )
-    kernel_indices = torch.stack([kernel_indices + i * s[0] for i in range(w)])
+    kernel_indices = torch.stack([kernel_indices + i * s[1] for i in range(w)])
 
-    offset = input.size(3)
-    kernel_indices = torch.cat([kernel_indices + i * s[1] * offset for i in range(h)])
+    offset = input.size(-1)
+    kernel_indices = torch.cat([kernel_indices + i * s[0] * offset for i in range(h)])
 
-    offset *= input.size(2)
-    kernel_indices = torch.stack(
-        [kernel_indices + i * offset for i in range(input.size(1))]
-    )
+    for dim in range(2, input.dim()):
+        offset *= input.size(-dim)
+        kernel_indices = torch.stack(
+            [kernel_indices + i * offset for i in range(input.size(-dim - 1))]
+        )
 
-    offset *= input.size(1)
-    kernel_indices = torch.stack(
-        [kernel_indices + i * offset for i in range(input.size(0))]
-    )
+    output = input.take(kernel_indices)
+    return output, out_size
 
-    input = input.take(kernel_indices)
 
-    return input, out_size
+def adaptive_pool2d_helper(input, output_size, reduction="mean"):
+    r"""
+    Provides a helper that adapts the input size and provides input
+    args / kwargs to allow pool2d functions to emulate adaptive pool2d
+    functions.
+
+    This function computes the kernel_size, stride, and padding for
+    pool2d functions and inserts rows along each dimension so that
+    a constant stride can be used.
+    """
+    import crypten
+
+    if isinstance(output_size, int):
+        output_size = (output_size, output_size)
+
+    assert len(output_size) == 2, "output_size must be 2-dimensional."
+
+    output_size = list(output_size)
+    for i in range(2):
+        if output_size[i] is None:
+            output_size[i] = input.size(i - 2)
+
+    # Compute the start_index and end_index for kernels
+    def compute_kernels(in_size, out_size):
+        step = in_size / out_size
+
+        starts = []
+        ends = []
+        max_kernel_size = 0
+        for j in range(out_size):
+            # Compute local kernel size
+            start_index = int(j * step)
+            end_index = int(math.ceil((j + 1) * step))
+            k = end_index - start_index
+
+            # Update global kernel size
+            max_kernel_size = k if k > max_kernel_size else max_kernel_size
+
+            # Store local kernels
+            starts.append(start_index)
+            ends.append(end_index)
+
+        return starts, ends, max_kernel_size
+
+    # Repeats a row `ind` of `tensor` at dimension `dim` for overlapping kernels
+    def repeat_row(tensor, dim, ind):
+        x = tensor.index_select(dim, torch.arange(ind))
+        y = tensor.index_select(dim, torch.arange(ind, tensor.size(dim)))
+        repeated_row = tensor.index_select(dim, torch.tensor(ind - 1))
+        return crypten.cat([x, repeated_row, y], dim=dim)
+
+    # Extends a row where a kernel is smaller than the maximum kernel size
+    def extend_row(tensor, dim, start_ind, end_ind):
+        if reduction == "mean":
+            extended_value = tensor.index_select(dim, torch.arange(start_ind, end_ind))
+            extended_value = extended_value.mean(dim, keepdim=True)
+        elif reduction == "max":
+            extended_value = tensor.index_select(dim, torch.tensor(start_ind))
+        else:
+            raise ValueError(f"Invalid reduction {reduction} for adaptive pooling.")
+
+        if start_ind == 0:
+            return crypten.cat([extended_value, tensor], dim=dim)
+
+        x = tensor.index_select(dim, torch.arange(start_ind))
+        y = tensor.index_select(dim, torch.arange(start_ind, tensor.size(dim)))
+        return crypten.cat([x, extended_value, y], dim=dim)
+
+    strides = []
+    for i in range(2):
+        dim = i - 2 + input.dim()
+        in_size = input.size(dim)
+        out_size = output_size[i] if output_size[i] is not None else in_size
+
+        # Compute repeats
+        if out_size > 1:
+            starts, ends, stride = compute_kernels(in_size, out_size)
+
+            added_rows = 0
+            for i in range(out_size):
+                start_ind = starts[i]
+                end_ind = ends[i]
+
+                # Extend kernel so all kernels have the same size
+                k = end_ind - start_ind
+                for _ in range(k, stride):
+                    input = extend_row(
+                        input, dim, start_ind + added_rows, end_ind + added_rows
+                    )
+                    added_rows += 1
+
+                if i == out_size - 1:
+                    break
+
+                # Repeat overlapping rows so stride can be equal to the kernel size
+                if end_ind > starts[i + 1]:
+                    input = repeat_row(input, dim, end_ind + added_rows)
+                    added_rows += 1
+        else:
+            stride = in_size
+
+        strides.append(stride)
+
+    strides = tuple(strides)
+    kernel_sizes = strides
+
+    args = (kernel_sizes,)
+    kwargs = {"stride": strides}
+
+    return input, args, kwargs
 
 
 @functools.lru_cache(maxsize=10)

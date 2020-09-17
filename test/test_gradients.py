@@ -908,6 +908,21 @@ class TestGradients:
                     f"{func} backward failed with index {index}",
                 )
 
+    def test_index_select(self):
+        """Tests index_select gradients"""
+        sizes = [(2, 2), (3, 5), (3, 5, 10), (4, 8, 2, 5)]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            for dim in range(len(size)):
+                for index_size in range(size[dim]):
+                    index = get_random_test_tensor(
+                        max_value=(size[dim] - 1),
+                        min_value=0,
+                        size=(index_size,),
+                        is_float=False,
+                    )
+                    self._check_forward_backward("index_select", tensor, dim, index)
+
     def test_take(self):
         """Tests take gradients"""
         sizes = [(10,), (5, 10), (2, 5, 10)]

@@ -10,6 +10,7 @@ from collections import OrderedDict
 
 import crypten
 import torch
+from crypten.common.util import adaptive_pool2d_helper
 
 
 class Module:
@@ -548,7 +549,6 @@ class Graph(Container):
         self._graph[name] = input_names
 
     def forward(self, input):
-
         # keep track of all values that have been computed:
         values = {self.input_name: input}
         computed = {key: False for key in self._graph.keys()}
@@ -959,16 +959,16 @@ class Reshape(Module):
         input (tuple): contains input tensor and shape (torch.Size)
     """
 
-    def forward(self, input):
-        assert isinstance(input, (list, tuple)), "input must be list or tuple"
-        tensor, shape = input
-        assert isinstance(shape, torch.Size), "shape must be torch.Size"
+    def __init__(self, shape):
+        super(Reshape, self).__init__()
+        self.shape = shape
 
-        return tensor.reshape(shape)
+    def forward(self, tensor):
+        return tensor.reshape(self.shape)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
-        return Reshape()
+        return Reshape(attributes["shape"])
 
 
 class Dropout(Module):
@@ -1834,6 +1834,97 @@ class MaxPool2d(_Pool2d):
         return super(MaxPool2d, MaxPool2d).from_onnx(
             "max", parameters=parameters, attributes=attributes
         )
+
+
+class AdaptiveAvgPool2d(Module):
+    r"""Applies a 2D adaptive average pooling over an input signal composed of several input planes.
+
+    The output is of size H x W, for any input size.
+    The number of output features is equal to the number of input planes.
+
+    Args:
+        output_size: the target output size of the image of the form H x W.
+                     Can be a tuple (H, W) or a single H for a square image H x H.
+                     H and W can be either a ``int``, or ``None`` which means the size will
+                     be the same as that of the input.
+
+    Examples:
+        >>> # target output size of 5x7
+        >>> m = nn.AdaptiveAvgPool2d((5,7))
+        >>> input = crypten.randn(1, 64, 8, 9)
+        >>> output = m(input)
+        >>> # target output size of 7x7 (square)
+        >>> m = nn.AdaptiveAvgPool2d(7)
+        >>> input = crypten.randn(1, 64, 10, 9)
+        >>> output = m(input)
+        >>> # target output size of 10x7
+        >>> m = nn.AdaptiveAvgPool2d((None, 7))
+        >>> input = crypten.randn(1, 64, 10, 9)
+        >>> output = m(input)
+    """
+
+    def __init__(self, output_size):
+        super(AdaptiveAvgPool2d, self).__init__()
+        self.output_size = output_size
+
+    def extra_repr(self) -> str:
+        return "output_size={}".format(self.output_size)
+
+    def forward(self, input_tensor):
+        resized_input, args, kwargs = adaptive_pool2d_helper(
+            input_tensor, self.output_size, reduction="mean"
+        )
+        return resized_input.avg_pool2d(*args, **kwargs)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return AdaptiveAvgPool2d(attributes["shape"])
+
+
+class AdaptiveMaxPool2d(Module):
+    r"""Applies a 2D adaptive max pooling over an input signal composed of several input planes.
+
+    The output is of size H x W, for any input size.
+    The number of output features is equal to the number of input planes.
+
+    Args:
+        output_size: the target output size of the image of the form H x W.
+                     Can be a tuple (H, W) or a single H for a square image H x H.
+                     H and W can be either a ``int``, or ``None`` which means the size will
+                     be the same as that of the input.
+
+    Examples:
+        >>> # target output size of 5x7
+        >>> m = nn.AdaptiveMaxPool2d((5,7))
+        >>> input = crypten.randn(1, 64, 8, 9)
+        >>> output = m(input)
+        >>> # target output size of 7x7 (square)
+        >>> m = nn.AdaptiveMaxPool2d(7)
+        >>> input = crypten.randn(1, 64, 10, 9)
+        >>> output = m(input)
+        >>> # target output size of 10x7
+        >>> m = nn.AdaptiveMaxPool2d((None, 7))
+        >>> input = crypten.randn(1, 64, 10, 9)
+        >>> output = m(input)
+
+    """
+
+    def __init__(self, output_size):
+        super(AdaptiveMaxPool2d, self).__init__()
+        self.output_size = output_size
+
+    def extra_repr(self) -> str:
+        return "output_size={}".format(self.output_size)
+
+    def forward(self, input_tensor):
+        resized_input, args, kwargs = adaptive_pool2d_helper(
+            input_tensor, self.output_size, reduction="max"
+        )
+        return resized_input.max_pool2d(*args, **kwargs)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return AdaptiveMaxPool2d(attributes["shape"])
 
 
 class GlobalAveragePool(Module):

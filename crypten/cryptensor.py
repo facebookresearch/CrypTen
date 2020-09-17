@@ -295,7 +295,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 else:
                     remove_tuple = False
 
-                # we only need to build up forward graph if requires_grad is True:
                 if requires_grad:
 
                     # maintain references to children and context in result:
@@ -648,6 +647,27 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """2D convolution."""
         raise NotImplementedError("conv2d is not implemented")
 
+    def avg_pool2d(self, kernel_size, stride=None, padding=0):
+        """Perform an average pooling on each 2D matrix of the given tensor
+
+        Args:
+            kernel_size (int or tuple): pooling kernel size.
+        """
+        raise NotImplementedError("avg_pool2d is not implemented")
+
+    def adaptive_avg_pool2d(self, output_size):
+        r"""
+        Applies a 2D adaptive average pooling over an input signal composed of
+        several input planes.
+
+        See :class:`~torch.nn.AdaptiveAvgPool2d` for details and output shape.
+
+        Args:
+            output_size: the target output size (single integer or
+                double-integer tuple)
+        """
+        raise NotImplementedError("adaptive_avg_pool2d is not implemented")
+
     def max_pool2d(self, kernel_size, padding=None, stride=None, return_indices=False):
         """Applies a 2D max pooling over an input signal composed of several
         input planes.
@@ -696,6 +716,19 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         the correct mapping.
         """
         raise NotImplementedError("_max_pool2d_backward is not implemented")
+
+    def adaptive_max_pool2d(self, output_size, return_indices=False):
+        r"""Applies a 2D adaptive max pooling over an input signal composed of
+        several input planes.
+
+        See :class:`~torch.nn.AdaptiveMaxPool2d` for details and output shape.
+
+        Args:
+            output_size: the target output size (single integer or
+                double-integer tuple)
+            return_indices: whether to return pooling indices. Default: ``False``
+        """
+        raise NotImplementedError("adaptive_max_pool2d is not implemented")
 
     def dropout(self, p=0.5, training=True, inplace=False):
         r"""

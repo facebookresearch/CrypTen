@@ -12,7 +12,13 @@ import crypten
 import torch
 from crypten import communicator as comm
 from crypten.common.tensor_types import is_tensor
-from crypten.common.util import ConfigBase, pool_reshape, torch_cat, torch_stack
+from crypten.common.util import (
+    ConfigBase,
+    adaptive_pool2d_helper,
+    pool_reshape,
+    torch_cat,
+    torch_stack,
+)
 from crypten.cuda import CUDALongTensor
 
 from ..cryptensor import CrypTensor
@@ -100,7 +106,7 @@ class MPCConfig:
     _eix_iterations: int = 10
 
     # Used by max / argmax / min / argmin
-    max_method: str = "pairwise"
+    max_method: str = "log_reduction"
 
 
 # Global config
@@ -741,9 +747,9 @@ class MPCTensor(CrypTensor):
             padding=padding,
             stride=stride,
             # padding with extremely negative values to avoid choosing pads
-            # -2 ** 40 is acceptable since it is lower than the supported range
+            # -2 ** 33 is acceptable since it is lower than the supported range
             # which is -2 ** 32 because multiplication can otherwise fail.
-            pad_value=(-(2 ** 40)),
+            pad_value=(-(2 ** 33)),
         )
         max_vals, argmax_vals = max_input.max(dim=-1, one_hot=True)
         max_vals = max_vals.view(output_size)
@@ -813,6 +819,38 @@ class MPCTensor(CrypTensor):
 
         result = result[:, :, p0 : result.size(2) - p0, p1 : result.size(3) - p1]
         return result
+
+    def adaptive_avg_pool2d(self, output_size):
+        r"""
+        Applies a 2D adaptive average pooling over an input signal composed of
+        several input planes.
+
+        See :class:`~torch.nn.AdaptiveAvgPool2d` for details and output shape.
+
+        Args:
+            output_size: the target output size (single integer or
+                double-integer tuple)
+        """
+        resized_input, args, kwargs = adaptive_pool2d_helper(
+            self, output_size, reduction="mean"
+        )
+        return resized_input.avg_pool2d(*args, **kwargs)
+
+    def adaptive_max_pool2d(self, output_size, return_indices=False):
+        r"""Applies a 2D adaptive max pooling over an input signal composed of
+        several input planes.
+
+        See :class:`~torch.nn.AdaptiveMaxPool2d` for details and output shape.
+
+        Args:
+            output_size: the target output size (single integer or
+                double-integer tuple)
+            return_indices: whether to return pooling indices. Default: ``False``
+        """
+        resized_input, args, kwargs = adaptive_pool2d_helper(
+            self, output_size, reduction="max"
+        )
+        return resized_input.max_pool2d(*args, **kwargs, return_indices=return_indices)
 
     def where(self, condition, y):
         """Selects elements from self or y based on condition
@@ -1423,7 +1461,6 @@ class MPCTensor(CrypTensor):
 
 OOP_UNARY_FUNCTIONS = {
     "avg_pool2d": Ptype.arithmetic,
-    "sum_pool2d": Ptype.arithmetic,
     "take": Ptype.arithmetic,
     "square": Ptype.arithmetic,
     "mean": Ptype.arithmetic,

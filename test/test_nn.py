@@ -237,7 +237,7 @@ class TestNN(object):
             "Gather": (0,),
             "MatMul": (),
             "Mean": ([0], True),
-            "Reshape": (),
+            "Reshape": ((2, 2),),
             "Shape": (),
             "Sub": (),
             "Sum": ([0], True),
@@ -257,7 +257,7 @@ class TestNN(object):
             "Mean": lambda x: torch.mean(
                 x, dim=module_args["Mean"][0], keepdim=(module_args["Mean"][1] == 1)
             ),
-            "Reshape": lambda x: x[0].reshape(x[1]),
+            "Reshape": lambda x: x[0].reshape(module_args["Reshape"][0]),
             "Shape": lambda x: torch.tensor(x.size()).float(),
             "Sub": lambda x: x[0] - x[1],
             "Sum": lambda x: torch.sum(
@@ -285,10 +285,7 @@ class TestNN(object):
             "Transpose": (1, 2, 3, 4),
             "Unsqueeze": (8, 3),
         }
-        additional_inputs = {
-            "Gather": torch.tensor([[1, 2], [0, 3]]),
-            "Reshape": torch.Size([2, 2]),
-        }
+        additional_inputs = {"Gather": torch.tensor([[1, 2], [0, 3]])}
         module_attributes = {
             # each attribute has two parameters: the name, and a bool indicating
             # whether the value should be wrapped into a list when the module is created
@@ -366,6 +363,8 @@ class TestNN(object):
                 local_attr["keepdims"] = (
                     1 if module_args["ReduceMean"][1] is True else 0
                 )
+            if module_name == "Reshape":
+                local_attr["shape"] = module_args["Reshape"][0]
 
             # compare model outputs using the from_onnx static function
             module = getattr(crypten.nn, module_name).from_onnx(attributes=local_attr)
@@ -381,7 +380,8 @@ class TestNN(object):
 
         # input arguments for modules and input sizes:
         module_args = {
-            "AdaptiveAvgPool2d": (2,),
+            "AdaptiveAvgPool2d": ((7, 7),),
+            "AdaptiveMaxPool2d": ((3, 3),),
             "AvgPool2d": (2,),
             # "BatchNorm1d": (400,),  # FIXME: Unit tests claim gradients are incorrect.
             # "BatchNorm2d": (3,),
@@ -399,7 +399,8 @@ class TestNN(object):
             "LogSoftmax": (0,),
         }
         input_sizes = {
-            "AdaptiveAvgPool2d": (1, 3, 32, 32),
+            "AdaptiveAvgPool2d": (1, 2, 24, 24),
+            "AdaptiveMaxPool2d": (1, 3, 8, 8),
             "AvgPool2d": (1, 3, 32, 32),
             "BatchNorm1d": (8, 400),
             "BatchNorm2d": (8, 3, 32, 32),
@@ -419,9 +420,8 @@ class TestNN(object):
 
         # loop over all modules:
         for module_name, from_pytorch, compute_gradients in itertools.product(
-            module_args.keys(), [True, False], [True, False]
+            module_args.keys(), [False, True], [False, True]
         ):
-
             # generate inputs:
             input = get_random_test_tensor(size=input_sizes[module_name], is_float=True)
             input.requires_grad = True
@@ -488,6 +488,9 @@ class TestNN(object):
             reference.sum().backward()
             encr_output.sum().backward()
             if compute_gradients:
+                self.assertIsNotNone(
+                    encr_input.grad, f"{module_name} grad failed to populate {msg}."
+                )
                 self._check(
                     encr_input.grad,
                     input.grad,
@@ -1029,8 +1032,6 @@ class TestNN(object):
             """
             Checks if state_dict matches parameters in model.
             """
-            print(model)
-
             # get all parameters, buffers, and names from model:
             params_buffers = {}
             for func in ["named_parameters", "named_buffers"]:
