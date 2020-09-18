@@ -12,6 +12,11 @@ import torch
 from .gradients import AutogradContext, get_grad_fn
 
 
+# list of all static functions that CrypTensors support:
+STATIC_FUNCTIONS = ["cat", "stack"]
+STATIC_FUNCTION_MAPPING = {getattr(torch, name): name for name in STATIC_FUNCTIONS}
+
+
 def _find_all_cryptensors(inputs):
     """
     Recursively find all CrypTensors in an input list, tuple, set, or dict.
@@ -35,7 +40,7 @@ class CrypTensorMetaclass(type):
     """
 
     def __getattribute__(cls, name):
-        if name in ["cat", "stack"]:
+        if name in STATIC_FUNCTIONS:
             dummy = cls(None)
             dummy.__IS_DUMMY__ = True
             return cls.__getattribute__(dummy, name)
@@ -230,6 +235,20 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         clone = self.clone()
         clone.requires_grad = False
         return clone
+
+    def __torch_function__(self, func, types, args=(), kwargs=None):
+        """Allows torch static functions to work on CrypTensors."""
+        if kwargs is None:
+            kwargs = {}
+        if func in STATIC_FUNCTION_MAPPING:
+            import crypten
+
+            # dispatch torch.{cat,stack} call on CrypTensor to CrypTen:
+            return getattr(crypten, STATIC_FUNCTION_MAPPING[func])(*args, **kwargs)
+        else:
+            raise NotImplementedError(
+                f"CrypTen does not support torch function {func}."
+            )
 
     def __getattribute__(self, name):
         """

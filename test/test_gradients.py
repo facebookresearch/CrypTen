@@ -623,45 +623,49 @@ class TestGradients:
             self._check_forward_backward("clone", tensor)
 
     def test_cat_stack(self):
-        for func in ["cat", "stack"]:
-            for dimensions in range(1, 5):
-                size = [5] * dimensions
-                for num_tensors in range(1, 5):
-                    for dim in range(dimensions):
-                        tensors = [
-                            get_random_test_tensor(size=size, is_float=True)
-                            for _ in range(num_tensors)
-                        ]
-                        encrypted_tensors = [
-                            crypten.cryptensor(t, requires_grad=True) for t in tensors
-                        ]
-                        for i in range(len(tensors)):
-                            tensors[i].grad = None
-                            tensors[i].requires_grad = True
-                            encrypted_tensors[i].grad = None
-                            encrypted_tensors[i].requires_grad = True
+        for module in [crypten, torch]:  # torch.cat on CrypTensor runs crypten.cat
+            for func in ["cat", "stack"]:
+                for dimensions in range(1, 5):
+                    size = [5] * dimensions
+                    for num_tensors in range(1, 5):
+                        for dim in range(dimensions):
+                            tensors = [
+                                get_random_test_tensor(size=size, is_float=True)
+                                for _ in range(num_tensors)
+                            ]
+                            encrypted_tensors = [
+                                crypten.cryptensor(t, requires_grad=True)
+                                for t in tensors
+                            ]
+                            for i in range(len(tensors)):
+                                tensors[i].grad = None
+                                tensors[i].requires_grad = True
+                                encrypted_tensors[i].grad = None
+                                encrypted_tensors[i].requires_grad = True
 
-                        # Forward
-                        reference = getattr(torch, func)(tensors, dim=dim)
-                        encrypted_out = getattr(crypten, func)(
-                            encrypted_tensors, dim=dim
-                        )
-                        self._check(encrypted_out, reference, f"{func} forward failed")
-
-                        # Backward
-                        grad_output = get_random_test_tensor(
-                            size=reference.size(), is_float=True
-                        )
-                        encrypted_grad_output = crypten.cryptensor(grad_output)
-
-                        reference.backward(grad_output)
-                        encrypted_out.backward(encrypted_grad_output)
-                        for i in range(len(tensors)):
-                            self._check(
-                                encrypted_tensors[i].grad,
-                                tensors[i].grad,
-                                f"{func} backward failed",
+                            # Forward
+                            reference = getattr(torch, func)(tensors, dim=dim)
+                            encrypted_out = getattr(module, func)(
+                                encrypted_tensors, dim=dim
                             )
+                            self._check(
+                                encrypted_out, reference, f"{func} forward failed"
+                            )
+
+                            # Backward
+                            grad_output = get_random_test_tensor(
+                                size=reference.size(), is_float=True
+                            )
+                            encrypted_grad_output = crypten.cryptensor(grad_output)
+
+                            reference.backward(grad_output)
+                            encrypted_out.backward(encrypted_grad_output)
+                            for i in range(len(tensors)):
+                                self._check(
+                                    encrypted_tensors[i].grad,
+                                    tensors[i].grad,
+                                    f"{func} backward failed",
+                                )
 
     def test_dropout(self):
         """Tests forward for dropout"""
