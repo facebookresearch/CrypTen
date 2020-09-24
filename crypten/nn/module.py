@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import itertools
+import warnings
 from collections import OrderedDict
 
 import crypten
@@ -986,8 +987,12 @@ class Dropout(Module):
         - Output: :math:`(*)`. Output is of the same shape as input
     """
 
-    def __init__(self, p=0.5):
+    def __init__(self, p=0.5, inplace=False):
         super().__init__()
+        if inplace:
+            warnings.warn(
+                "CrypTen Dropout module does not support inplace computation."
+            )
         self.p = p
 
     def forward(self, input):
@@ -1014,14 +1019,17 @@ class DropoutNd(Module):
         p (float, optional): probability of an element to be zero-ed.
     """
 
-    def __init__(self, p=0.5):
+    def __init__(self, p=0.5, inplace=False):
         super().__init__()
+        if inplace:
+            warnings.warn(
+                "CrypTen DropoutNd module does not support inplace computation."
+            )
         self.p = p
 
     def forward(self, input):
         if self.training:
-            result = input._feature_dropout(p=self.p)
-            return result
+            return input._feature_dropout(p=self.p)
         return input
 
     @staticmethod
@@ -1598,6 +1606,11 @@ class ReLU(Module):
 
     :math:`\text{ReLU}(x)= \max(0, x)`
     """
+
+    def __init__(self, inplace=False):
+        super().__init__()
+        if inplace:
+            warnings.warn("CrypTen ReLU module does not support inplace computation.")
 
     def forward(self, x):
         return x.relu()

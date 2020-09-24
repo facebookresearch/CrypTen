@@ -554,6 +554,15 @@ class TestNN(object):
                         "Linear backward on %s failed" % name,
                     )
 
+    def test_inplace_warning(self):
+        """Tests that a warning is thrown that indicates that the `inplace` kwarg
+        is ignored when a module is initialized with `inplace=True`
+        """
+        modules = ["Dropout", "DropoutNd", "Dropout2d", "Dropout3d", "ReLU"]
+        for module in modules:
+            with self.assertWarns(UserWarning):
+                getattr(crypten.nn, module)(inplace=True)
+
     def test_sequential(self):
         """
         Tests crypten.nn.Sequential module.
