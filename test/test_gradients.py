@@ -258,15 +258,30 @@ class TestGradients:
                 # Check dim 0 if tensor is 0-dimensional
                 dims = 1 if tensor.dim() == 0 else tensor.dim()
                 for dim in range(dims):
+
+                    # check when keepdim is not provided as a kwarg
+                    if method is None:
+                        self._check_forward_backward(reduction, tensor, dim=dim)
+                    else:
+                        with crypten.mpc.ConfigManager("max_method", method):
+                            self._check_forward_backward(reduction, tensor, dim=dim)
+
+                    # check when keepdim is provided as a kwarg
                     for keepdim in [False, True]:
                         if method is None:
                             self._check_forward_backward(
                                 reduction, tensor, dim, keepdim=keepdim
                             )
+                            self._check_forward_backward(
+                                reduction, tensor, dim=dim, keepdim=keepdim
+                            )
                         else:
                             with crypten.mpc.ConfigManager("max_method", method):
                                 self._check_forward_backward(
                                     reduction, tensor, dim, keepdim=keepdim
+                                )
+                                self._check_forward_backward(
+                                    reduction, tensor, dim=dim, keepdim=keepdim
                                 )
 
     def test_matmul(self):

@@ -1073,7 +1073,7 @@ class AutogradMin(AutogradFunction):
         assert len(args) >= 1
         if len(args) == 1:
             (input,) = args  # no dimension to min over in args
-            dim = kwargs.get("dim", None)
+            dim = kwargs.pop("dim", None)  # remove dim from kwargs after obtaining it
         else:
             assert len(args) == 2
             assert "dim" not in kwargs
@@ -1086,7 +1086,7 @@ class AutogradMin(AutogradFunction):
             argmin = input.argmin(one_hot=one_hot)
             min = input.mul(argmin).sum()
         else:
-            min, argmin = input.min(dim, keepdim=keepdim, one_hot=one_hot)
+            min, argmin = input.min(dim, **kwargs)
 
         # save context and return:
         ctx.save_multiple_for_backward((dim, keepdim, argmin, one_hot))
@@ -1121,7 +1121,7 @@ class AutogradMax(AutogradFunction):
         assert len(args) >= 1
         if len(args) == 1:
             (input,) = args  # no dimension to max over in args
-            dim = kwargs.get("dim", None)
+            dim = kwargs.pop("dim", None)  # remove dim from kwargs after obtaining it
         else:
             assert len(args) == 2
             assert "dim" not in kwargs
