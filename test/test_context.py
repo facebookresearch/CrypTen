@@ -31,8 +31,8 @@ def test_worldsize_func():
 
 @mpc.run_multiprocess(world_size=2)
 def test_generator_func():
-    t0 = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,), generator=comm.get().g0).item()
-    t1 = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,), generator=comm.get().g1).item()
+    t0 = torch.randint(-(2 ** 63), 2 ** 63 - 1, (1,), generator=comm.get().g0).item()
+    t1 = torch.randint(-(2 ** 63), 2 ** 63 - 1, (1,), generator=comm.get().g1).item()
     return (t0, t1)
 
 
