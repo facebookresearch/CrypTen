@@ -169,19 +169,6 @@ class Module:
         self._parameters[name] = cls.from_shares(share, **kwargs)
         setattr(self, name, self._parameters[name])
 
-    def _named_members(self, get_members_fn, prefix='', recurse=True):
-        """Helper method for yielding various names + members of modules."""
-        memo = set()
-        modules = self.named_modules(prefix=prefix) if recurse else [(prefix, self)]
-        for module_prefix, module in modules:
-            members = get_members_fn(module)
-            for k, v in members:
-                if v is None or v in memo:
-                    continue
-                memo.add(v)
-                name = module_prefix + ('.' if module_prefix else '') + k
-                yield name, v
-
     def parameters(self, recurse=True):
         """Returns an iterator over module parameters.
         This is typically passed to an optimizer.
@@ -207,12 +194,6 @@ class Module:
         Yields:
             (string, CrypTensor or torch.Tensor): Tuple containing the name and parameter
         """
-        # gen = self._named_members(
-        #     lambda module: module._parameters.items(),
-        #     prefix=prefix, recurse=recurse)
-        # for elem in gen:
-        #     yield elem
-
         for name, param in self._parameters.items():
             param_name = name if prefix is None else prefix + "." + name
             yield param_name, param
