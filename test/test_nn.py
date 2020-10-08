@@ -456,7 +456,7 @@ class TestNN(object):
                     if hasattr(module, key):  # if PyTorch model has key
                         # find that key in the crypten.nn.Graph:
                         if isinstance(encr_module, crypten.nn.Graph):
-                            for encr_node in encr_module.modules():
+                            for encr_node in encr_module.children():
                                 if hasattr(encr_node, key):
                                     encr_param = getattr(encr_node, key)
                                     break
@@ -584,9 +584,9 @@ class TestNN(object):
 
                 # check container:
                 self.assertTrue(sequential.encrypted, "nn.Sequential not encrypted")
-                for module in sequential.modules():
+                for module in sequential.children():
                     self.assertTrue(module.encrypted, "module not encrypted")
-                assert sum(1 for _ in sequential.modules()) == len(
+                assert sum(1 for _ in sequential.children()) == len(
                     module_list
                 ), "nn.Sequential contains incorrect number of modules"
 
@@ -598,7 +598,7 @@ class TestNN(object):
 
                 # compute reference output:
                 encr_reference = encr_input
-                for module in sequential.modules():
+                for module in sequential.children():
                     encr_reference = module(encr_reference)
                 reference = encr_reference.get_plain_text()
 
@@ -632,10 +632,10 @@ class TestNN(object):
 
             # check container:
             self.assertTrue(graph.encrypted, "nn.Graph not encrypted")
-            for module in graph.modules():
+            for module in graph.children():
                 self.assertTrue(module.encrypted, "module not encrypted")
             assert (
-                sum(1 for _ in graph.modules()) == 3
+                sum(1 for _ in graph.children()) == 3
             ), "nn.Graph contains incorrect number of modules"
 
             # compare output to reference:

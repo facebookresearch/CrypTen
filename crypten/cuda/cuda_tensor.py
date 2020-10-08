@@ -478,6 +478,9 @@ class CUDALongTensor(object):
     def __ge__(self, y):
         return CUDALongTensor(self._tensor >= y)
 
+    def __hash__(self):
+        return hash(self._tensor)
+
     def lshift_(self, value):
         """Right shift elements by `value` bits"""
         assert isinstance(value, int), "lshift must take an integer argument."

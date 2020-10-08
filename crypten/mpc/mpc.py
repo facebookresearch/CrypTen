@@ -302,6 +302,9 @@ class MPCTensor(CrypTensor):
             value = MPCTensor(value, ptype=self.ptype, device=self.device)
         self._tensor.__setitem__(index, value._tensor)
 
+    def __hash__(self):
+        return hash(self.share)
+
     @property
     def share(self):
         """Returns underlying share"""
