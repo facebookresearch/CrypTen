@@ -787,24 +787,23 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
     def sigmoid(self, reciprocal_method="log"):
         """Computes the sigmoid function on the input value
-                sigmoid(x) = (1 + exp(-x))^{-1}
+        sigmoid(x) = (1 + exp(-x))^{-1}
         """
         raise NotImplementedError("sigmoid is not implemented")
 
     def tanh(self, reciprocal_method="log"):
         """Computes tanh from the sigmoid function:
-            tanh(x) = 2 * sigmoid(2 * x) - 1
+        tanh(x) = 2 * sigmoid(2 * x) - 1
         """
         raise NotImplementedError("tanh is not implemented")
 
     def softmax(self, dim, **kwargs):
-        """Compute the softmax of a tensor's elements along a given dimension
-        """
+        """Compute the softmax of a tensor's elements along a given dimension"""
         raise NotImplementedError("softmax is not implemented")
 
     def log_softmax(self, dim, **kwargs):
         """Applies a softmax of a tensor's elements along a given dimension,
-           followed by a logarithm.
+        followed by a logarithm.
         """
         raise NotImplementedError("log_softmax is not implemented")
 

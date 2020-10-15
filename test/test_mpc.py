@@ -24,7 +24,7 @@ from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 class TestMPC(object):
     """
-        This class tests all functions of MPCTensor.
+    This class tests all functions of MPCTensor.
     """
 
     def _get_random_test_tensor(self, *args, **kwargs):
@@ -142,8 +142,8 @@ class TestMPC(object):
 
     def test_encrypt_decrypt(self):
         """
-            Tests tensor encryption and decryption for both positive
-            and negative values.
+        Tests tensor encryption and decryption for both positive
+        and negative values.
         """
         sizes = [
             (),

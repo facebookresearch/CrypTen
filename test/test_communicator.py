@@ -33,7 +33,7 @@ INVALID_SERIALIZED_OBJECTS = [
 
 class TestCommunicator:
     """
-        This class tests all member functions of crypten package
+    This class tests all member functions of crypten package
     """
 
     def test_przs_generators(self):

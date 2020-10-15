@@ -16,7 +16,7 @@ from crypten.common.tensor_types import is_float_tensor
 
 class TestOptim(object):
     """
-        This class tests the crypten.optim package.
+    This class tests the crypten.optim package.
     """
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):

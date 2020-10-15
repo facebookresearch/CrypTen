@@ -27,11 +27,11 @@ HANDLED_FUNCTIONS = {}
 
 class CUDALongTensor(object):
     """
-        A wrapper class for `torch.cuda.LongTensor`. When performing operations that are
-        currently not supported for `torch.cuda.LongTensor` (e.g `matmul`, `conv2d`), it will
-        convert the underlying LongTensor into DoubleTensor and convert the computed
-        result back to a LongTensor. The computed result will be the same as the original
-        expected result.
+    A wrapper class for `torch.cuda.LongTensor`. When performing operations that are
+    currently not supported for `torch.cuda.LongTensor` (e.g `matmul`, `conv2d`), it will
+    convert the underlying LongTensor into DoubleTensor and convert the computed
+    result back to a LongTensor. The computed result will be the same as the original
+    expected result.
     """
 
     __BITS = torch.iinfo(torch.long).bits

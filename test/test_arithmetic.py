@@ -23,7 +23,7 @@ from crypten.mpc.primitives import ArithmeticSharedTensor
 
 class TestArithmetic(MultiProcessTestCase):
     """
-        This class tests all functions of the ArithmeticSharedTensor.
+    This class tests all functions of the ArithmeticSharedTensor.
     """
 
     def setUp(self):
@@ -72,8 +72,8 @@ class TestArithmetic(MultiProcessTestCase):
 
     def test_encrypt_decrypt(self):
         """
-            Tests tensor encryption and decryption for both positive
-            and negative values.
+        Tests tensor encryption and decryption for both positive
+        and negative values.
         """
         sizes = [
             (),

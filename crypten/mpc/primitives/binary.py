@@ -24,11 +24,11 @@ SENTINEL = -1
 # MPC tensor where shares are XOR-sharings.
 class BinarySharedTensor(object):
     """
-        Encrypted tensor object that uses binary sharing to perform computations.
+    Encrypted tensor object that uses binary sharing to perform computations.
 
-        Binary shares are computed by splitting each value of the input tensor
-        into n separate random values that xor together to the input tensor value,
-        where n is the number of parties present in the protocol (world_size).
+    Binary shares are computed by splitting each value of the input tensor
+    into n separate random values that xor together to the input tensor value,
+    where n is the number of parties present in the protocol (world_size).
     """
 
     def __init__(self, tensor=None, size=None, src=0, device=None):

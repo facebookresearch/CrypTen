@@ -25,7 +25,7 @@ from crypten.encoder import FixedPointEncoder
 
 class TestNN(object):
     """
-        This class tests the crypten.nn package.
+    This class tests the crypten.nn package.
     """
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):

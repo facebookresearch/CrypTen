@@ -15,7 +15,7 @@ import torch
 
 class TestDistributions(object):
     """
-        This class tests accuracy of distributions provided by random sampling in crypten.
+    This class tests accuracy of distributions provided by random sampling in crypten.
     """
 
     def _check_distribution(

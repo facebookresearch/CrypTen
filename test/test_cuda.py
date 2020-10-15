@@ -41,7 +41,7 @@ class MLP(nn.Module):
 @unittest.skipIf(torch.cuda.is_available() is False, "requires CUDA")
 class TestCUDA(TestMPC):
     """
-        This class tests all functions of CUDALongTensor as well as its integration with MPCTensor.
+    This class tests all functions of CUDALongTensor as well as its integration with MPCTensor.
     """
 
     def _check_int(self, result, reference, msg):
@@ -476,11 +476,11 @@ class TestCUDA(TestMPC):
 
     @unittest.skip("torch.scatter behaves inconsistently on CUDA")
     def test_torch_scatter(self):
-        """ Test scatter/scatter_add function of CUDALongTensor
+        """Test scatter/scatter_add function of CUDALongTensor
 
-            This test will be skipped for now since torch.scatter provides
-            inconsistent result given the same input on CUDA. This is likely
-            due to a potential bug on pytorch's implementation of scatter
+        This test will be skipped for now since torch.scatter provides
+        inconsistent result given the same input on CUDA. This is likely
+        due to a potential bug on pytorch's implementation of scatter
         """
 
         funcs = ["scatter", "scatter_add"]
@@ -537,9 +537,9 @@ class TestCUDA(TestMPC):
 
     @unittest.skip("torch.scatter behaves inconsistently on CUDA")
     def test_scatter(self):
-        """ This test will be skipped for now since torch.scatter provides
-            inconsistent result given the same input on CUDA. This is likely
-            due to a potential bug on pytorch's implementation of scatter
+        """This test will be skipped for now since torch.scatter provides
+        inconsistent result given the same input on CUDA. This is likely
+        due to a potential bug on pytorch's implementation of scatter
         """
         pass
 

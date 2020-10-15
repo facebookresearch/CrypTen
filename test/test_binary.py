@@ -18,7 +18,7 @@ from crypten.mpc.primitives import BinarySharedTensor
 
 class TestBinary(MultiProcessTestCase):
     """
-        This class tests all functions of BinarySharedTensor.
+    This class tests all functions of BinarySharedTensor.
     """
 
     def setUp(self):
@@ -48,8 +48,8 @@ class TestBinary(MultiProcessTestCase):
 
     def test_encrypt_decrypt(self):
         """
-            Tests tensor encryption and decryption for both positive
-            and negative values.
+        Tests tensor encryption and decryption for both positive
+        and negative values.
         """
         sizes = [
             (),

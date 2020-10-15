@@ -150,11 +150,11 @@ class Communicator:
 
     def get_generator(self, idx, device=None):
         """
-            Get the corresponding RNG generator, as specified by its index and device
+        Get the corresponding RNG generator, as specified by its index and device
 
-            Args:
-                idx: The index of the generator, can be either 0 or 1
-                device: The device that the generator lives in.
+        Args:
+            idx: The index of the generator, can be either 0 or 1
+            device: The device that the generator lives in.
         """
 
         if device is None:

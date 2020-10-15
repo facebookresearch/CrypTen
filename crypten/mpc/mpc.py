@@ -982,8 +982,7 @@ class MPCTensor(CrypTensor):
 
     @mode(Ptype.arithmetic)
     def softmax(self, dim, **kwargs):
-        """Compute the softmax of a tensor's elements along a given dimension
-        """
+        """Compute the softmax of a tensor's elements along a given dimension"""
         # 0-d case
         if self.dim() == 0:
             assert dim == 0, "Improper dim argument"

@@ -20,10 +20,10 @@ import crypten.communicator as comm
 
 class BaseOT:
     """
-        hardcoded public parameter
-        log2(__prime) > 128
+    hardcoded public parameter
+    log2(__prime) > 128
 
-        __generator is a primitive root of __prime
+    __generator is a primitive root of __prime
     """
 
     __prime = 631276824160446938136046282957027762913

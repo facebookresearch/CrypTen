@@ -172,16 +172,16 @@ def is_encrypted_tensor(obj):
 
 def _setup_przs(device=None):
     """
-        Generate shared random seeds to generate pseudo-random sharings of
-        zero. The random seeds are shared such that each process shares
-        one seed with the previous rank process and one with the next rank.
-        This allows for the generation of `n` random values, each known to
-        exactly two of the `n` parties.
+    Generate shared random seeds to generate pseudo-random sharings of
+    zero. The random seeds are shared such that each process shares
+    one seed with the previous rank process and one with the next rank.
+    This allows for the generation of `n` random values, each known to
+    exactly two of the `n` parties.
 
-        For arithmetic sharing, one of these parties will add the number
-        while the other subtracts it, allowing for the generation of a
-        pseudo-random sharing of zero. (This can be done for binary
-        sharing using bitwise-xor rather than addition / subtraction)
+    For arithmetic sharing, one of these parties will add the number
+    while the other subtracts it, allowing for the generation of a
+    pseudo-random sharing of zero. (This can be done for binary
+    sharing using bitwise-xor rather than addition / subtraction)
     """
     # Initialize RNG Generators
     comm.get().g0 = torch.Generator()

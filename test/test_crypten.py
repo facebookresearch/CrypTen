@@ -22,7 +22,7 @@ from torch import nn
 
 class TestCrypten(MultiProcessTestCase):
     """
-        This class tests all member functions of crypten package
+    This class tests all member functions of crypten package
     """
 
     def setUp(self):

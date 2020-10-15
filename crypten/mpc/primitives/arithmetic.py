@@ -28,11 +28,11 @@ SENTINEL = -1
 # MPC tensor where shares additive-sharings.
 class ArithmeticSharedTensor(object):
     """
-        Encrypted tensor object that uses additive sharing to perform computations.
+    Encrypted tensor object that uses additive sharing to perform computations.
 
-        Additive shares are computed by splitting each value of the input tensor
-        into n separate random values that add to the input tensor, where n is
-        the number of parties present in the protocol (world_size).
+    Additive shares are computed by splitting each value of the input tensor
+    into n separate random values that add to the input tensor, where n is
+    the number of parties present in the protocol (world_size).
     """
 
     # constructors:
@@ -165,7 +165,7 @@ class ArithmeticSharedTensor(object):
 
     def pad(self, pad, mode="constant", value=0):
         """
-            Pads the input tensor with values provided in `value`.
+        Pads the input tensor with values provided in `value`.
         """
         assert mode == "constant", (
             "Padding with mode %s is currently unsupported" % mode
@@ -473,13 +473,13 @@ class ArithmeticSharedTensor(object):
 
     def index_add(self, dim, index, tensor):
         """Perform out-of-place index_add: Accumulate the elements of tensor into the
-        self tensor by adding to the indices in the order given in index. """
+        self tensor by adding to the indices in the order given in index."""
         result = self.clone()
         return result.index_add_(dim, index, tensor)
 
     def index_add_(self, dim, index, tensor):
         """Perform in-place index_add: Accumulate the elements of tensor into the
-        self tensor by adding to the indices in the order given in index. """
+        self tensor by adding to the indices in the order given in index."""
         public = isinstance(tensor, (int, float)) or is_tensor(tensor)
         private = isinstance(tensor, ArithmeticSharedTensor)
         if public:
@@ -543,8 +543,8 @@ class ArithmeticSharedTensor(object):
 
     def take(self, index, dimension=None):
         """Take entries of tensor along a dimension according to the index.
-            This function is identical to torch.take() when dimension=None,
-            otherwise, it is identical to ONNX gather() function.
+        This function is identical to torch.take() when dimension=None,
+        otherwise, it is identical to ONNX gather() function.
         """
         result = self.shallow_copy()
         index = index.long()
