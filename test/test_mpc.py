@@ -176,6 +176,10 @@ class TestMPC(object):
             )
             self._check(encrypted_tensor2, reference, "en/decryption failed")
 
+        # MPCTensors cannot be initialized with None:
+        with self.assertRaises(ValueError):
+            _ = MPCTensor(None)
+
     def test_arithmetic(self):
         """Tests arithmetic functions on encrypted tensor."""
         arithmetic_functions = ["add", "add_", "sub", "sub_", "mul", "mul_"]
