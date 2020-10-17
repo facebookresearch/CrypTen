@@ -91,14 +91,29 @@ class TestArithmetic(MultiProcessTestCase):
             (5, 3, 32, 32),
         ]
         for size in sizes:
+
+            # encryption and decryption without source:
             reference = get_random_test_tensor(size=size, is_float=True)
             encrypted_tensor = ArithmeticSharedTensor(reference)
             self._check(encrypted_tensor, reference, "en/decryption failed")
-
             for dst in range(self.world_size):
                 self._check(
                     encrypted_tensor, reference, "en/decryption failed", dst=dst
                 )
+
+            # encryption and decryption with source:
+            for src in range(self.world_size):
+                input_tensor = reference if src == self.rank else []
+                encrypted_tensor = ArithmeticSharedTensor(
+                    input_tensor, src=src, broadcast_size=True
+                )
+                for dst in range(self.world_size):
+                    self._check(
+                        encrypted_tensor,
+                        reference,
+                        "en/decryption with broadcast_size failed",
+                        dst=dst,
+                    )
 
     def test_arithmetic(self):
         """Tests arithmetic functions on encrypted tensor."""

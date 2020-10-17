@@ -161,6 +161,8 @@ class TestMPC(object):
             (5, 3, 32, 32),
         ]
         for size in sizes:
+
+            # encryption and decryption without source:
             reference = self._get_random_test_tensor(size=size, is_float=True)
             encrypted_tensor = MPCTensor(reference)
             self._check(encrypted_tensor, reference, "en/decryption failed")
@@ -169,7 +171,19 @@ class TestMPC(object):
                     encrypted_tensor, reference, "en/decryption failed", dst=dst
                 )
 
-            # Test new()
+            # encryption and decryption with source:
+            for src in range(self.world_size):
+                input_tensor = reference if src == self.rank else []
+                encrypted_tensor = MPCTensor(input_tensor, src=src, broadcast_size=True)
+                for dst in range(self.world_size):
+                    self._check(
+                        encrypted_tensor,
+                        reference,
+                        "en/decryption with broadcast_size failed",
+                        dst=dst,
+                    )
+
+            # test creation via new() function:
             encrypted_tensor2 = encrypted_tensor.new(reference)
             self.assertIsInstance(
                 encrypted_tensor2, MPCTensor, "new() returns incorrect type"
