@@ -106,27 +106,46 @@ class TestAutograd(object):
                 "value of requires_grad is incorrect",
             )
 
+    def test_inplace(self):
+        """
+        Tests that in-place functions cannot be used in autograd but return
+        correct results outside of autograd.
+        """
+        value = 1.5
+        reference = get_random_test_tensor(size=(1, 3, 8, 8), is_float=True)
+        for requires_grad in [False, True]:
+            result = crypten.cryptensor(reference, requires_grad=requires_grad)
+            if requires_grad:
+                with self.assertRaises(RuntimeError):
+                    result.add_(value)
+            else:
+                result.add_(value)
+                self._check(result, reference.add(value), "in-place addition failed")
+
     def test_autograd_registation(self):
         """Tests registration of new autograd function."""
 
         # check that get_grad_fn() returns correct functions:
         for func_name, reference_func in gradients.FUNCTION_REGISTRY.items():
-            grad_fn = gradients.get_grad_fn(func_name)
+            grad_fn, in_place = gradients.get_grad_fn(func_name)
             self.assertEqual(grad_fn, reference_func)
             self.assertEqual(grad_fn.name, func_name)
+            self.assertFalse(in_place)
 
         # check that non-existing functions return None:
         for invalid_func_name in ["bfobofb", "djhfhr"]:
-            func = gradients.get_grad_fn(invalid_func_name)
+            func, in_place = gradients.get_grad_fn(invalid_func_name)
             self.assertIsNone(func)
+            self.assertFalse(in_place)
 
         # check that registering new classes works:
         for func_name in ["mock_func1", "mock_func2", "mock_func3"]:
             cls = type("%sName" % func_name, (AutogradFunction,), {})
             gradients.register_function(func_name)(cls)
-            grad_fn = gradients.get_grad_fn(func_name)
+            grad_fn, in_place = gradients.get_grad_fn(func_name)
             self.assertEqual(grad_fn, cls)
             self.assertEqual(grad_fn.name, func_name)
+            self.assertFalse(in_place)
 
         # check that existing functions cannot be overwritten:
         for func_name in ["add", "sub", "view"]:
@@ -148,7 +167,7 @@ class TestAutograd(object):
 
             # test forward
             ctx = AutogradContext()
-            grad_fn_take = gradients.get_grad_fn("take")
+            grad_fn_take, _ = gradients.get_grad_fn("take")
             encr_output = grad_fn_take.forward(ctx, *encr_inputs)
             self._check(encr_output, ref_forward, "take forward failed: dimension set")
 
