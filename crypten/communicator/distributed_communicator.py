@@ -264,7 +264,7 @@ class DistributedCommunicator(Communicator):
 
         buf = pickle.dumps(obj)
         size = torch.tensor(len(buf), dtype=torch.int32)
-        arr = torch.from_numpy(numpy.frombuffer(buf, dtype=numpy.int8))
+        arr = torch.from_numpy(numpy.copy(numpy.frombuffer(buf, dtype=numpy.int8)))
 
         r0 = dist.isend(size, dst=dst, group=group)
         r1 = dist.isend(arr, dst=dst, group=group)
@@ -296,7 +296,7 @@ class DistributedCommunicator(Communicator):
             assert obj is not None, "src party must provide obj for broadcast"
             buf = pickle.dumps(obj)
             size = torch.tensor(len(buf), dtype=torch.int32)
-            arr = torch.from_numpy(numpy.frombuffer(buf, dtype=numpy.int8))
+            arr = torch.from_numpy(numpy.copy(numpy.frombuffer(buf, dtype=numpy.int8)))
 
             dist.broadcast(size, src, group=group)
             dist.broadcast(arr, src, group=group)

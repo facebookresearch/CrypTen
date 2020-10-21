@@ -36,16 +36,57 @@ class ArithmeticSharedTensor(object):
     """
 
     # constructors:
-    def __init__(self, tensor=None, size=None, precision=None, src=0, device=None):
+    def __init__(
+        self,
+        tensor=None,
+        size=None,
+        broadcast_size=False,
+        precision=None,
+        src=0,
+        device=None,
+    ):
+        """
+        Creates the shared tensor from the input `tensor` provided by party `src`.
+
+        The other parties can specify a `tensor` or `size` to determine the size
+        of the shared tensor object to create. In this case, all parties must
+        specify the same (tensor) size to prevent the party's shares from varying
+        in size, which leads to undefined behavior.
+
+        Alternatively, the parties can set `broadcast_size` to `True` to have the
+        `src` party broadcast the correct size. The parties who do not know the
+        tensor size beforehand can provide an empty tensor as input. This is
+        guaranteed to produce correct behavior but requires an additional
+        communication round.
+
+        The parties can also set the `precision` and `device` for their share of
+        the tensor. If `device` is unspecified, it is set to `tensor.device`.
+        """
+
+        # do nothing if source is sentinel:
         if src == SENTINEL:
             return
+
+        # assertions on inputs:
         assert (
             isinstance(src, int) and src >= 0 and src < comm.get().get_world_size()
-        ), "invalid tensor source"
+        ), "specified source party does not exist"
+        if self.rank == src:
+            assert tensor is not None, "source must provide a data tensor"
+            if hasattr(tensor, "src"):
+                assert (
+                    tensor.src == src
+                ), "source of data tensor must match source of encryption"
+        if not broadcast_size:
+            assert (
+                tensor is not None or size is not None
+            ), "must specify tensor or size, or set broadcast_size"
 
-        if device is None and hasattr(tensor, "device"):
+        # if device is unspecified, try and get it from tensor:
+        if device is None and tensor is not None and hasattr(tensor, "device"):
             device = tensor.device
 
+        # encode the input tensor:
         self.encoder = FixedPointEncoder(precision_bits=precision)
         if tensor is not None:
             if is_int_tensor(tensor) and precision != 0:
@@ -54,14 +95,13 @@ class ArithmeticSharedTensor(object):
             tensor = tensor.to(device=device)
             size = tensor.size()
 
-        # Generate psuedo-random sharing of zero (PRZS) and add source's tensor
+        # if other parties do not know tensor's size, broadcast the size:
+        if broadcast_size:
+            size = comm.get().broadcast_obj(size, src)
+
+        # generate pseudo-random zero sharing (PRZS) and add source's tensor:
         self.share = ArithmeticSharedTensor.PRZS(size, device=device).share
         if self.rank == src:
-            assert tensor is not None, "Source must provide a data tensor"
-            if hasattr(tensor, "src"):
-                assert (
-                    tensor.src == src
-                ), "Source of data tensor must match source of encryption"
             self.share += tensor
 
     @property
@@ -246,7 +286,7 @@ class ArithmeticSharedTensor(object):
     def _arithmetic_function_(self, y, op, *args, **kwargs):
         return self._arithmetic_function(y, op, inplace=True, *args, **kwargs)
 
-    def _arithmetic_function(self, y, op, inplace=False, *args, **kwargs):
+    def _arithmetic_function(self, y, op, inplace=False, *args, **kwargs):  # noqa:C901
         assert op in [
             "add",
             "sub",

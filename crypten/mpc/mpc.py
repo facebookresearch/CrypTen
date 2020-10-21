@@ -130,6 +130,25 @@ class ConfigManager(ConfigBase):
 
 class MPCTensor(CrypTensor):
     def __init__(self, tensor, ptype=Ptype.arithmetic, device=None, *args, **kwargs):
+        """
+        Creates the shared tensor from the input `tensor` provided by party `src`.
+        The `ptype` defines the type of sharing used (default: arithmetic).
+
+        The other parties can specify a `tensor` or `size` to determine the size
+        of the shared tensor object to create. In this case, all parties must
+        specify the same (tensor) size to prevent the party's shares from varying
+        in size, which leads to undefined behavior.
+
+        Alternatively, the parties can set `broadcast_size` to `True` to have the
+        `src` party broadcast the correct size. The parties who do not know the
+        tensor size beforehand can provide an empty tensor as input. This is
+        guaranteed to produce correct behavior but requires an additional
+        communication round.
+
+        The parties can also set the `precision` and `device` for their share of
+        the tensor. If `device` is unspecified, it is set to `tensor.device`.
+        """
+
         # take required_grad from kwargs, input tensor, or set to False:
         default = tensor.requires_grad if torch.is_tensor(tensor) else False
         requires_grad = kwargs.pop("requires_grad", default)
@@ -139,12 +158,13 @@ class MPCTensor(CrypTensor):
         if tensor is None:
             return  # TODO: Can we remove this and do staticmethods differently?
 
+        # if device is unspecified, try and get it from tensor:
         if device is None and hasattr(tensor, "device"):
             device = tensor.device
 
         # create the MPCTensor:
         tensor_type = ptype.to_tensor()
-        self._tensor = tensor_type(tensor, device=device, *args, **kwargs)
+        self._tensor = tensor_type(tensor=tensor, device=device, *args, **kwargs)
         self.ptype = ptype
 
     @staticmethod
