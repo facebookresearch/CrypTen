@@ -41,7 +41,7 @@ class CrypTensorMetaclass(type):
 
     def __getattribute__(cls, name):
         if name in STATIC_FUNCTIONS:
-            dummy = cls(None)
+            dummy = cls([])  # this creates an empty CrypTensor
             dummy.__IS_DUMMY__ = True
             return cls.__getattribute__(dummy, name)
         return type.__getattribute__(cls, name)
