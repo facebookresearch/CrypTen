@@ -262,7 +262,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             name = CrypTensor.PYTHON_BUILTIN.get(name, name)
 
             # identify the AutogradFunction corresponding to the function name:
-            grad_fn = get_grad_fn(name)
+            grad_fn, in_place = get_grad_fn(name)
 
             # dispatch calls to size(), etc. without going through AutoGradFunction:
             if grad_fn is None:
@@ -280,6 +280,13 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
                 # identify whether result requires gradient:
                 requires_grad = any(child.requires_grad for child in children)
+
+                # in-place functions require special treatment:
+                if in_place:
+                    if requires_grad:  # they are not supported in autograd
+                        raise RuntimeError("Cannot use in-place functions in autograd.")
+                    else:  # and need to be called directly outside autograd
+                        return object.__getattribute__(self, name)(*args, **kwargs)
 
                 # prepare inputs and context for forward call:
                 ctx = AutogradContext()

@@ -36,11 +36,14 @@ def register_function(name):
 def get_grad_fn(name):
     """
     Returns gradient function for the CrypTen function with the specified name.
+    Also returns a boolean indicating whether or not the function is in-place.
     """
     if name in FUNCTION_REGISTRY:
-        return FUNCTION_REGISTRY[name]
-    else:
-        return None
+        return FUNCTION_REGISTRY[name], False
+    elif name.endswith("_"):
+        if name[:-1] in FUNCTION_REGISTRY:  # this is an in-place function
+            return FUNCTION_REGISTRY[name[:-1]], True
+    return None, False
 
 
 def _ensure_tensor(input):

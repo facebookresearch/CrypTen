@@ -759,7 +759,7 @@ class TestGradients:
                 # compute CrypTen output:
                 encrypted_input.requires_grad = True
                 ctx = AutogradContext()
-                batch_norm_fn = crypten.gradients.get_grad_fn("batchnorm")
+                batch_norm_fn, _ = crypten.gradients.get_grad_fn("batchnorm")
                 encrypted_out = batch_norm_fn.forward(
                     ctx,
                     encrypted_input,
