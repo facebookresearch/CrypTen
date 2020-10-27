@@ -241,6 +241,7 @@ class TTPServer:
         self.comm_group = comm.get().ttp_comm_group
         self.device = "cpu"
         self._setup_generators()
+        ttp_rank = comm.get().get_ttp_rank()
 
         logging.info("TTPServer Initialized")
         try:
@@ -263,9 +264,10 @@ class TTPServer:
                 result = getattr(self, function)(*args, **kwargs)
 
                 comm.get().send_obj(result.size(), 0, self.ttp_group)
-                comm.get().broadcast(result, 2, self.comm_group)
-        except RuntimeError:
-            logging.info("Encountered Runtime error. TTPServer shutting down.")
+                comm.get().broadcast(result, ttp_rank, self.comm_group)
+        except RuntimeError as err:
+            logging.info("Encountered Runtime error. TTPServer shutting down:")
+            logging.info(f"{err}")
 
     def _setup_generators(self):
         """Create random generator to send to a party"""
