@@ -9,6 +9,7 @@ from contextlib import contextmanager
 
 import torch
 
+from .common import approximations
 from .gradients import AutogradContext, get_grad_fn
 
 
@@ -529,17 +530,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         # Note: Matching PyTorch convention, which is not in-place here.
         return self.matmul(tensor)
 
-    def sqrt(self):
-        """
-        Computes the square root of :attr:`self`
-        """
-        raise NotImplementedError("sqrt is not implemented")
-
     def square(self):
         """
         Computes the square of :attr:`self`
         """
-        raise NotImplementedError("square is not implemented")
+        return self * self
 
     def norm(self, p="fro", dim=None, keepdim=False):
         """
@@ -791,49 +786,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         Returns: CrypTensor or torch.tensor
         """
         raise NotImplementedError("where is not implemented")
-
-    def sigmoid(self, reciprocal_method="log"):
-        """Computes the sigmoid function on the input value
-        sigmoid(x) = (1 + exp(-x))^{-1}
-        """
-        raise NotImplementedError("sigmoid is not implemented")
-
-    def tanh(self, reciprocal_method="log"):
-        """Computes tanh from the sigmoid function:
-        tanh(x) = 2 * sigmoid(2 * x) - 1
-        """
-        raise NotImplementedError("tanh is not implemented")
-
-    def softmax(self, dim, **kwargs):
-        """Compute the softmax of a tensor's elements along a given dimension"""
-        raise NotImplementedError("softmax is not implemented")
-
-    def log_softmax(self, dim, **kwargs):
-        """Applies a softmax of a tensor's elements along a given dimension,
-        followed by a logarithm.
-        """
-        raise NotImplementedError("log_softmax is not implemented")
-
-    def cos(self):
-        """Computes the cosine of the input."""
-        raise NotImplementedError("cos is not implemented")
-
-    def sin(self):
-        """Computes the sine of the input."""
-        raise NotImplementedError("sin is not implemented")
-
-    # Approximations:
-    def exp(self):
-        """Computes exponential function on the tensor."""
-        raise NotImplementedError("exp is not implemented")
-
-    def log(self):
-        """Computes the natural logarithm of the tensor."""
-        raise NotImplementedError("log is not implemented")
-
-    def reciprocal(self):
-        """Computes the reciprocal of the tensor."""
-        raise NotImplementedError("reciprocal is not implemented")
 
     def eq(self, tensor):
         """Element-wise equality
@@ -1333,3 +1285,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
     def set(self, enc_tensor):
         """Sets self encrypted to enc_tensor in place"""
         raise NotImplementedError("set is not implemented")
+
+
+# Register function approximations
+for func in approximations.__all__:
+    setattr(CrypTensor, func, getattr(approximations, func))

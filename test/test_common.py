@@ -101,17 +101,29 @@ class TestCommon(unittest.TestCase):
     def test_config_managers(self):
         """Checks setting configuartion with config manager works"""
         # Set the config directly
-        crypten.mpc.config.exp_iterations = 8
-        self.assertTrue(crypten.mpc.config.exp_iterations == 8)
+        cfgs = [
+            (crypten.common.approximations, "exp_iterations", "ApproxConfig"),
+            (crypten.mpc, "max_method", "MPCConfig"),
+        ]
 
-        # Set with a context manager
-        with crypten.mpc.ConfigManager("exp_iterations", 3):
-            self.assertTrue(crypten.mpc.config.exp_iterations == 3)
-        self.assertTrue(crypten.mpc.config.exp_iterations == 8)
+        for cfg in cfgs:
+            base = cfg[0]
+            arg_name = cfg[1]
+            cfg_name = cfg[2]
 
-        crypten.mpc.set_config(crypten.mpc.MPCConfig(exp_iterations=5))
-        self.assertTrue(crypten.mpc.config.exp_iterations == 5)
-        self.assertTrue(crypten.mpc.mpc.config.exp_iterations == 5)
+            setattr(base.config, arg_name, 8)
+            self.assertTrue(getattr(base.config, arg_name) == 8)
+
+            # Set with a context manager
+            with base.ConfigManager(arg_name, 3):
+                self.assertTrue(getattr(base.config, arg_name) == 3)
+            self.assertTrue(getattr(base.config, arg_name) == 8)
+
+            kwargs = {arg_name: 5}
+            new_config = getattr(base, cfg_name)(**kwargs)
+
+            base.set_config(new_config)
+            self.assertTrue(getattr(base.config, arg_name) == 5)
 
 
 if __name__ == "__main__":

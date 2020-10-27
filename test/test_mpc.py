@@ -1964,35 +1964,6 @@ class TestMPC(object):
         frac_zero = float((dropout_tensor == 0).sum()) / dropout_tensor.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.4, rel_tol=1e-2, abs_tol=1e-2))
 
-    def test_chebyshev_polynomials(self):
-        """Tests evaluation of chebyshev polynomials"""
-        sizes = [(1, 10), (3, 5), (3, 5, 10)]
-        possible_terms = [6, 40]
-
-        for size, terms in itertools.product(sizes, possible_terms):
-            tensor = self._get_random_test_tensor(size=size, is_float=True)
-            tensor_enc = MPCTensor(tensor)
-            result = tensor_enc._chebyshev_polynomials(terms)
-            # check number of polynomials
-            self.assertEqual(result.shape[0], terms // 2)
-
-            self._check(result[0], tensor, "first term is incorrect")
-            second_term = 4 * tensor ** 3 - 3 * tensor
-            self._check(result[1], second_term, "second term is incorrect")
-
-    def test_truncate_tanh(self):
-        """Tests truncation outside of given interval"""
-        # Generate tensor with range [-2, 2]
-        tensor = torch.tensor([0.1 * i for i in range(41)], device=self.device) - 2
-        tensor_enc = crypten.cryptensor(tensor)
-
-        for maxval in [0.1, 0.5, 1.0, 1.5]:
-            reference = tensor.clamp(-maxval, maxval)
-            with ConfigManager("sigmoid_tanh_clip_value", maxval):
-                tensor_enc_truncated = tensor_enc._truncate_tanh()
-
-            self._check(tensor_enc_truncated, reference, "truncation incorrect")
-
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestMPC):

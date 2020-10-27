@@ -760,15 +760,16 @@ class TestGradients:
                 encrypted_input.requires_grad = True
                 ctx = AutogradContext()
                 batch_norm_fn, _ = crypten.gradients.get_grad_fn("batchnorm")
-                encrypted_out = batch_norm_fn.forward(
-                    ctx,
-                    encrypted_input,
-                    weight,
-                    bias,
-                    training=is_training,
-                    running_mean=enc_running_mean,
-                    running_var=enc_running_var,
-                )
+                with crypten.no_grad():
+                    encrypted_out = batch_norm_fn.forward(
+                        ctx,
+                        encrypted_input,
+                        weight,
+                        bias,
+                        training=is_training,
+                        running_mean=enc_running_mean,
+                        running_var=enc_running_var,
+                    )
 
                 # check forward
                 self._check(
@@ -781,7 +782,8 @@ class TestGradients:
 
                 # check backward (input, weight, and bias gradients):
                 reference.backward(reference)
-                encrypted_grad = batch_norm_fn.backward(ctx, encrypted_out)
+                with crypten.no_grad():
+                    encrypted_grad = batch_norm_fn.backward(ctx, encrypted_out)
                 TorchGrad = namedtuple("TorchGrad", ["name", "value"])
                 torch_gradients = [
                     TorchGrad("input gradient", tensor.grad),

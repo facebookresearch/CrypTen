@@ -82,29 +82,6 @@ class MPCConfig:
     A configuration object for use by the MPCTensor.
     """
 
-    # exponential function
-    exp_iterations: int = 8
-
-    # reciprocal configuration
-    reciprocal_method: str = "NR"
-    reciprocal_nr_iters: int = 10
-    reciprocal_log_iters: int = 1
-    reciprocal_all_pos: bool = False
-    reciprocal_initial: any = None
-
-    # sigmoid / tanh configuration
-    sigmoid_tanh_method: str = "reciprocal"
-    sigmoid_tanh_terms: int = 32
-    sigmoid_tanh_clip_value: int = 1
-
-    # log configuration
-    log_iterations: int = 2
-    log_exp_iterations: int = 8
-    log_order: int = 8
-
-    # _eix configuration
-    _eix_iterations: int = 10
-
     # Used by max / argmax / min / argmin
     max_method: str = "log_reduction"
 
@@ -409,26 +386,8 @@ class MPCTensor(CrypTensor):
         u2 = u[n:]
 
         # Radius = sqrt(- 2 * log(u1))
-        def sqrtNR(x):
-            """
-            Newton Raphson method for square root accurate in the range [0, 30]
-            which is enough for the full range of log(u) as computed above.
-
-            https://en.wikipedia.org/wiki/Fast_inverse_square_root#Newton's_method
-            """
-            # Initialize using efficient polynomial
-            y = (1 - (x - 0.5).div(32)).square().square().square() + 0.2
-
-            # Newton Raphson iterations for inverse square root
-            for _ in range(3):
-                y = y.mul_(3 - x * y.square()).div_(2)
-
-            # Multiply by input to get square root.
-            return y * x
-
-        # ln(u) = ln(100u) - ln(100) but log(100u) gives better accuracy in our domain
-        r2 = -2 * (u1.mul(100).log() - 4.605170)
-        r = sqrtNR(r2)
+        r2 = -2 * u1._log01()
+        r = r2.sqrt()
 
         # Theta = cos(2 * pi * u2) or sin(2 * pi * u2)
         cos, sin = u2.sub(0.5).mul(6.28318531).cossin()
@@ -891,153 +850,6 @@ class MPCTensor(CrypTensor):
 
         return self * condition + y_masked
 
-    # Logistic Functions
-    @mode(Ptype.arithmetic)
-    def sigmoid(self):
-        """Computes the sigmoid function using the following definition
-
-        .. math::
-            \sigma(x) = (1 + e^{-x})^{-1}
-
-        If a valid method is given, this function will compute sigmoid
-            using that method:
-
-        "chebyshev" - computes tanh via Chebyshev approximation with
-            truncation and uses the identity:
-
-        .. math::
-            \sigma(x) = \frac{1}{2}tanh(\frac{x}{2}) + \frac{1}{2}
-
-        Args:
-            terms (int): highest degree of Chebyshev polynomials for tanh
-                using Chebyshev approximation. Must be even and at least 6.
-        """  # noqa: W605
-        method = config.sigmoid_tanh_method
-        clip_value = config.sigmoid_tanh_clip_value
-
-        if method == "chebyshev":
-            tanh_approx = self.div(2).tanh()
-            return tanh_approx.div(2) + 0.5
-        elif method == "reciprocal":
-            ltz = self._ltz(_scale=False)
-            sign = 1 - 2 * ltz
-
-            pos_input = self.mul(sign)
-            denominator = pos_input.neg().exp().add(1)
-            with ConfigManager(
-                "exp_iterations",
-                9,
-                "reciprocal_nr_iters",
-                3,
-                "reciprocal_all_pos",
-                True,
-                "reciprocal_initial",
-                0.75,
-            ):
-                pos_output = denominator.reciprocal()
-
-            # Clip values outside of acceptable range
-            if clip_value is not None:
-                in_range = pos_output.le(clip_value, _scale=False)
-                pos_output = pos_output.where(in_range, clip_value)
-
-            result = pos_output.where(1 - ltz, 1 - pos_output)
-            # TODO: Support addition with different encoder scales
-            # result = pos_output + ltz - 2 * pos_output * ltz
-            return result
-        else:
-            raise ValueError(f"Unrecognized method {method} for sigmoid")
-
-    @mode(Ptype.arithmetic)
-    def tanh(self):
-        r"""Computes the hyperbolic tangent function using the identity
-
-        .. math::
-            tanh(x) = 2\sigma(2x) - 1
-
-        If a valid method is given, this function will compute tanh using that method:
-
-        "chebyshev" - computes tanh via Chebyshev approximation with truncation.
-
-        .. math::
-            tanh(x) = \sum_{j=1}^terms c_{2j - 1} P_{2j - 1} (x / maxval)
-
-        where c_i is the ith Chebyshev series coefficient and P_i is ith polynomial.
-        The approximation is truncated to +/-1 outside [-maxval, maxval].
-
-        Args:
-            terms (int): highest degree of Chebyshev polynomials.
-                         Must be even and at least 6.
-        """
-        method = config.sigmoid_tanh_method
-        terms = config.sigmoid_tanh_terms
-        maxval = config.sigmoid_tanh_clip_value
-
-        if method == "reciprocal":
-            return self.mul(2).sigmoid().mul(2).sub(1)
-        elif method == "chebyshev":
-            coeffs = crypten.common.util.chebyshev_series(torch.tanh, maxval, terms)[
-                1::2
-            ]
-            tanh_polys = self.div(maxval)._chebyshev_polynomials(terms)
-            tanh_polys_flipped = (
-                tanh_polys.unsqueeze(dim=-1).transpose(0, -1).squeeze(dim=0)
-            )
-            out = tanh_polys_flipped.matmul(coeffs)
-
-            # truncate outside [-maxval, maxval]
-            return out._truncate_tanh()
-        else:
-            raise ValueError(f"Unrecognized method {method} for tanh")
-
-    def _truncate_tanh(self):
-        """Truncates `out` to +/- clip_value when self is outside [-clip_value, clip_value]."""
-        clip_value = config.sigmoid_tanh_clip_value
-        if clip_value is None:
-            return self
-        too_high, too_low = crypten.stack([self, -self]).gt(clip_value)
-        in_range = 1 - too_high - too_low
-        return (too_high - too_low) * clip_value + self.mul(in_range)
-
-    @mode(Ptype.arithmetic)
-    def softmax(self, dim, **kwargs):
-        """Compute the softmax of a tensor's elements along a given dimension"""
-        # 0-d case
-        if self.dim() == 0:
-            assert dim == 0, "Improper dim argument"
-            return MPCTensor(torch.ones_like((self.share)))
-
-        if self.size(dim) == 1:
-            return MPCTensor(torch.ones_like(self.share))
-
-        maximum_value = self.max(dim, keepdim=True)[0]
-        logits = self - maximum_value
-        numerator = logits.exp()
-        with ConfigManager("reciprocal_all_pos", True):
-            inv_denominator = numerator.sum(dim, keepdim=True).reciprocal()
-        return numerator * inv_denominator
-
-    @mode(Ptype.arithmetic)
-    def log_softmax(self, dim, **kwargs):
-        """Applies a softmax followed by a logarithm.
-        While mathematically equivalent to log(softmax(x)), doing these two
-        operations separately is slower, and numerically unstable. This function
-        uses an alternative formulation to compute the output and gradient correctly.
-        """
-        # 0-d case
-        if self.dim() == 0:
-            assert dim == 0, "Improper dim argument"
-            return MPCTensor(torch.zeros((), device=self.device))
-
-        if self.size(dim) == 1:
-            return MPCTensor(torch.zeros_like(self.share))
-
-        maximum_value = self.max(dim, keepdim=True)[0]
-        logits = self - maximum_value
-        normalize_term = logits.exp().sum(dim, keepdim=True)
-        result = logits - normalize_term.log()
-        return result
-
     @mode(Ptype.arithmetic)
     def pad(self, pad, mode="constant", value=0):
         result = self.shallow_copy()
@@ -1083,112 +895,6 @@ class MPCTensor(CrypTensor):
 
         # Multiply terms by coefficients and sum
         return terms.mul(coeffs).sum(0)
-
-    # Approximations:
-    def exp(self):
-        """Approximates the exponential function using a limit approximation:
-
-        .. math::
-
-            exp(x) = \lim_{n \\rightarrow \\infty} (1 + x / n) ^ n
-
-        Here we compute exp by choosing n = 2 ** d for some large d equal to
-        `iterations`. We then compute (1 + x / n) once and square `d` times.
-
-        Set the number of iterations for the limit approximation with
-        config.exp_iterations.
-        """  # noqa: W605
-        result = 1 + self.div(2 ** config.exp_iterations)
-        for _ in range(config.exp_iterations):
-            result = result.square()
-        return result
-
-    def log(self):
-        r"""
-        Approximates the natural logarithm using 8th order modified
-        Householder iterations. This approximation is accurate within 2% relative
-        error on [0.0001, 250].
-
-        Iterations are computed by: :math:`h = 1 - x * exp(-y_n)`
-
-        .. math::
-
-            y_{n+1} = y_n - \sum_k^{order}\frac{h^k}{k}
-
-        Args:
-            iterations (int): number of Householder iterations for the approximation
-            exp_iterations (int): number of iterations for limit approximation of exp
-            order (int): number of polynomial terms used (order of Householder approx)
-        """
-
-        # Initialization to a decent estimate (found by qualitative inspection):
-        #                ln(x) = x/120 - 20exp(-2x - 1.0) + 3.0
-        iterations = config.log_iterations
-        exp_iterations = config.log_exp_iterations
-        order = config.log_order
-
-        term1 = self.div(120)
-        term2 = self.mul(2).add(1.0).neg().exp().mul(20)
-        y = term1 - term2 + 3.0
-
-        # 8th order Householder iterations
-        with ConfigManager("exp_iterations", exp_iterations):
-            for _ in range(iterations):
-                h = 1 - self * (-y).exp()
-                y -= h.polynomial([1 / (i + 1) for i in range(order)])
-        return y
-
-    def reciprocal(self):
-        """
-        Methods:
-            'NR' : `Newton-Raphson`_ method computes the reciprocal using iterations
-                    of :math:`x_{i+1} = (2x_i - self * x_i^2)` and uses
-                    :math:`3*exp(-(x-.5)) + 0.003` as an initial guess by default
-
-            'log' : Computes the reciprocal of the input from the observation that:
-                    :math:`x^{-1} = exp(-log(x))`
-
-        Configuration params:
-            reciprocal_method (str):  One of 'NR' or 'log'.
-            reciprocal_nr_iters (int):  determines the number of Newton-Raphson iterations to run
-                         for the `NR` method
-            reciprocal_log_iters (int): determines the number of Householder
-                iterations to run when computing logarithms for the `log` method
-            reciprocal_all_pos (bool): determines whether all elements of the
-                input are known to be positive, which optimizes the step of
-                computing the sign of the input.
-            reciprocal_initial (tensor): sets the initial value for the
-                Newton-Raphson method. By default, this will be set to :math:
-                `3*exp(-(x-.5)) + 0.003` as this allows the method to converge over
-                a fairly large domain
-
-        .. _Newton-Raphson:
-            https://en.wikipedia.org/wiki/Newton%27s_method
-        """
-        method = config.reciprocal_method
-        if not config.reciprocal_all_pos:
-            sgn = self.sign(_scale=False)
-            pos = sgn * self
-            with ConfigManager("reciprocal_all_pos", True):
-                return sgn * pos.reciprocal()
-
-        if method == "NR":
-            if config.reciprocal_initial is None:
-                # Initialization to a decent estimate (found by qualitative inspection):
-                #                1/x = 3exp(.5 - x) + 0.003
-                result = 3 * (0.5 - self).exp() + 0.003
-            else:
-                result = config.reciprocal_initial
-            for _ in range(config.reciprocal_nr_iters):
-                if isinstance(result, MPCTensor):
-                    result += result - result.square().mul_(self)
-                else:
-                    result = 2 * result - result * result * self
-            return result
-        elif method == "log":
-            return (-(self.log(iterations=config.reciprocal_log_iters))).exp()
-        else:
-            raise ValueError(f"Invalid method {method} given for reciprocal function")
 
     def div(self, y):
         r"""Divides each element of :attr:`self` with the scalar :attr:`y` or
@@ -1273,12 +979,6 @@ class MPCTensor(CrypTensor):
             return self.pow(p)
         return self.log().mul_(p).exp()
 
-    def sqrt(self):
-        """
-        Computes the square root of the input by raising it to the 0.5 power
-        """
-        return self.pos_pow(0.5)
-
     def norm(self, p="fro", dim=None, keepdim=False):
         """Computes the p-norm of the input tensor (or along a dimension)."""
         if p == "fro":
@@ -1306,82 +1006,6 @@ class MPCTensor(CrypTensor):
             raise NotImplementedError("Nuclear norm is not implemented")
         else:
             raise ValueError(f"Improper value p ({p})for p-norm")
-
-    def _eix(self):
-        """Computes e^(i * self) where i is the imaginary unit.
-        Returns (Re{e^(i * self)}, Im{e^(i * self)} = cos(self), sin(self)
-        """
-        iterations = config._eix_iterations
-
-        re = 1
-        im = self.div(2 ** iterations)
-
-        # First iteration uses knowledge that `re` is public and = 1
-        re -= im.square()
-        im *= 2
-
-        # Compute (a + bi)^2 -> (a^2 - b^2) + (2ab)i `iterations` times
-        for _ in range(iterations - 1):
-            a2 = re.square()
-            b2 = im.square()
-            im = im.mul_(re)
-            im._tensor *= 2
-            re = a2 - b2
-
-        return re, im
-
-    def cos(self):
-        """Computes the cosine of the input using cos(x) = Re{exp(i * x)}
-
-        Args:
-            iterations (int): for approximating exp(i * x)
-        """
-        return self.cossin()[0]
-
-    def sin(self):
-        """Computes the sine of the input using sin(x) = Im{exp(i * x)}
-
-        Args:
-            iterations (int): for approximating exp(i * x)
-        """
-        return self.cossin()[1]
-
-    def cossin(self):
-        """Computes cosine and sine of input via exp(i * x).
-
-        Args:
-            iterations (int): for approximating exp(i * x)
-        """
-        return self._eix()
-
-    def _chebyshev_polynomials(self, terms):
-        r"""Evaluates odd degree Chebyshev polynomials at x
-
-        Chebyshev Polynomials of the first kind are defined as
-
-        .. math::
-            P_0(x) = 1, P_1(x) = x, P_n(x) = 2 P_{n - 1}(x) - P_{n-2}(x)
-
-        Args:
-            self (MPCTensor): input at which polynomials are evaluated
-            terms (int): highest degree of Chebyshev polynomials.
-                         Must be even and at least 6.
-        Returns:
-            MPCTensor of polynomials evaluated at self of shape `(terms, *self)`
-        """
-        if terms % 2 != 0 or terms < 6:
-            raise ValueError("Chebyshev terms must be even and >= 6")
-
-        polynomials = [self.clone()]
-        y = 4 * self.square() - 2
-        z = y - 1
-        polynomials.append(z.mul(self))
-
-        for k in range(2, terms // 2):
-            next_polynomial = y * polynomials[k - 1] - polynomials[k - 2]
-            polynomials.append(next_polynomial)
-
-        return crypten.stack(polynomials)
 
     def index_add(self, dim, index, tensor):
         """Performs out-of-place index_add: Accumulate the elements of tensor into the
