@@ -1612,14 +1612,18 @@ class AutogradBinaryCrossEntropy(AutogradFunction):
             return pred.new(0)
 
         # Compute full forward pass
-        log_pos, log_neg = crypten.stack([pred, 1.0 - pred])._log01().unbind(dim=0)
+        log_pos, log_neg = (
+            crypten.stack([pred, 1.0 - pred]).log(input_in_01=True).unbind(dim=0)
+        )
         loss_values = target * log_pos + ((1.0 - target) * log_neg)
         return -(loss_values.mean())
 
     @staticmethod
     def backward(ctx, grad_output):
         pred, target = ctx.saved_tensors
-        rec_pos, rec_neg = crypten.stack([pred, 1.0 - pred]).reciprocal().unbind(dim=0)
+        rec_pos, rec_neg = (
+            crypten.stack([pred, 1.0 - pred]).reciprocal(input_in_01=True).unbind(dim=0)
+        )
         grad = (rec_neg * (1.0 - target)) - rec_pos * target
         return grad.div_(target.nelement()).mul_(grad_output)
 
@@ -1639,7 +1643,9 @@ class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
 
         # Compute full forward pass
         log_pos, log_neg = (
-            crypten.stack([sigmoid_out, 1.0 - sigmoid_out])._log01().unbind(dim=0)
+            crypten.stack([sigmoid_out, 1.0 - sigmoid_out])
+            .log(input_in_01=True)
+            .unbind(dim=0)
         )
         loss_values = target * log_pos + ((1.0 - target) * log_neg)
         return -(loss_values.mean())
@@ -1662,7 +1668,7 @@ class AutogradCrossEntropy(AutogradFunction):
             return softmax.new(0)
 
         # Compute full forward pass
-        loss_values = softmax._log01().mul_(target).neg_()
+        loss_values = softmax.log(input_in_01=True).mul_(target).neg_()
         return loss_values.sum().div_(target.size(0))
 
     @staticmethod

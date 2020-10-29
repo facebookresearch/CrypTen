@@ -386,7 +386,7 @@ class MPCTensor(CrypTensor):
         u2 = u[n:]
 
         # Radius = sqrt(- 2 * log(u1))
-        r2 = -2 * u1._log01()
+        r2 = -2 * u1.log(input_in_01=True)
         r = r2.sqrt()
 
         # Theta = cos(2 * pi * u2) or sin(2 * pi * u2)

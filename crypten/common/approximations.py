@@ -15,7 +15,6 @@ from .util import ConfigBase
 __all__ = [
     "exp",
     "log",
-    "_log01",
     "reciprocal",
     "inv_sqrt",
     "sqrt",
@@ -108,7 +107,7 @@ def exp(self):
     return result
 
 
-def log(self):
+def log(self, input_in_01=False):
     r"""
     Approximates the natural logarithm using 8th order modified
     Householder iterations. This approximation is accurate within 2% relative
@@ -121,10 +120,26 @@ def log(self):
         y_{n+1} = y_n - \sum_k^{order}\frac{h^k}{k}
 
     Args:
+        input_in_01 (bool) : Allows a user to indicate that the input is in the domain [0, 1],
+            causing the function optimize for this domain. This is useful for computing
+            log-probabilities for entropy functions.
+
+            We shift the domain of convergence by a constant :math:`a` using the following identity:
+
+            .. math::
+
+                \ln{u} = \ln {au} - \ln{a}
+
+            Since the domain of convergence for CrypTen's log() function is approximately [1e-4, 1e2],
+            we can set :math:`a=100`.
+
+    Configuration parameters:
         iterations (int): number of Householder iterations for the approximation
         exp_iterations (int): number of iterations for limit approximation of exp
         order (int): number of polynomial terms used (order of Householder approx)
     """
+    if input_in_01:
+        return log(self.mul(100)) - 4.605170
 
     # Initialization to a decent estimate (found by qualitative inspection):
     #                ln(x) = x/120 - 20exp(-2x - 1.0) + 3.0
@@ -144,30 +159,17 @@ def log(self):
     return y
 
 
-def _log01(self):
+def reciprocal(self, input_in_01=False):
     """
-    Computes the natural logarithm with optimizations to improve efficiency and
-    accuracy for the input domain [0, 1]. This is useful for computing log-probabilities
-    for entropy functions.
+    Args:
+        input_in_01 (bool) : Allows a user to indicate that the input is in the range [0, 1],
+                    causing the function optimize for this range. This is useful for improving
+                    the accuracy of functions on probabilities (e.g. entropy functions).
 
-    We can shift the domain of convergence by a constant :math:`a` using the following identity:
-
-    .. math::
-
-        \ln{u} = \ln {au} - \ln{a}
-
-    Since the domain of convergence for CrypTen's log() function is approximately [1e-4, 1e2],
-    we can set :math:`a=100`.
-    """  # noqa: W605
-    return self.mul(100).log() - 4.605170
-
-
-def reciprocal(self):
-    """
     Methods:
         'NR' : `Newton-Raphson`_ method computes the reciprocal using iterations
                 of :math:`x_{i+1} = (2x_i - self * x_i^2)` and uses
-                :math:`3*exp(-(x-.5)) + 0.003` as an initial guess by default
+                :math:`3*exp(1 - 2x) + 0.003` as an initial guess by default
 
         'log' : Computes the reciprocal of the input from the observation that:
                 :math:`x^{-1} = exp(-log(x))`
@@ -189,6 +191,11 @@ def reciprocal(self):
     .. _Newton-Raphson:
         https://en.wikipedia.org/wiki/Newton%27s_method
     """
+    if input_in_01:
+        with ConfigManager("reciprocal_all_pos", True):
+            rec = reciprocal(self.mul(64)).mul(64)
+        return rec
+
     method = config.reciprocal_method
     if not config.reciprocal_all_pos:
         sgn = self.sign(_scale=False)
@@ -199,8 +206,8 @@ def reciprocal(self):
     if method == "NR":
         if config.reciprocal_initial is None:
             # Initialization to a decent estimate (found by qualitative inspection):
-            #                1/x = 3exp(.5 - x) + 0.003
-            result = 3 * exp(0.5 - self) + 0.003
+            #                1/x = 3exp(1 - 2x) + 0.003
+            result = 3 * (1 - 2 * self).exp() + 0.003
         else:
             result = config.reciprocal_initial
         for _ in range(config.reciprocal_nr_iters):
