@@ -770,7 +770,7 @@ class AutogradSquare(AutogradFunction):
 class AutogradSqrt(AutogradFunction):
     @staticmethod
     def forward(ctx, input):
-        inv_sqrt = input._inv_sqrt()
+        inv_sqrt = input.inv_sqrt()
         ctx.save_for_backward(inv_sqrt)
         return inv_sqrt.mul(input)
 
@@ -1464,6 +1464,7 @@ class AutogradBatchNorm(AutogradFunction):
         training=False,
         eps=1e-05,
         momentum=0.1,
+        inv_var=None,
     ):
         """
         Computes forward step of batch norm by normalizing x
@@ -1516,11 +1517,12 @@ class AutogradBatchNorm(AutogradFunction):
             mean = running_mean
             variance = running_var
 
-        # compute inverse variance:
-        if torch.is_tensor(variance):
-            inv_var = 1.0 / torch.sqrt(variance + eps)
-        else:
-            inv_var = (variance + eps)._inv_sqrt()
+        if training or inv_var is None:
+            # compute inverse variance:
+            if torch.is_tensor(variance):
+                inv_var = 1.0 / torch.sqrt(variance + eps)
+            else:
+                inv_var = (variance + eps).inv_sqrt()
 
         # reshape shape (C) to broadcastable (1, C, 1, +):
         mean = mean.reshape(broadcast_shape)

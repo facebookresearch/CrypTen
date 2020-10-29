@@ -17,7 +17,7 @@ __all__ = [
     "log",
     "_log01",
     "reciprocal",
-    "_inv_sqrt",
+    "inv_sqrt",
     "sqrt",
     "_eix",
     "cossin",
@@ -60,8 +60,8 @@ class ApproxConfig:
     log_exp_iterations: int = 8
     log_order: int = 8
 
-    # _eix configuration
-    _eix_iterations: int = 10
+    # trigonometry configuration
+    trig_iterations: int = 10
 
 
 # Global config
@@ -216,7 +216,7 @@ def reciprocal(self):
         raise ValueError(f"Invalid method {method} given for reciprocal function")
 
 
-def _inv_sqrt(self):
+def inv_sqrt(self):
     """
     Computes the inverse square root of the input using the Newton-Raphson method.
 
@@ -256,14 +256,14 @@ def sqrt(self):
     .. _Newton-Raphson:
         https://en.wikipedia.org/wiki/Fast_inverse_square_root#Newton's_method
     """
-    return _inv_sqrt(self).mul_(self)
+    return inv_sqrt(self).mul_(self)
 
 
 def _eix(self):
     """Computes e^(i * self) where i is the imaginary unit.
     Returns (Re{e^(i * self)}, Im{e^(i * self)} = cos(self), sin(self)
     """
-    iterations = config._eix_iterations
+    iterations = config.trig_iterations
 
     re = 1
     im = self.div(2 ** iterations)
