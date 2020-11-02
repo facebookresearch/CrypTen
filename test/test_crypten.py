@@ -137,7 +137,56 @@ class TestCrypten(MultiProcessTestCase):
         self.assertIsInstance(encrypted_tensor, crypten.CrypTensor)
 
     def test_save_load(self):
-        """Test that crypten.save and crypten.load properly save and load tensors"""
+        """Test that crypten.save and crypten.load properly save and load
+        shares of cryptensors"""
+        import io
+        import pickle
+
+        def custom_load_function(f):
+            obj = pickle.load(f)
+            return obj
+
+        def custom_save_function(obj, f):
+            pickle.dump(obj, f)
+
+        all_save_fns = [torch.save, custom_save_function]
+        all_load_fns = [torch.load, custom_load_function]
+
+        tensor = get_random_test_tensor()
+        cryptensor1 = crypten.cryptensor(tensor)
+
+        for i, save_closure in enumerate(all_save_fns):
+            load_closure = all_load_fns[i]
+            f = [
+                io.BytesIO() for i in range(crypten.communicator.get().get_world_size())
+            ]
+            crypten.save(cryptensor1, f[self.rank], save_closure=save_closure)
+            f[self.rank].seek(0)
+            cryptensor2 = crypten.load(f[self.rank], load_closure=load_closure)
+            # test whether share matches
+            self.assertTrue(cryptensor1.share.allclose(cryptensor2.share))
+            # test whether tensor matches
+            self.assertTrue(
+                cryptensor1.get_plain_text().allclose(cryptensor2.get_plain_text())
+            )
+            attributes = [
+                a
+                for a in dir(cryptensor1)
+                if not a.startswith("__")
+                and not callable(getattr(cryptensor1, a))
+                and a not in ["share", "_tensor", "ctx"]
+            ]
+            for a in attributes:
+                attr1, attr2 = getattr(cryptensor1, a), getattr(cryptensor2, a)
+                if a == "encoder":
+                    self.assertTrue(attr1._scale == attr2._scale)
+                    self.assertTrue(attr1._precision_bits == attr2._precision_bits)
+                else:
+                    self.assertTrue(attr1 == attr2)
+
+    def test_plaintext_save_load_from_party(self):
+        """Test that crypten.save_from_party and crypten.load_from_party
+        properly save and load plaintext tensors"""
         import tempfile
         import numpy as np
 
@@ -206,8 +255,9 @@ class TestCrypten(MultiProcessTestCase):
                         "crypten.load() failed using preloaded",
                     )
 
-    def test_save_load_module(self):
-        """Test that crypten.save and crypten.load properly save and load modules"""
+    def test_plaintext_save_load_module_from_party(self):
+        """Test that crypten.save_from_party and crypten.load_from_party
+        properly save and load plaintext modules"""
         import tempfile
 
         comm = crypten.communicator

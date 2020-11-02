@@ -1022,6 +1022,7 @@ class TestNN(object):
         """
         Tests dumping and loading of state dicts.
         """
+        import io
 
         def _check_equal(t1, t2):
             """
@@ -1080,6 +1081,16 @@ class TestNN(object):
                 new_module.load_state_dict(state_dict)
                 _check_state_dict(new_module, state_dict)
 
+                # check saving and loading from file for encrypted modules
+                if encrypt:
+                    f = io.BytesIO()
+                    crypten.save(module.state_dict(), f)
+                    f.seek(0)
+                    new_module2 = getattr(crypten.nn, module_name)(*args)
+                    new_module2.encrypt()
+                    new_module2.load_state_dict(crypten.load(f))
+                    _check_state_dict(new_module2, state_dict)
+
         # tests for model that is sequence of modules:
         for num_layers in range(1, 6):
             for encrypt in [False, True]:
@@ -1115,6 +1126,20 @@ class TestNN(object):
 
                 # check new model:
                 _check_state_dict(model, state_dict)
+
+                # check saving and loading from file for encrypted modules
+                if encrypt:
+                    f = io.BytesIO()
+                    crypten.save(model.state_dict(), f)
+                    f.seek(0)
+                    module_list = [
+                        crypten.nn.Linear(num_feat, num_feat - 1)
+                        for num_feat in layer_idx
+                    ]
+                    new_model2 = crypten.nn.Sequential(*module_list)
+                    new_model2.encrypt()
+                    new_model2.load_state_dict(crypten.load(f))
+                    _check_state_dict(new_model2, state_dict)
 
     def test_to(self):
         """Test Module.to, Module.cpu, and Module.cuda"""

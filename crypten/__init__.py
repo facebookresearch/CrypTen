@@ -318,28 +318,20 @@ def load_from_party(
         return result
 
 
-def load(
-    f,
-    preloaded=None,
-    encrypted=False,
-    dummy_model=None,
-    src=0,
-    load_closure=torch.load,
-    **kwargs
-):
+def load(f, load_closure=torch.load, **kwargs):
     """
-    Loads an object saved with `torch.save()` or `crypten.save_from_party()`.
-    Note: this function is deprecated; please use load_from_party instead.
+    Loads shares from an encrypted object saved with `crypten.save()`
+    Args:
+        f: a file-like object (has to implement `read()`, `readline()`,
+              `tell()`, and `seek()`), or a string containing a file name
+        load_closure: Custom load function that matches the interface of
+        `torch.load`, to be used when the tensor is saved with a custom
+        save function in `crypten.save`. Additional kwargs are passed on
+        to the closure.
     """
-    warnings.warn(
-        "The current 'load' function is deprecated, and will be removed soon. "
-        "To continue using current 'load' functionality, please use the "
-        "'load_from_party' function instead.",
-        DeprecationWarning,
-    )
-    return load_from_party(
-        f, preloaded, encrypted, dummy_model, src, load_closure, **kwargs
-    )
+    # TODO: Add support for loading from correct device (kwarg: map_location=device)
+    obj = load_closure(f, **kwargs)
+    return obj
 
 
 def save_from_party(obj, f, src=0, save_closure=torch.save, **kwargs):
@@ -370,18 +362,21 @@ def save_from_party(obj, f, src=0, save_closure=torch.save, **kwargs):
     comm.get().barrier()
 
 
-def save(obj, f, src=0, save_closure=torch.save, **kwargs):
+def save(obj, f, save_closure=torch.save, **kwargs):
     """
-    Saves a CrypTensor or PyTorch tensor to a file.
-    Note: this function is deprecated, please use save_from_party instead
+    Saves the shares of CrypTensor or an encrypted model to a file.
+
+    Args:
+        obj: The CrypTensor or PyTorch tensor to be saved
+        f: a file-like object (has to implement `read()`, `readline()`,
+              `tell()`, and `seek()`), or a string containing a file name
+        save_closure: Custom save function that matches the interface of `torch.save`,
+        to be used when the tensor is saved with a custom load function in
+        `crypten.load`. Additional kwargs are passed on to the closure.
     """
-    warnings.warn(
-        "The current 'save' function is deprecated, and will be removed soon. "
-        "To continue using current 'save' functionality, please use the "
-        "'save_from_party' function instead.",
-        DeprecationWarning,
-    )
-    save_from_party(obj, f, src, save_closure, **kwargs)
+    # TODO: Add support for saving to correct device (kwarg: map_location=device)
+    save_closure(obj, f, **kwargs)
+    comm.get().barrier()
 
 
 def where(condition, input, other):
