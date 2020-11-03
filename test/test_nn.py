@@ -1247,6 +1247,77 @@ class TestNN(object):
         module_dict.clear()
         self.assertEqual(len(module_dict), 0, "ModuleDict clear failed")
 
+    def test_parameter_initializations(self):
+        """Test crypten.nn.init initializations"""
+        sizes = [
+            (),
+            (1,),
+            (5,),
+            (1, 1),
+            (1, 5),
+            (5, 5),
+            (1, 1, 1),
+            (5, 5, 5),
+            (1, 1, 1, 1),
+            (5, 5, 5, 5),
+        ]
+        deterministic = ["constant_", "dirac_", "ones_", "zeros_"]
+        non_deterministic = [
+            "kaiming_normal_",
+            "kaiming_uniform_",
+            "normal_",
+            "orthogonal_",
+            "sparse_",
+            "trunc_normal_",
+            "uniform_",
+            "xavier_normal_",
+            "xavier_uniform_",
+        ]
+        requires_more_dims = [
+            "dirac_",
+            "kaiming_normal_",
+            "kaiming_uniform_",
+            "orthogonal_",
+            "xavier_normal_",
+            "xavier_uniform_",
+        ]
+        only_two_dims = ["sparse_"]
+        args_dict = {"constant_": (0.5,), "sparse_": (0.2,)}
+        for init, size, private in itertools.product(
+            deterministic + non_deterministic, sizes, [False, True]
+        ):
+            if len(size) < 3 and init in requires_more_dims:
+                continue
+            if len(size) != 2 and init in only_two_dims:
+                continue
+
+            args = args_dict.get(init, ())
+            tensor = torch.empty(size)
+            encrypted = crypten.cryptensor(tensor) if private else tensor.clone()
+
+            # Set seed to assert values (and therefore distributions) are the same
+            torch.manual_seed(0)
+            reference = getattr(torch.nn.init, init)(tensor, *args)
+
+            torch.manual_seed(0)
+            encrypted_out = getattr(crypten.nn.init, init)(encrypted, *args)
+
+            self.assertTrue(
+                encrypted_out.size() == reference.size(),
+                f"crypten.nn.init.{init} size mismatch",
+            )
+            if private:
+                self._check(
+                    encrypted_out,
+                    reference,
+                    f"private crypten.nn.init.{init} failed.",
+                )
+            elif init in deterministic:
+                self.assertTrue(
+                    encrypted_out.eq(reference).all(),
+                    f"public crypten.nn.init.{init} failed.",
+                )
+
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestNN):

@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+from .init import *  # noqa: F403
 from .loss import BCELoss, BCEWithLogitsLoss, CrossEntropyLoss, L1Loss, MSELoss
 from .module import (
     AdaptiveAvgPool2d,
@@ -110,4 +111,5 @@ __all__ = [
     "TF_AND_TF2ONNX",
     "Transpose",
     "Unsqueeze",
+    "init",
 ]
