@@ -246,6 +246,7 @@ class TestBinary(MultiProcessTestCase):
             encrypted_out = encrypted_tensor + encrypted_tensor2
             self._check(encrypted_out, reference, "%s add failed" % tensor_type)
 
+    @unittest.skip("omitting since disabled in fbcode")
     def test_comparators(self):
         """Test comparators (>, >=, <, <=, ==, !=)"""
         for _scale in [False, True]:
