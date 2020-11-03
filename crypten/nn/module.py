@@ -1362,6 +1362,7 @@ class MatMul(Module):
         return module
 
 
+# TODO: Eliminate copy-pasta by implementing _Conv parent class
 class Conv1d(Module):
     r"""
     Module that performs 1D convolution.
@@ -1445,7 +1446,15 @@ class Conv1d(Module):
     """  # noqa: W605
 
     def __init__(
-        self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        groups=1,
+        bias=True,
     ):
 
         # check inputs:
@@ -1460,6 +1469,8 @@ class Conv1d(Module):
             kernel_size,
             stride=stride,
             padding=padding,
+            dilation=dilation,
+            groups=groups,
             bias=bias,
         )
         self.register_parameter("weight", pytorch_module.weight)
@@ -1469,9 +1480,17 @@ class Conv1d(Module):
         # set other instance fields:
         self.stride = stride
         self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
 
     def forward(self, x):
-        x = x.conv1d(self.weight, stride=self.stride, padding=self.padding)
+        x = x.conv1d(
+            self.weight,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=self.groups,
+        )
         if hasattr(self, "bias"):
             x = x.add(self.bias.unsqueeze(-1))
         return x
@@ -1484,10 +1503,6 @@ class Conv1d(Module):
             parameters = {}
         if attributes is None:
             attributes = {}
-        assert attributes["group"] == 1, "group convolution not supported"
-        assert all(
-            dilation == 1 for dilation in attributes["dilations"]
-        ), "dilated convolutions not supported"
 
         # initialize module:
         in_channels = parameters["weight"].size(1)
@@ -1498,6 +1513,8 @@ class Conv1d(Module):
             attributes["kernel_shape"][0],
             stride=attributes["strides"][0],
             padding=attributes["pads"][0],
+            dilation=attributes["dilations"][0],
+            groups=attributes["group"],
             bias=("bias" in parameters),
         )
 
@@ -1596,7 +1613,15 @@ class Conv2d(Module):
     """
 
     def __init__(
-        self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        groups=1,
+        bias=True,
     ):
         # check inputs:
         super().__init__()
@@ -1617,6 +1642,8 @@ class Conv2d(Module):
             kernel_size,
             stride=stride,
             padding=padding,
+            dilation=dilation,
+            groups=groups,
             bias=bias,
         )
         self.register_parameter("weight", pytorch_module.weight)
@@ -1626,9 +1653,17 @@ class Conv2d(Module):
         # set other instance fields:
         self.stride = stride
         self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
 
     def forward(self, x):
-        x = x.conv2d(self.weight, stride=self.stride, padding=self.padding)
+        x = x.conv2d(
+            self.weight,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=self.groups,
+        )
         if hasattr(self, "bias"):
             x = x.add(self.bias.unsqueeze(-1).unsqueeze(-1))
         return x
@@ -1640,23 +1675,10 @@ class Conv2d(Module):
             parameters = {}
         if attributes is None:
             attributes = {}
-        assert _all_the_same(
-            attributes["kernel_shape"]
-        ), "only square kernels are supported"
-        assert _all_the_same(
-            attributes["strides"]
-        ), "stride must be the same in each dimension"
         if "pads" not in attributes:
             attributes["pads"] = [0, 0]
         if "group" not in attributes:
             attributes["group"] = 1
-        assert _all_the_same(
-            attributes["pads"]
-        ), "padding must be the same in each dimension"
-        assert attributes["group"] == 1, "group convolution not supported"
-        assert all(
-            dilation == 1 for dilation in attributes["dilations"]
-        ), "dilated convolutions not supported"
 
         # initialize module:
         in_channels = parameters["weight"].size(1)
@@ -1664,9 +1686,11 @@ class Conv2d(Module):
         module = Conv2d(
             in_channels,
             out_channels,
-            attributes["kernel_shape"][0],
-            stride=attributes["strides"][0],
-            padding=attributes["pads"][0],
+            attributes["kernel_shape"],
+            stride=attributes["strides"],
+            padding=attributes["pads"],
+            dilation=attributes["dilations"],
+            groups=attributes["group"],
             bias=("bias" in parameters),
         )
 

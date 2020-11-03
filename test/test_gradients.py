@@ -443,22 +443,45 @@ class TestGradients:
         kernel_sizes = [1, 2, 3]
         paddings = [0, 1]
         strides = [1, 2]
+        dilations = [1, 2]
+        groupings = [1, 2]
 
-        for batches in nbatches:
-            size = (batches, in_channels, signal_size)
+        for (
+            batches,
+            kernel_size,
+            out_channels,
+            padding,
+            stride,
+            dilation,
+            groups,
+        ) in itertools.product(
+            nbatches,
+            kernel_sizes,
+            nout_channels,
+            paddings,
+            strides,
+            dilations,
+            groupings,
+        ):
+            # TODO: Fix conv1d gradient in this case:
+            if in_channels > 1 and groups > 1:
+                continue
+
+            size = (batches, in_channels * groups, signal_size)
             signal = get_random_test_tensor(size=size, is_float=True)
 
-            for kernel_size, out_channels in itertools.product(
-                kernel_sizes, nout_channels
-            ):
-                kernel_size = (out_channels, in_channels, kernel_size)
-                kernel = get_random_test_tensor(size=kernel_size, is_float=True)
+            kernel_size = (out_channels * groups, in_channels, kernel_size)
+            kernel = get_random_test_tensor(size=kernel_size, is_float=True)
 
-                for padding in paddings:
-                    for stride in strides:
-                        self._check_forward_backward(
-                            "conv1d", signal, kernel, stride=stride, padding=padding
-                        )
+            self._check_forward_backward(
+                "conv1d",
+                signal,
+                kernel,
+                stride=stride,
+                padding=padding,
+                dilation=dilation,
+                groups=groups,
+            )
 
     def test_conv2d_square_image_one_channel(self):
         self._conv2d((5, 5), 1)
@@ -474,28 +497,44 @@ class TestGradients:
 
     def _conv2d(self, image_size, in_channels):
         """Test convolution of encrypted tensor with public/private tensors."""
-
         nbatches = [1, 3]
         kernel_sizes = [(1, 1), (2, 2), (2, 3)]
+        ochannels = [1, 3]
         paddings = [0, 1, (0, 1)]
         strides = [1, 2, (1, 2)]
-        nout_channels = [1, 5]
+        dilations = [1, 2, (1, 2)]
+        groupings = [1, 2]
 
-        for batches in nbatches:
-            size = (batches, in_channels, *image_size)
+        for (
+            batches,
+            kernel_size,
+            out_channels,
+            padding,
+            stride,
+            dilation,
+            groups,
+        ) in itertools.product(
+            nbatches, kernel_sizes, ochannels, paddings, strides, dilations, groupings
+        ):
+            # TODO: Fix conv2d gradient in this case:
+            if in_channels > 1 and groups > 1:
+                continue
+
+            size = (batches, in_channels * groups, *image_size)
             image = get_random_test_tensor(size=size, is_float=True)
 
-            for kernel_size, out_channels in itertools.product(
-                kernel_sizes, nout_channels
-            ):
-                kernel_size = (out_channels, in_channels, *kernel_size)
-                kernel = get_random_test_tensor(size=kernel_size, is_float=True)
+            kernel_size = (out_channels * groups, in_channels, *kernel_size)
+            kernel = get_random_test_tensor(size=kernel_size, is_float=True)
 
-                for padding in paddings:
-                    for stride in strides:
-                        self._check_forward_backward(
-                            "conv2d", image, kernel, stride=stride, padding=padding
-                        )
+            self._check_forward_backward(
+                "conv2d",
+                image,
+                kernel,
+                stride=stride,
+                padding=padding,
+                dilation=dilation,
+                groups=groups,
+            )
 
     @unittest.skip("flaky test")
     def test_max_pool2d(self):

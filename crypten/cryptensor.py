@@ -645,6 +645,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """Batch normalization."""
         raise NotImplementedError("batchnorm is not implemented")
 
+    def conv1d(self, *args, **kwargs):
+        """1D convolution."""
+        raise NotImplementedError("conv1d is not implemented")
+
     def conv2d(self, *args, **kwargs):
         """2D convolution."""
         raise NotImplementedError("conv2d is not implemented")

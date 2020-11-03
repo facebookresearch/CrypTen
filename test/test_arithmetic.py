@@ -496,6 +496,8 @@ class TestArithmetic(MultiProcessTestCase):
         ochannels = [1, 3, 6]
         paddings = [0, 1]
         strides = [1, 2]
+        dilations = [1, 2]
+        groupings = [1, 2]
 
         for func_name in ["conv1d", "conv_transpose1d"]:
             for kernel_type in [lambda x: x, ArithmeticSharedTensor]:
@@ -505,25 +507,42 @@ class TestArithmetic(MultiProcessTestCase):
                     out_channels,
                     padding,
                     stride,
+                    dilation,
+                    groups,
                 ) in itertools.product(
-                    nbatches, kernel_sizes, ochannels, paddings, strides
+                    nbatches,
+                    kernel_sizes,
+                    ochannels,
+                    paddings,
+                    strides,
+                    dilations,
+                    groupings,
                 ):
-                    input_size = (batches, in_channels, signal_size)
+                    input_size = (batches, in_channels * groups, signal_size)
                     signal = get_random_test_tensor(size=input_size, is_float=True)
 
                     if func_name == "conv1d":
-                        k_size = (out_channels, in_channels, kernel_size)
+                        k_size = (out_channels * groups, in_channels, kernel_size)
                     else:
-                        k_size = (in_channels, out_channels, kernel_size)
+                        k_size = (in_channels * groups, out_channels, kernel_size)
                     kernel = get_random_test_tensor(size=k_size, is_float=True)
 
                     reference = getattr(F, func_name)(
-                        signal, kernel, padding=padding, stride=stride
+                        signal,
+                        kernel,
+                        padding=padding,
+                        stride=stride,
+                        dilation=dilation,
+                        groups=groups,
                     )
                     encrypted_signal = ArithmeticSharedTensor(signal)
                     encrypted_kernel = kernel_type(kernel)
                     encrypted_conv = getattr(encrypted_signal, func_name)(
-                        encrypted_kernel, padding=padding, stride=stride
+                        encrypted_kernel,
+                        padding=padding,
+                        stride=stride,
+                        dilation=dilation,
+                        groups=groups,
                     )
 
                     self._check(encrypted_conv, reference, f"{func_name} failed")
@@ -547,6 +566,8 @@ class TestArithmetic(MultiProcessTestCase):
         ochannels = [1, 3, 6]
         paddings = [0, 1, (0, 1)]
         strides = [1, 2, (1, 2)]
+        dilations = [1, 2]
+        groupings = [1, 2]
 
         for func_name in ["conv2d", "conv_transpose2d"]:
             for kernel_type in [lambda x: x, ArithmeticSharedTensor]:
@@ -556,31 +577,50 @@ class TestArithmetic(MultiProcessTestCase):
                     out_channels,
                     padding,
                     stride,
+                    dilation,
+                    groups,
                 ) in itertools.product(
-                    nbatches, kernel_sizes, ochannels, paddings, strides
+                    nbatches,
+                    kernel_sizes,
+                    ochannels,
+                    paddings,
+                    strides,
+                    dilations,
+                    groupings,
                 ):
-
                     # sample input:
-                    input_size = (batches, in_channels, *image_size)
+                    input_size = (batches, in_channels * groups, *image_size)
                     input = get_random_test_tensor(size=input_size, is_float=True)
 
                     # sample filtering kernel:
                     if func_name == "conv2d":
-                        k_size = (out_channels, in_channels, *kernel_size)
+                        k_size = (out_channels * groups, in_channels, *kernel_size)
                     else:
-                        k_size = (in_channels, out_channels, *kernel_size)
+                        k_size = (in_channels * groups, out_channels, *kernel_size)
                     kernel = get_random_test_tensor(size=k_size, is_float=True)
+
+                    if crypten.communicator.get().get_rank() and groups == 2:
+                        print(k_size)
 
                     # perform filtering:
                     encr_matrix = ArithmeticSharedTensor(input)
                     encr_kernel = kernel_type(kernel)
                     encr_conv = getattr(encr_matrix, func_name)(
-                        encr_kernel, padding=padding, stride=stride
+                        encr_kernel,
+                        padding=padding,
+                        stride=stride,
+                        dilation=dilation,
+                        groups=groups,
                     )
 
                     # check that result is correct:
                     reference = getattr(F, func_name)(
-                        input, kernel, padding=padding, stride=stride
+                        input,
+                        kernel,
+                        padding=padding,
+                        stride=stride,
+                        dilation=dilation,
+                        groups=groups,
                     )
                     self._check(encr_conv, reference, "%s failed" % func_name)
 

@@ -1327,6 +1327,7 @@ class AutogradAvgPool2D(AutogradFunction):
             kernel_size[0] * kernel_size[1]
         )
 
+        # TODO: Eliminate dependency on torch internal function by implementing in util
         grad_input_padding = torch.nn.grad._grad_input_padding(
             grad_output, input_shape, stride, padding, kernel_size
         )
@@ -1400,36 +1401,62 @@ class AutogradMaxPool2D(AutogradFunction):
 @register_function("conv1d")
 class AutogradConv1D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, kernel, padding=0, stride=1):
-        ctx.save_multiple_for_backward((input, kernel, padding, stride))
-        return input.conv1d(kernel, padding=padding, stride=stride)
+    def forward(ctx, input, kernel, padding=0, stride=1, dilation=1, groups=1):
+        ctx.save_multiple_for_backward(
+            (input, kernel, padding, stride, dilation, groups)
+        )
+        return input.conv1d(
+            kernel, padding=padding, stride=stride, dilation=dilation, groups=groups
+        )
 
     @staticmethod
     def backward(ctx, grad_output):
+        # Gradient function adapts code from:
+        # https://github.com/pytorch/pytorch/blob/master/torch/nn/grad.py
+
         # get input, kernel, and sizes:
-        input, kernel, padding, stride = ctx.saved_tensors
+        input, kernel, padding, stride, dilation, groups = ctx.saved_tensors
         batch_size = input.size(0)
         out_channels, in_channels, kernel_size = kernel.size()
+        in_channels *= groups
         assert input.size(1) == in_channels, "wrong number of input channels"
         assert grad_output.size(1) == out_channels, "wrong number of output channels"
         assert grad_output.size(0) == batch_size, "wrong batch size"
 
+        # TODO: Implement conv1d gradient under following condition:
+        if groups > 1 and input.size(1) > groups:
+            raise NotImplementedError(
+                "conv1d backward with groups > 1 and in_channels > groups not implemented"
+            )
+
         # compute gradient with respect to input:
+        # TODO: Eliminate dependency on torch internal function by implementing in util
         output_padding = torch.nn.grad._grad_input_padding(
-            grad_output, input.size(), (stride,), (padding,), (kernel_size,)
+            grad_output,
+            input.size(),
+            (stride,),
+            (padding,),
+            (kernel_size,),
+            (dilation,),
         )
         grad_input = grad_output.conv_transpose1d(
-            kernel, stride=stride, padding=padding, output_padding=output_padding
+            kernel,
+            stride=stride,
+            padding=padding,
+            output_padding=output_padding,
+            groups=groups,
+            dilation=dilation,
         )
 
         # compute gradient with respect to kernel:
-        grad_output = grad_output.repeat(1, in_channels, 1)
+        grad_output = grad_output.repeat(1, in_channels // groups, 1)
         grad_output = grad_output.view(
             grad_output.size(0) * grad_output.size(1), 1, grad_output.size(2)
         )
         input = input.view(1, input.size(0) * input.size(1), input.size(2))
         grad_kernel = input.conv1d(
             grad_output,
+            stride=dilation,
             padding=padding,
             dilation=stride,
             groups=in_channels * batch_size,
@@ -1437,47 +1464,72 @@ class AutogradConv1D(AutogradFunction):
         grad_kernel = grad_kernel.view(
             batch_size, grad_kernel.size(1) // batch_size, grad_kernel.size(2)
         )
-        grad_kernel = (
-            grad_kernel.sum(dim=0)
-            .view(in_channels, out_channels, grad_kernel.size(2))
-            .transpose(0, 1)
-            .narrow(2, 0, kernel_size)
+        grad_kernel = grad_kernel.sum(dim=0)
+        grad_kernel = grad_kernel.view(
+            in_channels // groups, out_channels, grad_kernel.size(1)
         )
+        grad_kernel = grad_kernel.transpose(0, 1).narrow(2, 0, kernel_size)
         return (grad_input, grad_kernel)
 
 
 @register_function("conv2d")
 class AutogradConv2D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, kernel, padding=0, stride=1):
+    def forward(ctx, input, kernel, stride=1, padding=0, dilation=1, groups=1):
         if isinstance(stride, (int, float)):
             stride = (stride, stride)
         if isinstance(padding, (int, float)):
             padding = (padding, padding)
-        ctx.save_multiple_for_backward((input, kernel, padding, stride))
-        return input.conv2d(kernel, padding=padding, stride=stride)
+        if isinstance(dilation, (int, float)):
+            dilation = (dilation, dilation)
+        ctx.save_multiple_for_backward(
+            (input, kernel, padding, stride, dilation, groups)
+        )
+        return input.conv2d(
+            kernel, stride=stride, padding=padding, dilation=dilation, groups=groups
+        )
 
     @staticmethod
     def backward(ctx, grad_output):
+        # Gradient function adapts code from:
+        # https://github.com/pytorch/pytorch/blob/master/torch/nn/grad.py
 
         # get input, kernel, and sizes:
-        input, kernel, padding, stride = ctx.saved_tensors
+        input, kernel, padding, stride, dilation, groups = ctx.saved_tensors
         batch_size = input.size(0)
         out_channels, in_channels, kernel_size_y, kernel_size_x = kernel.size()
+        in_channels *= groups
         assert input.size(1) == in_channels, "wrong number of input channels"
         assert grad_output.size(1) == out_channels, "wrong number of output channels"
         assert grad_output.size(0) == batch_size, "wrong batch size"
 
+        # TODO: Implement conv2d gradient under following condition:
+        if groups > 1 and input.size(1) > groups:
+            raise NotImplementedError(
+                "conv2d backward with groups > 1 and in_channels > groups not implemented"
+            )
+
         # compute gradient with respect to input:
+        # TODO: Eliminate dependency on torch internal function by implementing in util
         output_padding = torch.nn.grad._grad_input_padding(
-            grad_output, input.size(), stride, padding, (kernel_size_y, kernel_size_x)
+            grad_output,
+            input.size(),
+            stride,
+            padding,
+            (kernel_size_y, kernel_size_x),
+            dilation,
         )
         grad_input = grad_output.conv_transpose2d(
-            kernel, stride=stride, padding=padding, output_padding=output_padding
+            kernel,
+            stride=stride,
+            padding=padding,
+            output_padding=output_padding,
+            groups=groups,
+            dilation=dilation,
         )
 
         # compute gradient with respect to kernel:
-        grad_output = grad_output.repeat(1, in_channels, 1, 1)
+        grad_output = grad_output.repeat(1, in_channels // groups, 1, 1)
         grad_output = grad_output.view(
             grad_output.size(0) * grad_output.size(1),
             1,
@@ -1487,9 +1539,10 @@ class AutogradConv2D(AutogradFunction):
         input = input.view(
             1, input.size(0) * input.size(1), input.size(2), input.size(3)
         )
-        # dilation is set to stride based on PyTorch's conv2d_weight implementation
+        # dilation and stride are swapped based on PyTorch's conv2d_weight implementation
         grad_kernel = input.conv2d(
             grad_output,
+            stride=dilation,
             padding=padding,
             dilation=stride,
             groups=in_channels * batch_size,
@@ -1502,7 +1555,12 @@ class AutogradConv2D(AutogradFunction):
         )
         grad_kernel = (
             grad_kernel.sum(0)
-            .view(in_channels, out_channels, grad_kernel.size(2), grad_kernel.size(3))
+            .view(
+                in_channels // groups,
+                out_channels,
+                grad_kernel.size(2),
+                grad_kernel.size(3),
+            )
             .transpose(0, 1)
         )
         grad_kernel = grad_kernel.narrow(2, 0, kernel_size_y)
