@@ -134,6 +134,7 @@ class FromOnnx:
         "adaptive_max_pool2d": module.AdaptiveMaxPool2d,
         "AveragePool": module.AvgPool2d,
         "BatchNormalization": module._BatchNorm,
+        "Clip": module.Hardtanh,
         "Gemm": module.Linear,
         "MaxPool": module.MaxPool2d,
         "Pad": module._ConstantPad,

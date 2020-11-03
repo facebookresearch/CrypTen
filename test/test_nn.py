@@ -391,9 +391,11 @@ class TestNN(object):
             "ConstantPad3d": (1, 0.0),
             "Conv1d": (3, 6, 5),
             "Conv2d": (3, 6, 5),
+            "Hardtanh": (-3, 1),
             "Linear": (400, 120),
             "MaxPool2d": (2,),
             "ReLU": (),
+            "ReLU6": (),
             "Sigmoid": (),
             "Softmax": (0,),
             "LogSoftmax": (0,),
@@ -410,9 +412,11 @@ class TestNN(object):
             "ConstantPad3d": (4, 2, 7),
             "Conv1d": (1, 3, 32),
             "Conv2d": (1, 3, 32, 32),
+            "Hardtanh": (1, 3, 32, 32),
             "Linear": (1, 400),
             "MaxPool2d": (1, 2, 32, 32),
             "ReLU": (1, 3, 32, 32),
+            "ReLU6": (1, 3, 32, 32),
             "Sigmoid": (8, 3, 32, 32),
             "Softmax": (5, 5, 5),
             "LogSoftmax": (5, 5, 5),
@@ -556,12 +560,27 @@ class TestNN(object):
 
     def test_inplace_warning(self):
         """Tests that a warning is thrown that indicates that the `inplace` kwarg
-        is ignored when a module is initialized with `inplace=True`
+        is ignored when a function is called with `inplace=True`
         """
-        modules = ["Dropout", "DropoutNd", "Dropout2d", "Dropout3d", "ReLU"]
+        modules = [
+            "Dropout",
+            "DropoutNd",
+            "Dropout2d",
+            "Dropout3d",
+            "Hardtanh",
+            "ReLU",
+            "ReLU6",
+        ]
         for module in modules:
-            with self.assertWarns(UserWarning):
+            module_str = (
+                module if module not in ["Dropout2d", "Dropout3d"] else "DropoutNd"
+            )
+            warning_str = (
+                f"CrypTen {module_str} module does not support inplace computation."
+            )
+            with self.assertLogs(logger=logging.getLogger(), level="WARNING") as cm:
                 getattr(crypten.nn, module)(inplace=True)
+            self.assertTrue(f"WARNING:root:{warning_str}" in cm.output)
 
     def test_sequential(self):
         """
@@ -1172,6 +1191,61 @@ class TestNN(object):
                 self.assertEqual(param.device, cuda)
             for buffer in model_cuda.buffers():
                 self.assertEqual(buffer.device, cuda)
+
+    def test_module_dict(self):
+        """Test ModuleDict module"""
+        module_dict = crypten.nn.ModuleDict()
+        self.assertEqual(len(module_dict), 0, "ModuleDict initialized incorrect size")
+
+        # Test initialization
+        module_dict = crypten.nn.ModuleDict(
+            {"conv2d": crypten.nn.Conv2d(10, 10, 3), "pool": crypten.nn.MaxPool2d(3)}
+        )
+        self.assertEqual(len(module_dict), 2, "ModuleDict initialized incorrect size")
+        self.assertTrue("conv2d" in module_dict.keys(), "ModuleDict init failed")
+        self.assertTrue(
+            isinstance(module_dict["conv2d"], crypten.nn.Conv2d),
+            "ModuleDict init failed",
+        )
+        self.assertTrue("pool" in module_dict.keys(), "ModuleDict init failed")
+        self.assertTrue(
+            isinstance(module_dict["pool"], crypten.nn.MaxPool2d),
+            "ModuleDict init failed",
+        )
+
+        # Test setitem
+        module_dict["conv1d"] = crypten.nn.Conv1d(5, 5, 3)
+        self.assertEqual(len(module_dict), 3, "ModuleDict setitem failed")
+        self.assertTrue("conv1d" in module_dict.keys(), "ModuleDict setitem failed")
+        self.assertTrue(
+            isinstance(module_dict["conv1d"], crypten.nn.Conv1d),
+            "ModuleDict setitem failed",
+        )
+
+        # Test pop
+        conv = module_dict.pop("conv2d")
+        self.assertTrue(isinstance(conv, crypten.nn.Conv2d), "ModuleDict pop failed")
+        self.assertEqual(len(module_dict), 2, "ModuleDict pop failed")
+        self.assertFalse("conv2d" in module_dict.keys(), "ModuleDict pop failed")
+
+        # Test list initialization
+        module_dict = crypten.nn.ModuleDict(
+            [["relu", crypten.nn.ReLU()], ["sigmoid", crypten.nn.Sigmoid()]]
+        )
+        self.assertEqual(len(module_dict), 2, "ModuleDict initialized incorrect size")
+        self.assertTrue("relu" in module_dict.keys(), "ModuleDict init failed")
+        self.assertTrue(
+            isinstance(module_dict["relu"], crypten.nn.ReLU), "ModuleDict init failed"
+        )
+        self.assertTrue("sigmoid" in module_dict.keys(), "ModuleDict init failed")
+        self.assertTrue(
+            isinstance(module_dict["sigmoid"], crypten.nn.Sigmoid),
+            "ModuleDict init failed",
+        )
+
+        # Test clear
+        module_dict.clear()
+        self.assertEqual(len(module_dict), 0, "ModuleDict clear failed")
 
 
 # Run all unit tests with both TFP and TTP providers

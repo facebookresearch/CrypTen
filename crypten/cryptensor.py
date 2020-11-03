@@ -787,6 +787,62 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         raise NotImplementedError("where is not implemented")
 
+    def tanh(self, reciprocal_method="log"):
+        """Computes tanh from the sigmoid function:
+        tanh(x) = 2 * sigmoid(2 * x) - 1
+        """
+        raise NotImplementedError("tanh is not implemented")
+
+    def cos(self):
+        """Computes the cosine of the input."""
+        raise NotImplementedError("cos is not implemented")
+
+    def sin(self):
+        """Computes the sine of the input."""
+        raise NotImplementedError("sin is not implemented")
+
+    # Approximations:
+    def exp(self):
+        """Computes exponential function on the tensor."""
+        raise NotImplementedError("exp is not implemented")
+
+    def log(self):
+        """Computes the natural logarithm of the tensor."""
+        raise NotImplementedError("log is not implemented")
+
+    def reciprocal(self):
+        """Computes the reciprocal of the tensor."""
+        raise NotImplementedError("reciprocal is not implemented")
+
+    def hardtanh(self, min_val=-1, max_val=1):
+        r"""Applies the HardTanh function element-wise
+
+        HardTanh is defined as:
+
+        .. math::
+            \text{HardTanh}(x) = \begin{cases}
+                1 & \text{ if } x > 1 \\
+                -1 & \text{ if } x < -1 \\
+                x & \text{ otherwise } \\
+            \end{cases}
+
+        The range of the linear region :math:`[-1, 1]` can be adjusted using
+        :attr:`min_val` and :attr:`max_val`.
+
+        Args:
+            min_val: minimum value of the linear region range. Default: -1
+            max_val: maximum value of the linear region range. Default: 1
+        """
+        raise NotImplementedError("hardtanh is not implemented")
+
+    def relu6(self):
+        r"""Applies the element-wise function:
+
+        .. math::
+            \text{ReLU6}(x) = \min(\max(0,x), 6)
+        """
+        raise NotImplementedError("relu6 is not implemented")
+
     def eq(self, tensor):
         """Element-wise equality
 

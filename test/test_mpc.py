@@ -1007,6 +1007,38 @@ class TestMPC(object):
             encrypted_out = getattr(encrypted_tensor, func)()
             self._check(encrypted_out, reference, "%s failed" % func)
 
+    def test_hardtanh(self):
+        tensor = torch.arange(-10, 10, dtype=torch.float32)
+        encrypted = MPCTensor(tensor)
+
+        for minval in range(-10, 10):
+            for maxval in range(minval, 11):
+                reference = torch.nn.functional.hardtanh(tensor, minval, maxval)
+                encrypted_out = encrypted.hardtanh(minval, maxval)
+
+                self._check(encrypted_out, reference, "hardtanh failed")
+
+        # Test relu6
+        reference = torch.nn.functional.relu6(tensor)
+        encrypted_out = encrypted.relu6()
+        self._check(encrypted_out, reference, "relu6 failed")
+
+    def test_inplace_warning(self):
+        """Tests that a warning is thrown that indicates that the `inplace` kwarg
+        is ignored when a function is called with `inplace=True`
+        """
+        tensor = get_random_test_tensor(is_float=True)
+        encrypted = MPCTensor(tensor)
+
+        functions = ["dropout", "_feature_dropout"]
+        for func in functions:
+            warning_str = (
+                f"CrypTen {func} does not support inplace computation during training."
+            )
+            with self.assertLogs(logger=logging.getLogger(), level="WARNING") as cm:
+                getattr(encrypted, func)(inplace=True)
+            self.assertTrue(f"WARNING:root:{warning_str}" in cm.output)
+
     def test_cos_sin(self):
         """Tests trigonometric functions (cos, sin)"""
         tensor = torch.tensor(

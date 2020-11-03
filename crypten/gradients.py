@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
 from functools import reduce
 
 import crypten
@@ -455,6 +456,11 @@ class AutogradDropout(AutogradFunction):
     @staticmethod
     def forward(ctx, input, p=0.5, training=True, inplace=False):
 
+        if training and inplace:
+            logging.warning(
+                "CrypTen dropout does not support inplace computation during training."
+            )
+
         # inference mode:
         if not training:
             if inplace:
@@ -485,6 +491,11 @@ class AutogradDropout(AutogradFunction):
 class AutogradFeatureDropout(AutogradFunction):
     @staticmethod
     def forward(ctx, input, p=0.5, training=True, inplace=False):
+
+        if training and inplace:
+            logging.warning(
+                "CrypTen _feature_dropout does not support inplace computation during training."
+            )
 
         # inference mode:
         if not training:
@@ -542,6 +553,54 @@ class AutogradTanh(AutogradFunction):
     def backward(ctx, grad_output):
         (activations,) = ctx.saved_tensors
         return grad_output.mul(activations.square().neg().add(1.0))
+
+
+@register_function("hardtanh")
+class AutogradHardtanh(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input, min_val=-1, max_val=1):
+        assert isinstance(
+            min_val, (int, float)
+        ), "hardtanh min_val must be an int or float"
+        assert isinstance(
+            max_val, (int, float)
+        ), "hardtanh max_val must be an int or float"
+        if min_val == max_val:
+            grad = input.new(torch.zeros(input.size()))
+            ctx.save_for_backward(grad)
+            return grad + min_val
+
+        intermediate = crypten.stack([input - min_val, max_val - input]).gt(0)
+        grad = intermediate.sum(0).sub(1)
+        ctx.save_for_backward(grad)
+
+        result = grad.mul(input)
+        result += (1 - intermediate[0]).mul(min_val)
+        result += (1 - intermediate[1]).mul(max_val)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (grad,) = ctx.saved_tensors
+        return grad.mul(grad_output)
+
+
+@register_function("relu6")
+class AutogradReLU6(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input):
+        intermediate = crypten.stack([input, 6 - input]).gt(0)
+        grad = intermediate.sum(0).sub(1)
+        ctx.save_for_backward(grad)
+
+        result = grad.mul(input)
+        result += (1 - intermediate[1]).mul(6)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (grad,) = ctx.saved_tensors
+        return grad.mul(grad_output)
 
 
 @register_function("add")

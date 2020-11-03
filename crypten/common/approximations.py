@@ -52,7 +52,6 @@ class ApproxConfig:
     # sigmoid / tanh configuration
     sigmoid_tanh_method: str = "reciprocal"
     sigmoid_tanh_terms: int = 32
-    sigmoid_tanh_clip_value: int = 1
 
     # log configuration
     log_iterations: int = 2
@@ -338,7 +337,6 @@ def sigmoid(self):
 
     """  # noqa: W605
     method = config.sigmoid_tanh_method
-    clip_value = config.sigmoid_tanh_clip_value
 
     if method == "chebyshev":
         tanh_approx = tanh(self.div(2))
@@ -360,11 +358,6 @@ def sigmoid(self):
             0.75,
         ):
             pos_output = denominator.reciprocal()
-
-        # Clip values outside of acceptable range
-        if clip_value is not None:
-            in_range = pos_output.le(clip_value, _scale=False)
-            pos_output = pos_output.where(in_range, clip_value)
 
         result = pos_output.where(1 - ltz, 1 - pos_output)
         # TODO: Support addition with different encoder scales
@@ -388,7 +381,7 @@ def tanh(self):
         tanh(x) = \sum_{j=1}^terms c_{2j - 1} P_{2j - 1} (x / maxval)
 
     where c_i is the ith Chebyshev series coefficient and P_i is ith polynomial.
-    The approximation is truncated to +/-1 outside [-maxval, maxval].
+    The approximation is truncated to +/-1 outside [-1, 1].
 
     Args:
         terms (int): highest degree of Chebyshev polynomials.
@@ -396,20 +389,19 @@ def tanh(self):
     """
     method = config.sigmoid_tanh_method
     terms = config.sigmoid_tanh_terms
-    maxval = config.sigmoid_tanh_clip_value
 
     if method == "reciprocal":
         return self.mul(2).sigmoid().mul(2).sub(1)
     elif method == "chebyshev":
-        coeffs = crypten.common.util.chebyshev_series(torch.tanh, maxval, terms)[1::2]
-        tanh_polys = _chebyshev_polynomials(self.div(maxval), terms)
+        coeffs = crypten.common.util.chebyshev_series(torch.tanh, 1, terms)[1::2]
+        tanh_polys = _chebyshev_polynomials(self, terms)
         tanh_polys_flipped = (
             tanh_polys.unsqueeze(dim=-1).transpose(0, -1).squeeze(dim=0)
         )
         out = tanh_polys_flipped.matmul(coeffs)
 
         # truncate outside [-maxval, maxval]
-        return _truncate_tanh(out)
+        return out.hardtanh()
     else:
         raise ValueError(f"Unrecognized method {method} for tanh")
 
@@ -442,16 +434,6 @@ def _chebyshev_polynomials(self, terms):
         polynomials.append(next_polynomial)
 
     return crypten.stack(polynomials)
-
-
-def _truncate_tanh(self):
-    """Truncates `out` to +/- clip_value when self is outside [-clip_value, clip_value]."""
-    clip_value = config.sigmoid_tanh_clip_value
-    if clip_value is None:
-        return self
-    too_high, too_low = crypten.stack([self, -self]).gt(clip_value)
-    in_range = 1 - too_high - too_low
-    return (too_high - too_low) * clip_value + self.mul(in_range)
 
 
 def softmax(self, dim, **kwargs):

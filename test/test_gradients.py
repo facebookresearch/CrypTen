@@ -348,6 +348,29 @@ class TestGradients:
 
                 self._check_forward_backward(func, tensor)
 
+    def test_hardtanh(self):
+        tensor = torch.arange(-10, 10, dtype=torch.float32)
+        for minval in range(-10, 10):
+            for maxval in range(minval, 11):
+                self._check_forward_backward("hardtanh", tensor, minval, maxval)
+        self._check_forward_backward("relu6", tensor)
+
+    def test_inplace_warning(self):
+        """Tests that a warning is thrown that indicates that the `inplace` kwarg
+        is ignored when a function is called with `inplace=True`
+        """
+        tensor = get_random_test_tensor(is_float=True)
+        encrypted = crypten.cryptensor(tensor)
+
+        functions = ["dropout", "_feature_dropout"]
+        for func in functions:
+            warning_str = (
+                f"CrypTen {func} does not support inplace computation during training."
+            )
+            with self.assertLogs(logger=logging.getLogger(), level="WARNING") as cm:
+                getattr(encrypted, func)(inplace=True)
+            self.assertTrue(f"WARNING:root:{warning_str}" in cm.output)
+
     def test_dot_ger(self):
         """Test inner and outer products of encrypted tensors."""
         for length in range(1, 10):

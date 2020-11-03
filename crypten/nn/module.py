@@ -6,7 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import itertools
-import warnings
+import logging
 from collections import OrderedDict
 
 import crypten
@@ -516,6 +516,11 @@ class Module:
                     return
             object.__setattr__(self, name, value)
 
+    def add_module(self, name, module):
+        """Adds and registers a submodule with a given name"""
+        assert name not in self._modules.keys(), "Module %s already exists." % name
+        self.register_module(name, module)
+
 
 class Container(Module):
     """
@@ -544,10 +549,11 @@ class Graph(Container):
         if graph is not None:
             self._graph = graph
 
-    def add_module(self, name, module, input_names):
+    def add_module(self, name, module, input_names=None):
         assert name not in self._graph, "Module %s already exists." % name
         self.register_module(name, module)
-        self._graph[name] = input_names
+        if input_names is not None:
+            self._graph[name] = input_names
 
     def forward(self, input):
         # keep track of all values that have been computed:
@@ -614,6 +620,76 @@ class Sequential(Graph):
             module_name = "output" if idx + 1 == num_modules else "module_%d" % idx
             input_name = "input" if idx == 0 else "module_%d" % (idx - 1)
             self.add_module(module_name, module, [input_name])
+
+
+class ModuleDict(Module):
+    r"""Holds submodules in a dictionary.
+
+    :class:`~crypten.nn.ModuleDict` can be indexed like a regular Python dictionary,
+    but modules it contains are properly registered, and will be visible by all
+    :class:`~crypten.nn.Module` methods.
+
+    :class:`~crypten.nn.ModuleDict` is an **ordered** dictionary that respects
+
+    * the order of insertion, and
+
+    * in :meth:`~crypten.nn.ModuleDict.update`, the order of the merged ``OrderedDict``
+      or another :class:`~crypten.nn.ModuleDict` (the argument to :meth:`~crypten.nn.ModuleDict.update`).
+
+    Note that :meth:`~crypten.nn.ModuleDict.update` with other unordered mapping
+    types (e.g., Python's plain ``dict``) does not preserve the order of the
+    merged mapping.
+
+    Arguments:
+        modules (iterable, optional): a mapping (dictionary) of (string: module)
+            or an iterable of key-value pairs of type (string, module)
+
+    Example::
+
+        class MyModule(nn.Module):
+            def __init__(self):
+                super(MyModule, self).__init__()
+                self.choices = nn.ModuleDict({
+                        'conv': nn.Conv2d(10, 10, 3),
+                        'pool': nn.MaxPool2d(3)
+                })
+                self.activations = nn.ModuleDict([
+                        ['lrelu', nn.LeakyReLU()],
+                        ['prelu', nn.PReLU()]
+                ])
+
+            def forward(self, x, choice, act):
+                x = self.choices[choice](x)
+                x = self.activations[act](x)
+                return x
+    """
+
+    def __init__(self, modules=None):
+        super(ModuleDict, self).__init__()
+        if modules is not None:
+            self.update(modules)
+
+
+__module_dict_func_names = [
+    "__getitem__",
+    "__setitem__",
+    "__delitem__",
+    "__len__",
+    "__iter__",
+    "__contains__",
+    "clear",
+    "pop",
+    "keys",
+    "items",
+    "values",
+    "update",
+    "forward",
+]
+
+
+for func_name in __module_dict_func_names:
+    func = getattr(torch.nn.ModuleDict, func_name)
+    setattr(ModuleDict, func_name, func)
 
 
 class Constant(Module):
@@ -990,7 +1066,7 @@ class Dropout(Module):
     def __init__(self, p=0.5, inplace=False):
         super().__init__()
         if inplace:
-            warnings.warn(
+            logging.warning(
                 "CrypTen Dropout module does not support inplace computation."
             )
         self.p = p
@@ -1022,7 +1098,7 @@ class DropoutNd(Module):
     def __init__(self, p=0.5, inplace=False):
         super().__init__()
         if inplace:
-            warnings.warn(
+            logging.warning(
                 "CrypTen DropoutNd module does not support inplace computation."
             )
         self.p = p
@@ -1610,7 +1686,7 @@ class ReLU(Module):
     def __init__(self, inplace=False):
         super().__init__()
         if inplace:
-            warnings.warn("CrypTen ReLU module does not support inplace computation.")
+            logging.warning("CrypTen ReLU module does not support inplace computation.")
 
     def forward(self, x):
         return x.relu()
@@ -1618,6 +1694,94 @@ class ReLU(Module):
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         return ReLU()
+
+
+class Hardtanh(Module):
+    r"""Applies the Hardtanh function element-wise
+
+    HardTtnh is defined as:
+
+    .. math::
+        \text{Hardtanh}(x) = \begin{cases}
+            1 & \text{ if } x > 1 \\
+            -1 & \text{ if } x < -1 \\
+            x & \text{ otherwise } \\
+        \end{cases}
+
+    The range of the linear region :math:`[-1, 1]` can be adjusted using
+    :attr:`min_val` and :attr:`max_val`.
+
+    Args:
+        min_val: minimum value of the linear region range. Default: -1
+        max_val: maximum value of the linear region range. Default: 1
+        inplace: can optionally do the operation in-place. Default: ``False``
+
+    Keyword arguments :attr:`min_value` and :attr:`max_value`
+    have been deprecated in favor of :attr:`min_val` and :attr:`max_val`.
+
+    Shape:
+        - Input: :math:`(N, *)` where `*` means, any number of additional
+          dimensions
+        - Output: :math:`(N, *)`, same shape as the input
+
+    .. image:: ../scripts/activation_images/Hardtanh.png
+
+    Examples::
+
+        >>> m = nn.Hardtanh(-2, 2)
+        >>> input = torch.randn(2)
+        >>> output = m(input)
+    """
+
+    def __init__(self, min_val=-1.0, max_val=1.0, inplace=False):
+        super().__init__()
+        self.min_val = min_val
+        self.max_val = max_val
+        if inplace:
+            logging.warning(
+                "CrypTen Hardtanh module does not support inplace computation."
+            )
+
+    def forward(self, input):
+        return input.hardtanh(self.min_val, self.max_val)
+
+    def extra_repr(self):
+        return "min_val={}, max_val={}".format(self.min_val, self.max_val)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Hardtanh(min_val=attributes["min"], max_val=attributes["max"])
+
+
+class ReLU6(Hardtanh):
+    r"""Applies the element-wise function:
+
+    .. math::
+        \text{ReLU6}(x) = \min(\max(0,x), 6)
+
+    Args:
+        inplace: can optionally do the operation in-place. Default: ``False``
+
+    Shape:
+        - Input: :math:`(N, *)` where `*` means, any number of additional
+          dimensions
+        - Output: :math:`(N, *)`, same shape as the input
+
+    .. image:: ../scripts/activation_images/ReLU6.png
+
+    Examples::
+
+        >>> m = nn.ReLU6()
+        >>> input = torch.randn(2)
+        >>> output = m(input)
+    """
+
+    def __init__(self, inplace=False):
+        if inplace:
+            logging.warning(
+                "CrypTen ReLU6 module does not support inplace computation."
+            )
+        super(ReLU6, self).__init__(min_val=0, max_val=6, inplace=False)
 
 
 class Sigmoid(Module):
@@ -2056,6 +2220,15 @@ class BatchNorm3d(_BatchNorm):
     """
 
     pass
+
+
+class GroupNorm(Module):
+    """
+    Module that performs group normalization on tensors.
+    """
+
+    def __init__(self, num_groups, num_channels, eps=1e-5, affine=True):
+        raise NotImplementedError("GroupNorm is not implemented.")
 
 
 def _all_the_same(items):

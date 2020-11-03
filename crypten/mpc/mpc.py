@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
 from dataclasses import dataclass
 from functools import wraps
 
@@ -421,6 +422,11 @@ class MPCTensor(CrypTensor):
                 Default: ``False``
         """
         assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
+        if training and inplace:
+            logging.warning(
+                "CrypTen dropout does not support inplace computation during training."
+            )
+
         if not training:
             if inplace:
                 return self
@@ -477,6 +483,11 @@ class MPCTensor(CrypTensor):
         :math:`\text{input}[i, j]`)."""
         assert self.dim() >= 2, "feature dropout requires dimension to be at least 2"
         assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
+        if training and inplace:
+            logging.warning(
+                "CrypTen _feature_dropout does not support inplace computation during training."
+            )
+
         if not training:
             if inplace:
                 return self
@@ -849,6 +860,37 @@ class MPCTensor(CrypTensor):
             y_masked = (1 - condition) * y
 
         return self * condition + y_masked
+
+    def hardtanh(self, min_value=-1, max_value=1):
+        r"""Applies the HardTanh function element-wise
+
+        HardTanh is defined as:
+
+        .. math::
+            \text{HardTanh}(x) = \begin{cases}
+                1 & \text{ if } x > 1 \\
+                -1 & \text{ if } x < -1 \\
+                x & \text{ otherwise } \\
+            \end{cases}
+
+        The range of the linear region :math:`[-1, 1]` can be adjusted using
+        :attr:`min_val` and :attr:`max_val`.
+
+        Args:
+            min_val: minimum value of the linear region range. Default: -1
+            max_val: maximum value of the linear region range. Default: 1
+        """
+        intermediate = MPCTensor.stack([self - min_value, self - max_value]).relu()
+        intermediate = intermediate[0].sub(intermediate[1])
+        return intermediate.add_(min_value)
+
+    def relu6(self):
+        r"""Applies the element-wise function:
+
+        .. math::
+            \text{ReLU6}(x) = \min(\max(0,x), 6)
+        """
+        return self.hardtanh(min_value=0, max_value=6)
 
     @mode(Ptype.arithmetic)
     def pad(self, pad, mode="constant", value=0):
