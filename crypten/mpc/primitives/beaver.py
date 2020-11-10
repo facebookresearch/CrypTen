@@ -27,6 +27,8 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
         "conv_transpose1d",
         "conv_transpose2d",
     }
+    if x.device != y.device:
+        raise ValueError(f"x lives on device {x.device} but y on device {y.device}")
 
     provider = crypten.mpc.get_default_provider()
     a, b, c = provider.generate_additive_triple(

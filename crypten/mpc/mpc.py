@@ -365,7 +365,9 @@ class MPCTensor(CrypTensor):
         """
         rand = MPCTensor([])
         encoder = FixedPointEncoder()
-        rand._tensor = BinarySharedTensor.rand(*sizes, bits=encoder._precision_bits)
+        rand._tensor = BinarySharedTensor.rand(
+            *sizes, bits=encoder._precision_bits, device=device
+        )
         rand._tensor.encoder = encoder
         rand.ptype = Ptype.binary
         return rand.to(Ptype.arithmetic, bits=encoder._precision_bits)
@@ -377,10 +379,10 @@ class MPCTensor(CrypTensor):
         generated using the Box-Muller transform with optimizations for
         numerical precision and MPC efficiency.
         """
-        u = MPCTensor.rand(*sizes).flatten()
+        u = MPCTensor.rand(*sizes, device=device).flatten()
         odd_numel = u.numel() % 2 == 1
         if odd_numel:
-            u = MPCTensor.cat([u, MPCTensor.rand((1,))])
+            u = MPCTensor.cat([u, MPCTensor.rand((1,), device=device)])
 
         n = u.numel() // 2
         u1 = u[:n]
