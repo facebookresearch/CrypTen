@@ -188,6 +188,7 @@ class TestCrypten(MultiProcessTestCase):
         """Test that crypten.save_from_party and crypten.load_from_party
         properly save and load plaintext tensors"""
         import tempfile
+
         import numpy as np
 
         def custom_load_function(f):
