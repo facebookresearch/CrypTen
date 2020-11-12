@@ -146,11 +146,11 @@ class DistributedCommunicator(Communicator):
                 except Exception:
                     pass
             tensor = torch.empty(size=size, dtype=torch.long, device=device)
-            dist.scatter(tensor, [], src, group=self.main_group)
+            dist.scatter(tensor.data, [], src, group=self.main_group)
         else:
             scatter_list = [s.data for s in scatter_list]
             tensor = scatter_list[self.get_rank()]
-            dist.scatter(tensor, scatter_list, src, group=self.main_group)
+            dist.scatter(tensor.data, scatter_list, src, group=self.main_group)
         return tensor
 
     @_logging
@@ -165,7 +165,7 @@ class DistributedCommunicator(Communicator):
             for tensor in result:
                 reqs.append(
                     dist.reduce(
-                        tensor, dst, op=op, group=self.main_group, async_op=True
+                        tensor.data, dst, op=op, group=self.main_group, async_op=True
                     )
                 )
             for req in reqs:
@@ -210,11 +210,14 @@ class DistributedCommunicator(Communicator):
         assert dist.is_initialized(), "initialize the communicator first"
         if self.get_rank() == dst:
             result = []
+            device = tensor.data.device
             for _ in range(self.get_world_size()):
-                result.append(torch.empty(size=tensor.size(), dtype=torch.long))
-            dist.gather(tensor, result, dst, group=self.main_group)
+                result.append(
+                    torch.empty(size=tensor.size(), dtype=torch.long, device=device)
+                )
+            dist.gather(tensor.data, result, dst, group=self.main_group)
             return result
-        dist.gather(tensor, [], dst, group=self.main_group)
+        dist.gather(tensor.data, [], dst, group=self.main_group)
         return [None]
 
     @_logging
@@ -222,9 +225,12 @@ class DistributedCommunicator(Communicator):
         """Gathers tensors from all parties in a list."""
         assert dist.is_initialized(), "initialize the communicator first"
         result = []
+        device = tensor.data.device
         for _ in range(self.get_world_size()):
-            result.append(torch.empty(size=tensor.size(), dtype=torch.long))
-        dist.all_gather(result, tensor, group=self.main_group)
+            result.append(
+                torch.empty(size=tensor.size(), dtype=torch.long, device=device)
+            )
+        dist.all_gather(result, tensor.data, group=self.main_group)
         return result
 
     @_logging
@@ -236,7 +242,9 @@ class DistributedCommunicator(Communicator):
             assert isinstance(input, list), "batched reduce input must be a list"
             reqs = []
             for tensor in input:
-                reqs.append(dist.broadcast(tensor, src, group=group, async_op=True))
+                reqs.append(
+                    dist.broadcast(tensor.data, src, group=group, async_op=True)
+                )
             for req in reqs:
                 req.wait()
         else:
