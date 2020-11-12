@@ -246,7 +246,7 @@ class TestGradients:
 
     def _reductions_helper(self, input_reductions, method=None):
         """Tests input reductions on tensors of various sizes."""
-        for size in SIZES:
+        for size in SIZES[: min(5, len(SIZES))]:
             tensor = get_random_test_tensor(size=size, is_float=True)
             for reduction in input_reductions:
                 if method is None:

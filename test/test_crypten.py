@@ -334,6 +334,10 @@ class TestCrypten(MultiProcessTestCase):
         self.assertFalse(crypten.is_initialized())
         self.assertFalse(comm.is_initialized())
 
+        # note that uninit() kills the TTP process, so we need to restart it:
+        if self.rank == self.MAIN_PROCESS_RANK and crypten.mpc.ttp_required():
+            self.processes += [self._spawn_ttp()]
+
         crypten.init()
         self.assertTrue(crypten.is_initialized())
         self.assertTrue(comm.is_initialized())

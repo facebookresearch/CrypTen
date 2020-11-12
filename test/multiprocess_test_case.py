@@ -148,7 +148,7 @@ class MultiProcessTestCase(unittest.TestCase):
             "WORLD_SIZE": self.world_size,
             "RANK": self.world_size,
             "RENDEZVOUS": "file://%s" % self.file,
-            "BAXKEND": "gloo",
+            "BACKEND": "gloo",
         }
         for key, val in communicator_args.items():
             os.environ[key] = str(val)
