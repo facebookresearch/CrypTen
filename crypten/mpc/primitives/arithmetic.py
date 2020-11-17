@@ -559,25 +559,38 @@ class ArithmeticSharedTensor(object):
             raise TypeError("scatter_add second tensor of unsupported type")
         return self
 
-    def avg_pool2d(self, kernel_size, stride=None, padding=0):
+    def avg_pool2d(self, kernel_size, stride=None, padding=0, ceil_mode=False):
         """Perform an average pooling on each 2D matrix of the given tensor
 
         Args:
             kernel_size (int or tuple): pooling kernel size.
         """
-        z = self._sum_pool2d(kernel_size, stride=stride, padding=padding)
+        # TODO: Add check for whether ceil_mode would change size of output and allow ceil_mode when it wouldn't
+        if ceil_mode:
+            raise NotImplementedError(
+                "CrypTen does not support `ceil_mode` for `avg_pool2d`"
+            )
+
+        z = self._sum_pool2d(
+            kernel_size, stride=stride, padding=padding, ceil_mode=ceil_mode
+        )
         if isinstance(kernel_size, (int, float)):
             pool_size = kernel_size ** 2
         else:
             pool_size = kernel_size[0] * kernel_size[1]
         return z / pool_size
 
-    def _sum_pool2d(self, kernel_size, stride=None, padding=0):
+    def _sum_pool2d(self, kernel_size, stride=None, padding=0, ceil_mode=False):
         """Perform a sum pooling on each 2D matrix of the given tensor"""
         result = self.shallow_copy()
 
         result.share = torch.nn.functional.avg_pool2d(
-            self.share, kernel_size, stride=stride, padding=padding, divisor_override=1
+            self.share,
+            kernel_size,
+            stride=stride,
+            padding=padding,
+            ceil_mode=ceil_mode,
+            divisor_override=1,
         )
         return result
 

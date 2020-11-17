@@ -16,7 +16,7 @@ from crypten.common.tensor_types import is_tensor
 from crypten.common.util import (
     ConfigBase,
     adaptive_pool2d_helper,
-    pool_reshape,
+    pool2d_reshape,
     torch_cat,
     torch_stack,
 )
@@ -727,20 +727,31 @@ class MPCTensor(CrypTensor):
             return -result[0], result[1]
 
     @mode(Ptype.arithmetic)
-    def max_pool2d(self, kernel_size, padding=None, stride=None, return_indices=False):
+    def max_pool2d(
+        self,
+        kernel_size,
+        padding=0,
+        stride=None,
+        dilation=1,
+        ceil_mode=False,
+        return_indices=False,
+    ):
         """Applies a 2D max pooling over an input signal composed of several
         input planes.
         """
         max_input = self.shallow_copy()
-        max_input.share, output_size = pool_reshape(
+        max_input.share, output_size = pool2d_reshape(
             self.share,
             kernel_size,
             padding=padding,
             stride=stride,
-            # padding with extremely negative values to avoid choosing pads
-            # -2 ** 33 is acceptable since it is lower than the supported range
-            # which is -2 ** 32 because multiplication can otherwise fail.
-            pad_value=(-(2 ** 33)),
+            dilation=dilation,
+            ceil_mode=ceil_mode,
+            # padding with extremely negative values to avoid choosing pads.
+            # The magnitude of this value should not be too large because
+            # multiplication can otherwise fail.
+            pad_value=(-(2 ** 24)),
+            # TODO: Find a better solution for padding with max_pooling
         )
         max_vals, argmax_vals = max_input.max(dim=-1, one_hot=True)
         max_vals = max_vals.view(output_size)
@@ -753,7 +764,14 @@ class MPCTensor(CrypTensor):
 
     @mode(Ptype.arithmetic)
     def _max_pool2d_backward(
-        self, indices, kernel_size, padding=None, stride=None, output_size=None
+        self,
+        indices,
+        kernel_size,
+        padding=None,
+        stride=None,
+        dilation=1,
+        ceil_mode=False,
+        output_size=None,
     ):
         """Implements the backwards for a `max_pool2d` call."""
         # Setup padding
@@ -769,8 +787,14 @@ class MPCTensor(CrypTensor):
             stride = kernel_size
         if isinstance(stride, int):
             stride = stride, stride
-        assert isinstance(padding, tuple), "stride must be a int, tuple, or None"
+        assert isinstance(stride, tuple), "stride must be a int, tuple, or None"
         s0, s1 = stride
+
+        # Setup dilation
+        if isinstance(stride, int):
+            dilation = dilation, dilation
+        assert isinstance(dilation, tuple), "dilation must be a int, tuple, or None"
+        d0, d1 = dilation
 
         # Setup kernel_size
         if isinstance(kernel_size, int):
@@ -797,18 +821,37 @@ class MPCTensor(CrypTensor):
                 s1 * self.size(3) - 2 * p1,
             )
 
+        # Account for input padding
+        result_size = list(output_size)
+        result_size[-2] += 2 * p0
+        result_size[-1] += 2 * p1
+
+        # Account for input padding implied by ceil_mode
+        if ceil_mode:
+            c0 = self.size(-1) * s1 + (k1 - 1) * d1 - output_size[-1]
+            c1 = self.size(-2) * s0 + (k0 - 1) * d0 - output_size[-2]
+            result_size[-2] += c0
+            result_size[-1] += c1
+
         # Sum the one-hot gradient blocks at corresponding index locations.
-        result = MPCTensor(torch.zeros(output_size)).pad([p0, p0, p1, p1])
+        result = MPCTensor(torch.zeros(result_size))
         for i in range(self.size(2)):
             for j in range(self.size(3)):
                 left_ind = s0 * i
                 top_ind = s1 * j
 
                 result[
-                    :, :, left_ind : left_ind + k0, top_ind : top_ind + k1
+                    :,
+                    :,
+                    left_ind : left_ind + k0 * d0 : d0,
+                    top_ind : top_ind + k1 * d1 : d1,
                 ] += kernels[:, :, i, j]
 
+        # Remove input padding
+        if ceil_mode:
+            result = result[:, :, : result.size(2) - c0, : result.size(3) - c1]
         result = result[:, :, p0 : result.size(2) - p0, p1 : result.size(3) - p1]
+
         return result
 
     def adaptive_avg_pool2d(self, output_size):

@@ -536,7 +536,6 @@ class TestGradients:
                 groups=groups,
             )
 
-    @unittest.skip("flaky test")
     def test_max_pool2d(self):
         """Tests max pooling gradient"""
         self._check_pooling("max_pool2d")
@@ -548,12 +547,14 @@ class TestGradients:
     def _check_pooling(self, func):
         """Helper for testing pooling gradients to avoid test timeouts"""
         image_sizes = [(5, 5), (6, 7)]
-        nchannels = [1, 3, 5]
-        nbatches = [1, 5]
+        nchannels = [1, 3]
+        nbatches = [1, 3]
 
         kernel_sizes = [1, 2, (2, 3)]
         paddings = [1, (0, 0)]
         strides = [1, (2, 2)]
+        dilations = [1, 2]
+        ceil_modes = [False, True]
 
         for image_size, channels, batches, kernel_size in itertools.product(
             image_sizes, nchannels, nbatches, kernel_sizes
@@ -561,21 +562,24 @@ class TestGradients:
             size = (batches, channels, *image_size)
             image = get_random_test_tensor(size=size, is_float=True)
 
-            for padding, stride in itertools.product(paddings, strides):
+            for padding, stride, ceil_mode in itertools.product(
+                paddings, strides, ceil_modes
+            ):
                 # Skip invalid padding sizes
                 if kernel_size == 1 and padding == 1:
                     continue
                 if func == "max_pool2d":
-                    self._check_max_pool2d_forward_backward(
-                        image, kernel_size, padding, stride
-                    )
+                    for dilation in dilations:
+                        self._check_max_pool2d_forward_backward(
+                            image, kernel_size, padding, stride, dilation, ceil_mode
+                        )
                 else:
                     self._check_forward_backward(
                         func, image, kernel_size, padding=padding, stride=stride
                     )
 
     def _check_max_pool2d_forward_backward(
-        self, image, kernel_size, padding, stride, tol=0.1
+        self, image, kernel_size, padding, stride, dilation, ceil_mode, tol=0.1
     ):
         """Checks forward and backward are for max pool 2d.
         Verifies gradients by checking sum of non-matching elements to account for
@@ -588,6 +592,7 @@ class TestGradients:
             kernel_size (tuple of ints): size of the window over which to compute max
             padding (int or tuple of ints): implicit zero padding to added on both sides
             stride (int or tuple of ints): the stride of the window
+            ceil_mode (bool): determines whether output size is rounded down or up
         """
         # check forward
         image = image.clone()
@@ -595,10 +600,27 @@ class TestGradients:
         image_enc = crypten.cryptensor(image, requires_grad=True)
 
         out = torch.nn.functional.max_pool2d(
-            image, kernel_size, padding=padding, stride=stride
+            image,
+            kernel_size,
+            padding=padding,
+            stride=stride,
+            dilation=dilation,
+            ceil_mode=ceil_mode,
         )
-        out_enc = image_enc.max_pool2d(kernel_size, padding=padding, stride=stride)
-        self._check(out_enc, out, "max_pool2d forward incorrect")
+        out_enc = image_enc.max_pool2d(
+            kernel_size,
+            padding=padding,
+            stride=stride,
+            dilation=dilation,
+            ceil_mode=ceil_mode,
+        )
+        if out.isinf().any():
+            self.assertTrue(
+                out.size() == out_enc.size(), "max_pool2d forward incorrect"
+            )
+            return  # backward will break if output is -inf
+        else:
+            self._check(out_enc, out, "max_pool2d forward incorrect")
 
         # check backward
         grad_output = get_random_test_tensor(size=out.size(), is_float=True)

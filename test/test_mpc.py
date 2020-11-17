@@ -18,8 +18,9 @@ import torch
 import torch.nn.functional as F
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
-from crypten.mpc import ConfigManager, MPCTensor, ptype as Ptype
+from crypten.mpc import MPCTensor, ptype as Ptype
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
+from crypten.common.util import pool2d_reshape
 
 
 class TestMPC(object):
@@ -587,39 +588,90 @@ class TestMPC(object):
 
     def test_pooling(self):
         """Test avg_pool, max_pool of encrypted tensor."""
+
+        def assert_index_match(
+            indices,
+            encrypted_indices,
+            matrix_size,
+            kernel_size,
+            **kwargs,
+        ):
+            # Assert each kernel is one-hot
+            self.assertTrue(
+                encrypted_indices.get_plain_text()
+                .sum(-1)
+                .sum(-1)
+                .eq(torch.ones_like(indices))
+                .all(),
+                "Encrypted indices are not one-hot",
+            )
+
+            # Populate tensor with kernel indices
+            arange_size = matrix_size[-2:]
+            index_values = torch.arange(arange_size.numel()).view(arange_size)
+            index_values = index_values.expand(matrix_size)
+
+            # Ensure encrypted indices are correct
+            index_mask, size = pool2d_reshape(index_values, kernel_size, **kwargs)
+            index_mask = index_mask.view(*size, kernel_size, kernel_size)
+            crypten_indices = encrypted_indices.mul(index_mask).sum(-1).sum(-1)
+
+            self._check(
+                crypten_indices, indices.float(), "max_pool2d indexing is incorrect"
+            )
+
+        dilations = [1, 2]
         for width in range(2, 5):
             for kernel_size in range(1, width):
                 matrix_size = (1, 4, 5, width)
                 matrix = self._get_random_test_tensor(size=matrix_size, is_float=True)
-                for stride in list(range(1, kernel_size + 1)) + [(1, kernel_size)]:
-                    for padding in range(kernel_size // 2 + 1):
-                        reference = F.avg_pool2d(
-                            matrix, kernel_size, stride=stride, padding=padding
-                        )
 
+                strides = list(range(1, kernel_size + 1)) + [(1, kernel_size)]
+                paddings = range(kernel_size // 2 + 1)
+
+                for stride, padding in itertools.product(strides, paddings):
+                    kwargs = {"stride": stride, "padding": padding}
+                    reference = F.avg_pool2d(matrix, kernel_size, **kwargs)
+
+                    encrypted_matrix = MPCTensor(matrix)
+                    encrypted_pool = encrypted_matrix.avg_pool2d(kernel_size, **kwargs)
+                    self._check(encrypted_pool, reference, "avg_pool2d failed")
+
+                    # Test max_pool2d
+                    for dilation, ceil_mode, return_indices in itertools.product(
+                        dilations, [False, True], [False, True]
+                    ):
+                        # Skip kernels that lead to 0-size outputs
+                        if (kernel_size - 1) * dilation > width - 1:
+                            continue
+
+                        kwargs["dilation"] = dilation
+                        kwargs["ceil_mode"] = ceil_mode
+                        kwargs["return_indices"] = return_indices
+
+                        reference = F.max_pool2d(matrix, kernel_size, **kwargs)
                         encrypted_matrix = MPCTensor(matrix)
-                        encrypted_pool = encrypted_matrix.avg_pool2d(
-                            kernel_size, stride=stride, padding=padding
+                        encrypted_pool = encrypted_matrix.max_pool2d(
+                            kernel_size, **kwargs
                         )
-                        self._check(encrypted_pool, reference, "avg_pool2d failed")
 
-                        # Test max_pool2d
-                        for return_indices in [False, True]:
-                            kwargs = {
-                                "stride": stride,
-                                "padding": padding,
-                                "return_indices": return_indices,
-                            }
-                            matrix.requires_grad = True
-                            reference = F.max_pool2d(matrix, kernel_size, **kwargs)
-                            encrypted_matrix = MPCTensor(matrix)
-                            encrypted_pool = encrypted_matrix.max_pool2d(
-                                kernel_size, **kwargs
+                        if return_indices:
+                            indices = reference[1]
+                            encrypted_indices = encrypted_pool[1]
+
+                            kwargs.pop("return_indices")
+                            assert_index_match(
+                                indices,
+                                encrypted_indices,
+                                matrix.size(),
+                                kernel_size,
+                                **kwargs,
                             )
-                            if return_indices:
-                                encrypted_pool = encrypted_pool[0]
-                                reference = reference[0]
-                            self._check(encrypted_pool, reference, "max_pool2d failed")
+
+                            encrypted_pool = encrypted_pool[0]
+                            reference = reference[0]
+
+                        self._check(encrypted_pool, reference, "max_pool2d failed")
 
     def test_adaptive_pooling(self):
         """test adaptive_avg_pool2d and adaptive_max_pool2d"""

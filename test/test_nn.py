@@ -432,19 +432,18 @@ class TestNN(object):
             encr_input = crypten.cryptensor(input)
             encr_input.requires_grad = compute_gradients
 
+            kwargs = {"ceil_mode": True} if module_name == "MaxPool2d" else {}
+
             # create PyTorch module:
             args = module_args[module_name]
-            module = getattr(torch.nn, module_name)(*args)
+            module = getattr(torch.nn, module_name)(*args, **kwargs)
             module.train()
 
             # create encrypted CrypTen module:
             if from_pytorch:
                 encr_module = crypten.nn.from_pytorch(module, input)
-            # TODO: Remove continue call once AdaptiveAvgPool2d is supported
-            elif module_name == "AdaptiveAvgPool2d":
-                continue
             else:
-                encr_module = getattr(crypten.nn, module_name)(*args)
+                encr_module = getattr(crypten.nn, module_name)(*args, **kwargs)
                 for name, param in module.named_parameters():
                     setattr(encr_module, name, param)
 

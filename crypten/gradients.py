@@ -1295,7 +1295,7 @@ class AutogradPad(AutogradFunction):
 @register_function("avg_pool2d")
 class AutogradAvgPool2D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, kernel_size, stride=None, padding=0):
+    def forward(ctx, input, kernel_size, stride=None, padding=0, ceil_mode=False):
 
         # preprocess inputs:
         if stride is None:
@@ -1308,7 +1308,9 @@ class AutogradAvgPool2D(AutogradFunction):
             kernel_size = (kernel_size, kernel_size)
 
         # perform average pooling:
-        output = input.avg_pool2d(kernel_size, padding=padding, stride=stride)
+        output = input.avg_pool2d(
+            kernel_size, padding=padding, stride=stride, ceil_mode=ceil_mode
+        )
 
         # store information for backward pass:
         ctx.save_multiple_for_backward(
@@ -1341,7 +1343,6 @@ class AutogradAvgPool2D(AutogradFunction):
                 padding=padding,
                 output_padding=grad_input_padding,
                 groups=in_channels,
-                dilation=1,
             )
 
         return torch.conv_transpose2d(
@@ -1352,14 +1353,22 @@ class AutogradAvgPool2D(AutogradFunction):
             padding=padding,
             output_padding=grad_input_padding,
             groups=in_channels,
-            dilation=1,
         )
 
 
 @register_function("max_pool2d")
 class AutogradMaxPool2D(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, kernel_size, padding=0, stride=None, return_indices=False):
+    def forward(
+        ctx,
+        input,
+        kernel_size,
+        padding=0,
+        stride=None,
+        dilation=1,
+        ceil_mode=False,
+        return_indices=False,
+    ):
 
         # preprocess inputs:
         if stride is None:
@@ -1368,16 +1377,23 @@ class AutogradMaxPool2D(AutogradFunction):
             stride = (stride, stride)
         if isinstance(padding, (int, float)):
             padding = (padding, padding)
+        if isinstance(dilation, (int, float)):
+            dilation = (dilation, dilation)
 
         # perform max pooling:
         # Note return_indices is required to be True to computing backward.
         output, indices = input.max_pool2d(
-            kernel_size, padding=padding, stride=stride, return_indices=True
+            kernel_size,
+            padding=padding,
+            stride=stride,
+            dilation=dilation,
+            ceil_mode=ceil_mode,
+            return_indices=True,
         )
 
         # store information for backward pass and return:
         ctx.save_multiple_for_backward(
-            (input.size(), indices, kernel_size, padding, stride)
+            (input.size(), indices, kernel_size, padding, stride, dilation, ceil_mode)
         )
         if return_indices:
             ctx.mark_non_differentiable(indices)
@@ -1387,13 +1403,23 @@ class AutogradMaxPool2D(AutogradFunction):
 
     @staticmethod
     def backward(ctx, grad_output):
-        output_size, indices, kernel_size, padding, stride = ctx.saved_tensors
+        (
+            output_size,
+            indices,
+            kernel_size,
+            padding,
+            stride,
+            dilation,
+            ceil_mode,
+        ) = ctx.saved_tensors
         assert padding[0] == padding[1], "padding must be same in all axes"
         return grad_output._max_pool2d_backward(
             indices,
             kernel_size,
             padding=padding,
             stride=stride,
+            dilation=dilation,
+            ceil_mode=ceil_mode,
             output_size=output_size,
         )
 
