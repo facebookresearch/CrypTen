@@ -10,8 +10,9 @@ __version__ = "0.1.0"
 import copy
 import warnings
 
-import crypten.common
+import crypten.common  # noqa: F401
 import crypten.communicator as comm
+import crypten.models  # noqa: F401
 import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
 import crypten.optim  # noqa: F401

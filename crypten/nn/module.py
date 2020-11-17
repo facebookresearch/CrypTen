@@ -54,7 +54,7 @@ class Module:
         self.training = mode
 
         # Recursively set train mode
-        for module in self.modules():
+        for module in self._modules.values():
             module.train(mode=mode)
         return self
 
@@ -72,11 +72,19 @@ class Module:
         for _, module in self.named_modules():
             yield module
 
-    def named_modules(self):
+    def named_modules(self, memo=None, prefix=""):
         """Returns iterator over named modules (non-recursively)."""
-        # TODO: Add option to do this recursively, akin to PyTorch.
-        for name, module in self._modules.items():
-            yield name, module
+        if memo is None:
+            memo = set()
+        if self not in memo:
+            memo.add(self)
+            yield prefix, self
+            for name, module in self._modules.items():
+                if module is None:
+                    continue
+                submodule_prefix = prefix + ("." if prefix else "") + name
+                for m in module.named_modules(memo, submodule_prefix):
+                    yield m
 
     def register_parameter(self, name, param, requires_grad=True):
         """
@@ -140,7 +148,7 @@ class Module:
             param_name = name if prefix is None else prefix + "." + name
             yield param_name, param
         if recurse:
-            for module_name, module in self.named_modules():
+            for module_name, module in self._modules.items():
                 pre = module_name if prefix is None else prefix + "." + module_name
                 yield from module.named_parameters(recurse=recurse, prefix=pre)
 
@@ -177,7 +185,7 @@ class Module:
                 module.state_dict(destination, prefix + name + ".", keep_vars=keep_vars)
         return destination
 
-    def _load_from_state_dict(self, state_dict, prefix, strict):
+    def _load_from_state_dict_crypten(self, state_dict, prefix, strict):
         """
         Copies parameters and buffers from `state_dict` into only this module
         but not its children. This is called on every submodule in the
@@ -185,10 +193,9 @@ class Module:
         """
 
         # get state dict for just the current module (without children)
-        local_named_params = itertools.chain(
-            self.named_parameters(), self.named_buffers()
-        )
-        local_state = {key: val for key, val in local_named_params if val is not None}
+        local_state = {
+            key: val for key, val in self.named_parameters() if val is not None
+        }
 
         # in strict mode, check for missing keys in the state_dict:
         if strict:
@@ -232,7 +239,7 @@ class Module:
         children. If `strict` is `True`, then the keys of `state_dict` must
         exactly match the keys returned by this module's `state_dict` function.
         """
-
+        strict = False
         # check version of state_dict:
         if strict:
             metadata = getattr(state_dict, "_metadata", None)
@@ -251,8 +258,8 @@ class Module:
             """
             Closure that performs the loading of a module recursively.
             """
-            module._load_from_state_dict(state_dict, prefix, strict)
-            for name, child in module.named_modules():
+            module._load_from_state_dict_crypten(state_dict, prefix, strict)
+            for name, child in module._modules.items():
                 if child is not None:
                     load(child, prefix + name + ".")
 
@@ -329,7 +336,7 @@ class Module:
             buffer_name = name if prefix is None else prefix + "." + name
             yield buffer_name, buffer
         if recurse:
-            for module_name, module in self.named_modules():
+            for module_name, module in self._modules.items():
                 pre = module_name if prefix is None else prefix + "." + module_name
                 yield from module.named_buffers(recurse=recurse, prefix=pre)
 
@@ -394,7 +401,7 @@ class Module:
 
     def _apply(self, fn):
         """Applies a function recursively on all modules."""
-        for module in self.modules():
+        for module in self._modules.values():
             module._apply(fn)
         fn(self)
         return self
@@ -615,11 +622,17 @@ class Sequential(Graph):
                 "pass unpacked arguments (e.g. Sequential(*my_modules))."
             )
             module_list = module_list[0]
-        num_modules = len(module_list)
+
+        input_name = "input"
         for idx, module in enumerate(module_list):
-            module_name = "output" if idx + 1 == num_modules else "module_%d" % idx
-            input_name = "input" if idx == 0 else "module_%d" % (idx - 1)
-            self.add_module(module_name, module, [input_name])
+            if isinstance(module, OrderedDict):
+                for key, val in module.items():
+                    self.add_module(key, val, [input_name])
+                    input_name = key
+            else:
+                module_name = str(idx)
+                input_name = "input" if idx == 0 else str(idx - 1)
+                self.add_module(module_name, module, [input_name])
 
 
 class ModuleDict(Module):
@@ -1625,15 +1638,6 @@ class Conv2d(Module):
     ):
         # check inputs:
         super().__init__()
-        if isinstance(kernel_size, (list, tuple)):
-            assert _all_the_same(kernel_size), "only square kernels are supported"
-            kernel_size = kernel_size[0]
-        if isinstance(stride, (list, tuple)):
-            assert _all_the_same(stride), "stride must be the same in each dimension"
-            stride = stride[0]
-        if isinstance(padding, (list, tuple)):
-            assert _all_the_same(padding), "padding must be the same in each dimension"
-            padding = padding[0]
 
         # initialize model parameters:
         pytorch_module = torch.nn.Conv2d(
@@ -1649,6 +1653,8 @@ class Conv2d(Module):
         self.register_parameter("weight", pytorch_module.weight)
         if bias:
             self.register_parameter("bias", pytorch_module.bias)
+        else:
+            self.bias = pytorch_module.bias
 
         # set other instance fields:
         self.stride = stride
@@ -1664,7 +1670,7 @@ class Conv2d(Module):
             dilation=self.dilation,
             groups=self.groups,
         )
-        if hasattr(self, "bias"):
+        if hasattr(self, "bias") and self.bias is not None:
             x = x.add(self.bias.unsqueeze(-1).unsqueeze(-1))
         return x
 
