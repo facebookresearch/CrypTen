@@ -125,8 +125,18 @@ pip install -r requirements.examples.txt
    makes it easy to train neural networks in CrypTen.
 
 
-## Documentation
-CrypTen is documented [here](https://crypten.readthedocs.io/en/latest/)
+## Documentation and citing
+CrypTen is documented [here](https://crypten.readthedocs.io/en/latest/).
+
+The protocols and design protocols are described in [this paper](https://lvdmaaten.github.io/publications/papers/crypten.pdf). If you want to cite CrypTen in your papers (much appreciated!), you can cite it as follows:
+```
+@inproceedings{crypten2020,
+  author={B. Knott and S. Venkataraman and A.Y. Hannun and S. Sengupta and M. Ibrahim and L.J.P. van der Maaten},
+  title={CrypTen: Secure Multi-Party Computation Meets Machine Learning},
+  booktitle={Proceedings of the NeurIPS Workshop on Privacy-Preserving Machine Learning},
+  year={2020},
+}
+```
 
 ## Join the CrypTen community
 Please contact [us](mailto:ssengupta@fb.com) to join the CrypTen community on [Slack](https://cryptensor.slack.com)
