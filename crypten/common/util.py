@@ -49,9 +49,39 @@ def count_wraps(share_list):
     return result
 
 
-def pool_reshape(input, kernel_size, padding=None, stride=None, pad_value=0):
+def _pooling_output_shape(
+    input_size, kernel_size, pad_l, pad_r, stride, dilation, ceil_mode
+):
+    """
+    Generates output shape along a single dimension following conventions here:
+    https://github.com/pytorch/pytorch/blob/b0424a895c878cb865947164cb0ce9ce3c2e73ef/aten/src/ATen/native/Pool.h#L24-L38
+    """
+    numerator = input_size + pad_l + pad_r - dilation * (kernel_size - 1) - 1
+    if ceil_mode:
+        numerator += stride - 1
+
+    output_size = numerator // stride + 1
+
+    # ensure that the last pooling starts inside the image
+    # needed to avoid problems in ceil mode
+    if ceil_mode and (output_size - 1) * stride >= input_size + pad_l:
+        output_size -= 1
+
+    return output_size
+
+
+def pool2d_reshape(
+    input,
+    kernel_size,
+    padding=None,
+    stride=None,
+    dilation=1,
+    ceil_mode=False,
+    pad_value=0,
+):
     """Rearrange a 4-d tensor so that each kernel is represented by each row"""
-    # Setup kernel / stride values
+
+    # Setup kernel / stride / dilation values
     k = kernel_size
     if isinstance(k, int):
         k = (k, k)
@@ -61,6 +91,10 @@ def pool_reshape(input, kernel_size, padding=None, stride=None, pad_value=0):
         s = k
     elif isinstance(s, int):
         s = (s, s)
+
+    d = dilation
+    if isinstance(d, int):
+        d = (d, d)
 
     # Assert input parameters are correct type / size
     assert isinstance(k, tuple), "kernel_size must be an int or tuple"
@@ -75,18 +109,31 @@ def pool_reshape(input, kernel_size, padding=None, stride=None, pad_value=0):
         padding = (padding, padding) if isinstance(padding, int) else padding
         assert len(padding) == 2, "Padding must be an integer or a pair"
         padding = (padding[0], padding[0], padding[1], padding[1])
-        input = torch.nn.functional.pad(input, padding, value=pad_value)
+    else:
+        padding = (0, 0, 0, 0)
 
     # Compute output size based on parameters
     n = input.size()[:-2]
-    h = (input.size(-2) - k[0]) // s[0] + 1
-    w = (input.size(-1) - k[1]) // s[1] + 1
+    h = _pooling_output_shape(
+        input.size(-2), k[0], padding[0], padding[1], s[0], d[0], ceil_mode
+    )
+    w = _pooling_output_shape(
+        input.size(-1), k[1], padding[2], padding[3], s[1], d[1], ceil_mode
+    )
+
     out_size = tuple(n + (h, w))
 
+    input = torch.nn.functional.pad(input, padding, value=pad_value)
+    if ceil_mode:
+        update_pad = [0, 0, 0, 0]
+        update_pad[3] = h * s[0] + (k[0] - 1) * d[0] - input.size(-2)
+        update_pad[1] = w * s[1] + (k[1] - 1) * d[1] - input.size(-1)
+        input = torch.nn.functional.pad(input, tuple(update_pad), value=pad_value)
+
     # Reshape input to arrange kernels to be represented by rows
-    kernel_indices = torch.tensor(range(k[1]), device=input.device)
+    kernel_indices = torch.tensor(range(0, k[1] * d[1], d[1]), device=input.device)
     kernel_indices = torch.cat(
-        [kernel_indices + i * input.size(-1) for i in range(k[0])]
+        [kernel_indices + i * input.size(-1) for i in range(0, k[0] * d[0], d[0])]
     )
     kernel_indices = torch.stack([kernel_indices + i * s[1] for i in range(w)])
 

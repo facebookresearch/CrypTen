@@ -1925,16 +1925,21 @@ class _Pool2d(Module):
         https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
     """
 
-    def __init__(self, pool_type, kernel_size, stride=None, padding=0):
+    def __init__(self, pool_type, kernel_size, stride=None, padding=0, ceil_mode=False):
         super().__init__()
         self.pool_type = pool_type
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
+        self.ceil_mode = ceil_mode
 
     def forward(self, x):
         args = [self.kernel_size]
-        kwargs = {"stride": self.stride, "padding": self.padding}
+        kwargs = {
+            "stride": self.stride,
+            "padding": self.padding,
+            "ceil_mode": self.ceil_mode,
+        }
         if self.pool_type == "average":
             return x.avg_pool2d(*args, **kwargs)
         elif self.pool_type == "max":
@@ -1954,13 +1959,16 @@ class _Pool2d(Module):
         assert _all_the_same(
             attributes["strides"]
         ), "stride must be the same in each dimension"
-        assert _all_the_same(
-            attributes["pads"]
-        ), "padding must be the same in each dimension"
+        attributes["ceil_mode"] = attributes.get("ceil_mode", 0)
+        attributes["ceil_mode"] = attributes["ceil_mode"] > 0
 
         # initialize module
         args = [attributes["kernel_shape"][0]]
-        kwargs = {"stride": attributes["strides"][0], "padding": attributes["pads"][0]}
+        kwargs = {
+            "stride": attributes["strides"][0],
+            "padding": attributes["pads"][0],
+            "ceil_mode": attributes["ceil_mode"],
+        }
         if pool_type == "average":
             return AvgPool2d(*args, **kwargs)
         elif pool_type == "max":
@@ -2012,8 +2020,10 @@ class AvgPool2d(_Pool2d):
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
     """
 
-    def __init__(self, kernel_size, stride=None, padding=0):
-        super().__init__("average", kernel_size, stride=stride, padding=padding)
+    def __init__(self, kernel_size, stride=None, padding=0, ceil_mode=False):
+        super().__init__(
+            "average", kernel_size, stride=stride, padding=padding, ceil_mode=ceil_mode
+        )
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
@@ -2027,8 +2037,10 @@ class MaxPool2d(_Pool2d):
     Module that performs 2D max pooling (see :meth:`AvgPool2d`)
     """
 
-    def __init__(self, kernel_size, stride=None, padding=0):
-        super().__init__("max", kernel_size, stride=stride, padding=padding)
+    def __init__(self, kernel_size, stride=None, padding=0, ceil_mode=False):
+        super().__init__(
+            "max", kernel_size, stride=stride, padding=padding, ceil_mode=ceil_mode
+        )
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
