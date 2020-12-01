@@ -18,9 +18,9 @@ import torch
 import torch.nn.functional as F
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
+from crypten.common.util import pool2d_reshape
 from crypten.mpc import MPCTensor, ptype as Ptype
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
-from crypten.common.util import pool2d_reshape
 
 
 class TestMPC(object):
