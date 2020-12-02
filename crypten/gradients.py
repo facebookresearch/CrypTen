@@ -218,9 +218,9 @@ class AutogradView(AutogradFunction):
 @register_function("reshape")
 class AutogradReshape(AutogradFunction):
     @staticmethod
-    def forward(ctx, input, shape):
+    def forward(ctx, input, *shape):
         ctx.save_for_backward(input.size())
-        return input.reshape(shape)
+        return input.reshape(*shape)
 
     @staticmethod
     def backward(ctx, grad_output):
