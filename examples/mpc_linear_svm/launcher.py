@@ -23,8 +23,6 @@ import argparse
 import logging
 import os
 
-from examples.multiprocess_launcher import MultiProcessLauncher
-
 
 parser = argparse.ArgumentParser(description="CrypTen Linear SVM Training")
 parser.add_argument(
@@ -82,6 +80,8 @@ def _run_experiment(args):
 def main(run_experiment):
     args = parser.parse_args()
     if args.multiprocess:
+        from examples.multiprocess_launcher import MultiProcessLauncher
+
         launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
         launcher.start()
         launcher.join()
