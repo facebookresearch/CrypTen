@@ -24,7 +24,6 @@ import paramiko
 
 
 def run_command(machine_ip, client, cmd, environment=None, inputs=None):
-    print(machine_ip, client)
     stdin, stdout, stderr = client.exec_command(
         cmd, get_pty=True, environment=environment
     )
