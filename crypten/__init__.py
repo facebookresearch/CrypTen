@@ -330,7 +330,10 @@ def load(f, load_closure=torch.load, **kwargs):
         to the closure.
     """
     # TODO: Add support for loading from correct device (kwarg: map_location=device)
-    obj = load_closure(f, **kwargs)
+    if load_closure == torch.load:
+        obj = load_closure(f)
+    else:
+        obj = load_closure(f, **kwargs)
     return obj
 
 
