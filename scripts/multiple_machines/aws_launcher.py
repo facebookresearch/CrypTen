@@ -26,7 +26,7 @@ Then the following command lines can run the mpc_linear_svm example on the two
 EC2 instances created above:
 
 $ python3 crypten/scripts/aws_launcher.py \
-    --SSH_keys=/home/$USER/.aws/fair-$USER.pem \
+    --ssh_key_file=/home/$USER/.aws/fair-$USER.pem \
     --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
     --aux_files=crypten/examples/mpc_linear_svm/mpc_linear_svm.py \
     crypten/examples/mpc_linear_svm/launcher.py \
@@ -42,7 +42,7 @@ to provide ssh_key_file for each instance:
 
 $ python3 crypten/scripts/aws_launcher.py \
     --regions=us-east-1,us-west-1 \
-    --SSH_keys=/home/$USER/.aws/east.pem,/home/$USER/.aws/west.pem  \
+    --ssh_key_file=/home/$USER/.aws/east.pem,/home/$USER/.aws/west.pem  \
     --instances=i-038dd14b9383b9d79,i-08f057b9c03d4a916 \
     --aux_files=crypten/examples/mpc_linear_svm/mpc_linear_svm.py \
     crypten/examples/mpc_linear_svm/launcher.py \
@@ -55,17 +55,13 @@ $ python3 crypten/scripts/aws_launcher.py \
 """
 
 import configparser
-import os
-import sys
-import time
 import warnings
-from argparse import REMAINDER, ArgumentParser
 from pathlib import Path
 
 import boto3
-import paramiko
 
 import common
+
 
 def get_instances(ec2, instance_ids):
     instances = list(
@@ -157,7 +153,7 @@ def main():
         )
         client_dict[instance.public_ip_address] = client
 
-    remote_dir, script_basename = common.upload_files_to_machines(client_dict, ars.file_paths, args.script)
+    remote_dir, script_basename = common.upload_files_to_machines(client_dict, args.aux_files, args.script)
 
     environment = {
         "WORLD_SIZE": str(world_size),
@@ -166,7 +162,15 @@ def main():
         "MASTER_PORT": str(args.master_port),
     }
 
-    common.run_script_parallel(environment)
+    kwargs = {
+        "environment": environment,
+        "client_dict": client_dict,
+        "remote_dir": remote_dir,
+        "script_basename": script_basename,
+        "script_args": args.script_args,
+        "prepare_cmd": args.prepare_cmd
+    }
+    common.run_script_parallel(**kwargs)
 
     common.cleanup(client_dict, remote_dir)
 
@@ -181,6 +185,13 @@ def get_parser():
         default=False,
         help="Only show public IPs of the given instances."
         "No other actions will be done",
+    )
+
+    parser.add_argument(
+        "--credentials",
+        type=str,
+        default=f"{Path.home()}/.aws/credentials",
+        help="Credentials used to access the machines",
     )
 
     parser.add_argument("--regions", type=str, default="us-west-2", help="AWS Region")

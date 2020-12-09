@@ -20,17 +20,13 @@ python3 crypten/scripts/aws_launcher.py \
         --skip_plaintext
 """
 
-import concurrent.futures
 import common
-import configparser
 import warnings
 
-def main():
-    parser = common.get_parser()
-    args = parser.parse_args()
 
-    cf = configparser.ConfigParser()
-    cf.read(args.credentials)
+def main():
+    parser = get_parser()
+    args = parser.parse_args()
 
     warnings.filterwarnings(
         "ignore", category=ResourceWarning, message="unclosed.*<ssl.SSLSocket.*>"
@@ -75,6 +71,17 @@ def main():
 
     common.cleanup(client_dict, remote_dir)
 
+
+def get_parser():
+    parser = common.get_parser()
+    parser.add_argument(
+        "--ip_addresses",
+        type=str,
+        required=True,
+        help="The comma-separated ip addresses for the machines",
+    )
+
+    return parser
 
 if __name__ == "__main__":
     main()

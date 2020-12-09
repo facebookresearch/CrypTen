@@ -10,16 +10,12 @@ This file contains helper function to run MPC over multiple machines
 """
 
 import concurrent.futures
-import configparser
-import os
 import sys
 import time
 import uuid
-import warnings
 from argparse import REMAINDER, ArgumentParser
 from pathlib import Path
 
-import boto3
 import paramiko
 
 
@@ -93,14 +89,14 @@ def upload_files_to_machines(client_dict, aux_files, script):
 
     return remote_dir, script_basename
 
+
 def run_script_parallel(
         environment,
         client_dict,
         remote_dir,
         script_basename,
         script_args=None,
-        prepare_cmd=None
-    ):
+        prepare_cmd=None):
 
     world_size = len(client_dict)
     with concurrent.futures.ThreadPoolExecutor(max_workers=world_size) as executor:
@@ -171,31 +167,6 @@ def cleanup(client_dict, remote_dir):
         client.close()
 
 
-def run_command(machine_ip, client, cmd, environment=None, inputs=None):
-    stdin, stdout, stderr = client.exec_command(
-        cmd, get_pty=True, environment=environment
-    )
-    if inputs:
-        for inp in inputs:
-            stdin.write(inp)
-
-    def read_lines(fin, fout, line_head):
-        line = ""
-        while not fin.channel.exit_status_ready():
-            line += fin.read(1).decode("utf8")
-            if line.endswith("\n"):
-                print(f"{line_head}{line[:-1]}", file=fout)
-                line = ""
-        if line:
-            # print what remains in line buffer, in case fout does not
-            # end with '\n'
-            print(f"{line_head}{line[:-1]}", file=fout)
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as printer:
-        printer.submit(read_lines, stdout, sys.stdout, f"[{machine_ip} STDOUT] ")
-        printer.submit(read_lines, stderr, sys.stderr, f"[{machine_ip} STDERR] ")
-
-
 def get_parser():
     """
     Helper function parsing the command line options
@@ -204,20 +175,6 @@ def get_parser():
         description="PyTorch distributed launcher "
         "helper utilty that will spawn up "
         "parties for MPC scripts on different machines"
-    )
-
-    parser.add_argument(
-        "--credentials",
-        type=str,
-        default=f"{Path.home()}/.aws/credentials",
-        help="Credentials used to access the machines",
-    )
-
-    parser.add_argument(
-        "--ip_addresses",
-        type=str,
-        required=True,
-        help="The comma-separated ip addresses for the machines",
     )
 
     parser.add_argument(
@@ -281,7 +238,3 @@ def get_parser():
     # the rest of the arguments are passed to the script
     parser.add_argument("script_args", nargs=REMAINDER)
     return parser
-
-
-if __name__ == "__main__":
-    main()
