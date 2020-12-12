@@ -64,7 +64,7 @@ class FixedPointEncoder:
         assert is_int_tensor(tensor), "input must be a LongTensor"
         if self._scale > 1:
             correction = (tensor < 0).long()
-            dividend = tensor / self._scale - correction
+            dividend = tensor // self._scale - correction
             remainder = tensor % self._scale
             remainder += (remainder == 0).long() * self._scale * correction
 
