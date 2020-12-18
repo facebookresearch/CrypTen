@@ -19,7 +19,7 @@ import torch.distributed as dist
 
 
 def get_random_test_tensor(
-    max_value=6, min_value=None, size=(1, 5), is_float=False, ex_zero=False
+    max_value=6, min_value=None, size=(1, 5), is_float=False, ex_zero=False, device=None
 ):
     """Generates random tensor for testing
 
@@ -35,10 +35,13 @@ def get_random_test_tensor(
     if min_value is None:
         min_value = -max_value
     if is_float:
-        tensor = torch.rand(torch.Size(size)) * (max_value - min_value) + min_value
+        tensor = (
+            torch.rand(torch.Size(size), device=device) * (max_value - min_value)
+            + min_value
+        )
     else:
         tensor = torch.randint(
-            min_value, max_value, torch.Size(size), dtype=torch.int64
+            min_value, max_value, torch.Size(size), dtype=torch.int64, device=device
         )
     if ex_zero:
         # replace 0 with 1
@@ -79,6 +82,7 @@ def get_random_linear(in_channels, out_channels):
 
 class MultiProcessTestCase(unittest.TestCase):
     MAIN_PROCESS_RANK = -1
+    DEFAULT_DEVICE = "cpu"
 
     @property
     def world_size(self):
@@ -109,6 +113,7 @@ class MultiProcessTestCase(unittest.TestCase):
     def __init__(self, methodName):
         super().__init__(methodName)
 
+        self.device = self.DEFAULT_DEVICE
         self.rank = self.MAIN_PROCESS_RANK
         self.mp_context = multiprocessing.get_context("spawn")
 
@@ -143,7 +148,7 @@ class MultiProcessTestCase(unittest.TestCase):
             "WORLD_SIZE": self.world_size,
             "RANK": self.world_size,
             "RENDEZVOUS": "file://%s" % self.file,
-            "BAXKEND": "gloo",
+            "BACKEND": "gloo",
         }
         for key, val in communicator_args.items():
             os.environ[key] = str(val)

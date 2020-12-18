@@ -5,15 +5,12 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import io
 
-import onnx
-import torch
-import torch.onnx.utils
-from onnx import numpy_helper
-
+from .init import *  # noqa: F403
 from .loss import BCELoss, BCEWithLogitsLoss, CrossEntropyLoss, L1Loss, MSELoss
 from .module import (
+    AdaptiveAvgPool2d,
+    AdaptiveMaxPool2d,
     Add,
     AvgPool2d,
     BatchNorm1d,
@@ -35,42 +32,42 @@ from .module import (
     Gather,
     GlobalAveragePool,
     Graph,
+    GroupNorm,
+    Hardtanh,
     Linear,
     LogSoftmax,
+    MatMul,
     MaxPool2d,
+    Mean,
     Module,
-    ReduceSum,
+    ModuleDict,
     ReLU,
+    ReLU6,
     Reshape,
     Sequential,
     Shape,
+    Sigmoid,
     Softmax,
     Squeeze,
     Sub,
+    Sum,
+    Transpose,
     Unsqueeze,
-    _BatchNorm,
-    _ConstantPad,
-    _Pool2d,
 )
-from .onnx_helper import (
-    _update_onnx_symbolic_registry,
-    get_attribute_value,
-    get_parameter_name,
-)
+from .onnx_converter import TF_AND_TF2ONNX, from_pytorch, from_tensorflow
 
 
-# expose contents of package:
+# expose contents of package
 __all__ = [
-    "MSELoss",
-    "L1Loss",
-    "BCELoss",
-    "BCEWithLogitsLoss",
+    "AdaptiveAvgPool2d",
+    "AdaptiveMaxPool2d",
     "Add",
     "AvgPool2d",
-    "_BatchNorm",
     "BatchNorm1d",
     "BatchNorm2d",
     "BatchNorm3d",
+    "BCELoss",
+    "BCEWithLogitsLoss",
     "Concat",
     "Constant",
     "ConstantPad1d",
@@ -85,165 +82,34 @@ __all__ = [
     "DropoutNd",
     "Exp",
     "Flatten",
+    "from_pytorch",
+    "from_tensorflow",
     "Gather",
     "GlobalAveragePool",
     "Graph",
+    "GroupNorm",
+    "Hardtanh",
+    "L1Loss",
     "Linear",
     "LogSoftmax",
+    "MatMul",
     "MaxPool2d",
+    "Mean",
     "Module",
-    "_Pool2d",
+    "ModuleDict",
+    "MSELoss",
     "ReLU",
-    "ReduceSum",
+    "ReLU6",
     "Reshape",
     "Sequential",
     "Shape",
+    "Sigmoid",
     "Softmax",
     "Squeeze",
     "Sub",
+    "Sum",
+    "TF_AND_TF2ONNX",
+    "Transpose",
     "Unsqueeze",
+    "init",
 ]
-
-# mapping from ONNX to crypten.nn:
-ONNX_TO_CRYPTEN = {
-    "Add": Add,
-    "AveragePool": AvgPool2d,
-    "BatchNormalization": _BatchNorm,
-    "Concat": Concat,
-    "Constant": Constant,
-    "Dropout": Dropout,
-    "Dropout2d": Dropout2d,
-    "Dropout3d": Dropout3d,
-    "DropoutNd": DropoutNd,
-    "Exp": Exp,
-    "Flatten": Flatten,
-    "Gather": Gather,
-    "Gemm": Linear,
-    "GlobalAveragePool": GlobalAveragePool,
-    "LogSoftmax": LogSoftmax,
-    "MaxPool": MaxPool2d,
-    "Pad": _ConstantPad,
-    "Relu": ReLU,
-    "ReduceSum": ReduceSum,
-    "Reshape": Reshape,
-    "Shape": Shape,
-    "Softmax": Softmax,
-    "Squeeze": Squeeze,
-    "Sub": Sub,
-    "Unsqueeze": Unsqueeze,
-}
-
-
-def from_pytorch(pytorch_model, dummy_input):
-    """
-    Static function that converts a PyTorch model into a CrypTen model.
-    """
-    # Exporting model to ONNX graph:
-    # TODO: Currently export twice because the torch-to-ONNX symbolic registry
-    # only gets created on the first call.
-
-    # export first time so symbolic registry is created
-    f = io.BytesIO()
-    torch.onnx.export(
-        pytorch_model,
-        dummy_input,
-        f,
-        do_constant_folding=False,
-        export_params=True,
-        input_names=["input"],
-        output_names=["output"],
-        enable_onnx_checker=False,
-    )
-    # update ONNX symbolic registry with CrypTen-specific functions
-    _update_onnx_symbolic_registry()
-
-    # export again so the graph is created with CrypTen-specific registry
-    f = io.BytesIO()
-    torch.onnx.export(
-        pytorch_model,
-        dummy_input,
-        f,
-        do_constant_folding=False,
-        export_params=True,
-        input_names=["input"],
-        output_names=["output"],
-        enable_onnx_checker=False,
-    )
-    f.seek(0)
-
-    # construct CrypTen model:
-    crypten_model = from_onnx(f)
-
-    # make sure training / eval setting is copied:
-    crypten_model.train(mode=pytorch_model.training)
-    return crypten_model
-
-
-def from_onnx(onnx_string_or_file):
-    """
-    Constructs a CrypTen model or module from an ONNX Protobuf string or file.
-    """
-
-    # if input is file, read string:
-    if hasattr(onnx_string_or_file, "seek"):  # input is file-like
-        onnx_string_or_file.seek(0)
-        onnx_model = onnx.load(onnx_string_or_file)
-    else:
-        onnx_model = onnx.load_model_from_string(onnx_string_or_file)
-
-    # create dict of all parameters, inputs, and outputs:
-    all_parameters = {
-        t.name: torch.from_numpy(numpy_helper.to_array(t))
-        for t in onnx_model.graph.initializer
-    }
-    input_names = [input.name for input in onnx_model.graph.input]
-    output_names = [output.name for output in onnx_model.graph.output]
-    input_names = [
-        name for name in input_names if name not in all_parameters.keys()
-    ]  # parameters are not inputs
-    assert len(input_names) == 1, "number of inputs should be 1"
-    assert len(output_names) == 1, "number of outputs should be 1"
-
-    # create graph by looping over nodes:
-    crypten_model = Graph(input_names[0], output_names[0])
-    for node in onnx_model.graph.node:
-        # retrieve inputs, outputs, attributes, and parameters for this node:
-        node_output_name = list(node.output)[0]
-        node_input_names = list(node.input)  # includes parameters
-        parameters = {
-            get_parameter_name(name): all_parameters[name]
-            for name in node_input_names
-            if name in all_parameters and name not in input_names
-        }  # all the parameters for the current module
-        node_input_names = [
-            name
-            for name in node_input_names
-            if get_parameter_name(name) not in parameters
-        ]
-        attributes = {attr.name: get_attribute_value(attr) for attr in node.attribute}
-
-        # get operator type:
-        if node.op_type == "Conv":
-            dims = len(attributes["kernel_shape"])
-            if dims == 1:
-                cls = Conv1d
-            elif dims == 2:
-                cls = Conv2d
-            else:
-                raise ValueError("CrypTen does not support op Conv%dd." % dims)
-        else:
-            if node.op_type not in ONNX_TO_CRYPTEN:
-                raise ValueError("CrypTen does not support op %s." % node.op_type)
-            cls = ONNX_TO_CRYPTEN[node.op_type]
-
-        # add CrypTen module to graph:
-        crypten_module = cls.from_onnx(parameters=parameters, attributes=attributes)
-        crypten_model.add_module(node_output_name, crypten_module, node_input_names)
-
-    # return model (or module when there is only one module):
-    num_modules = len(list(crypten_model.modules()))
-    if num_modules == 1:
-        for crypten_module in crypten_model.modules():
-            return crypten_module
-    else:
-        return crypten_model

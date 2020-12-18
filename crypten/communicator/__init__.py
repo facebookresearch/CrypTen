@@ -39,5 +39,10 @@ def uninit():
     __use_threads = False
 
 
+def is_initialized():
+    cls = InProcessCommunicator if __use_threads else DistributedCommunicator
+    return cls.is_initialized()
+
+
 # expose classes and functions in package:
-__all__ = ["Communicator", "DistributedCommunicator", "uninit", "get"]
+__all__ = ["Communicator", "DistributedCommunicator", "get", "uninit", "is_initialized"]

@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import itertools
 import logging
 import unittest
 from test.multiprocess_test_case import (
@@ -24,7 +25,7 @@ from crypten.encoder import FixedPointEncoder
 
 class TestNN(object):
     """
-        This class tests the crypten.nn package.
+    This class tests the crypten.nn package.
     """
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
@@ -123,7 +124,6 @@ class TestNN(object):
         """
         Tests the global average pool module with fixed 4-d test tensors
         """
-
         # construct basic input
         base_tensor = torch.Tensor([[2, 1], [3, 0]])
         all_init = []
@@ -202,7 +202,7 @@ class TestNN(object):
                     all_ones = torch.ones(reference.size())
                     ref_grad = plaintext_output.where(plaintext_output == 0, all_ones)
                     ref_grad_input = ref_grad / (1 - prob)
-                    encr_output.backward()
+                    encr_output.sum().backward()
                     if compute_gradients:
                         self._check(
                             encr_input.grad,
@@ -227,7 +227,7 @@ class TestNN(object):
 
         # input arguments for modules and input sizes:
         no_input_modules = ["Constant"]
-        binary_modules = ["Add", "Sub", "Concat"]
+        binary_modules = ["Add", "Sub", "Concat", "MatMul"]
         ex_zero_modules = []
         module_args = {
             "Add": (),
@@ -235,11 +235,14 @@ class TestNN(object):
             "Constant": (1.2,),
             "Exp": (),
             "Gather": (0,),
-            "Reshape": (),
-            "ReduceSum": ([0], True),
+            "MatMul": (),
+            "Mean": ([0], True),
+            "Reshape": ((2, 2),),
             "Shape": (),
             "Sub": (),
+            "Sum": ([0], True),
             "Squeeze": (0,),
+            "Transpose": ([1, 3, 0, 2],),
             "Unsqueeze": (0,),
         }
         module_lambdas = {
@@ -250,15 +253,20 @@ class TestNN(object):
             "Gather": lambda x: torch.from_numpy(
                 x[0].numpy().take(x[1], module_args["Gather"][0])
             ),
-            "ReduceSum": lambda x: torch.sum(
-                x,
-                dim=module_args["ReduceSum"][0],
-                keepdim=(module_args["ReduceSum"][1] == 1),
+            "MatMul": lambda x: torch.matmul(x[0], x[1]),
+            "Mean": lambda x: torch.mean(
+                x, dim=module_args["Mean"][0], keepdim=(module_args["Mean"][1] == 1)
             ),
-            "Reshape": lambda x: x[0].reshape(x[1].tolist()),
+            "Reshape": lambda x: x[0].reshape(module_args["Reshape"][0]),
             "Shape": lambda x: torch.tensor(x.size()).float(),
             "Sub": lambda x: x[0] - x[1],
+            "Sum": lambda x: torch.sum(
+                x, dim=module_args["Sum"][0], keepdim=(module_args["Sum"][1] == 1)
+            ),
             "Squeeze": lambda x: x.squeeze(module_args["Squeeze"][0]),
+            "Transpose": lambda x: torch.from_numpy(
+                x.numpy().transpose(module_args["Transpose"][0])
+            ),
             "Unsqueeze": lambda x: x.unsqueeze(module_args["Unsqueeze"][0]),
         }
         input_sizes = {
@@ -267,17 +275,17 @@ class TestNN(object):
             "Constant": (1,),
             "Exp": (10, 10, 10),
             "Gather": (4, 4, 4, 4),
+            "MatMul": (4, 4),
+            "Mean": (3, 3, 3),
             "Reshape": (1, 4),
-            "ReduceSum": (3, 3, 3),
             "Shape": (8, 3, 2),
             "Sub": (10, 12),
+            "Sum": (3, 3, 3),
             "Squeeze": (1, 12, 6),
+            "Transpose": (1, 2, 3, 4),
             "Unsqueeze": (8, 3),
         }
-        additional_inputs = {
-            "Gather": torch.tensor([[1, 2], [0, 3]]),
-            "Reshape": torch.tensor([2, 2]),
-        }
+        additional_inputs = {"Gather": torch.tensor([[1, 2], [0, 3]])}
         module_attributes = {
             # each attribute has two parameters: the name, and a bool indicating
             # whether the value should be wrapped into a list when the module is created
@@ -286,11 +294,14 @@ class TestNN(object):
             "Concat": [("axis", False)],
             "Constant": [("value", False)],
             "Gather": [("axis", False)],
-            "ReduceSum": [("axes", False), ("keepdims", False)],
+            "MatMul": [],
+            "Mean": [("axes", False), ("keepdims", False)],
             "Reshape": [],
             "Shape": [],
             "Sub": [],
+            "Sum": [("axes", False), ("keepdims", False)],
             "Squeeze": [("axes", True)],
+            "Transpose": [("perm", False)],
             "Unsqueeze": [("axes", True)],
         }
         # loop over all modules:
@@ -324,7 +335,11 @@ class TestNN(object):
                 if not isinstance(inputs, (list, tuple)):
                     inputs, encr_inputs = [inputs], [encr_inputs]
                 inputs.append(additional_inputs[module_name])
-                encr_inputs.append(crypten.cryptensor(inputs[-1]))
+                # encrypt only torch tensor inputs, not shapes
+                if torch.is_tensor(inputs[-1]):
+                    encr_inputs.append(crypten.cryptensor(inputs[-1]))
+                else:
+                    encr_inputs.append(inputs[-1])
 
             # compare model outputs:
             reference = module_lambdas[module_name](inputs)
@@ -340,10 +355,16 @@ class TestNN(object):
                 else:
                     local_attr[attr_name] = module_args[module_name][i]
 
-            # Update ReduceSum module attributes, since the module and from_onnx
-            # path are different
+            # Update ReduceSum/ReduceMean module attributes, since the module and
+            # from_onnx path are different
             if module_name == "ReduceSum":
                 local_attr["keepdims"] = 1 if module_args["ReduceSum"][1] is True else 0
+            if module_name == "ReduceMean":
+                local_attr["keepdims"] = (
+                    1 if module_args["ReduceMean"][1] is True else 0
+                )
+            if module_name == "Reshape":
+                local_attr["shape"] = module_args["Reshape"][0]
 
             # compare model outputs using the from_onnx static function
             module = getattr(crypten.nn, module_name).from_onnx(attributes=local_attr)
@@ -359,7 +380,8 @@ class TestNN(object):
 
         # input arguments for modules and input sizes:
         module_args = {
-            "AdaptiveAvgPool2d": (2,),
+            "AdaptiveAvgPool2d": ((7, 7),),
+            "AdaptiveMaxPool2d": ((3, 3),),
             "AvgPool2d": (2,),
             # "BatchNorm1d": (400,),  # FIXME: Unit tests claim gradients are incorrect.
             # "BatchNorm2d": (3,),
@@ -369,14 +391,18 @@ class TestNN(object):
             "ConstantPad3d": (1, 0.0),
             "Conv1d": (3, 6, 5),
             "Conv2d": (3, 6, 5),
+            "Hardtanh": (-3, 1),
             "Linear": (400, 120),
             "MaxPool2d": (2,),
             "ReLU": (),
+            "ReLU6": (),
+            "Sigmoid": (),
             "Softmax": (0,),
             "LogSoftmax": (0,),
         }
         input_sizes = {
-            "AdaptiveAvgPool2d": (1, 3, 32, 32),
+            "AdaptiveAvgPool2d": (1, 2, 24, 24),
+            "AdaptiveMaxPool2d": (1, 3, 8, 8),
             "AvgPool2d": (1, 3, 32, 32),
             "BatchNorm1d": (8, 400),
             "BatchNorm2d": (8, 3, 32, 32),
@@ -386,80 +412,140 @@ class TestNN(object):
             "ConstantPad3d": (4, 2, 7),
             "Conv1d": (1, 3, 32),
             "Conv2d": (1, 3, 32, 32),
+            "Hardtanh": (1, 3, 32, 32),
             "Linear": (1, 400),
             "MaxPool2d": (1, 2, 32, 32),
             "ReLU": (1, 3, 32, 32),
+            "ReLU6": (1, 3, 32, 32),
+            "Sigmoid": (8, 3, 32, 32),
             "Softmax": (5, 5, 5),
             "LogSoftmax": (5, 5, 5),
         }
 
         # loop over all modules:
-        for module_name in module_args.keys():
-            for compute_gradients in [True, False]:
+        for module_name, from_pytorch, compute_gradients in itertools.product(
+            module_args.keys(), [False, True], [False, True]
+        ):
+            # generate inputs:
+            input = get_random_test_tensor(size=input_sizes[module_name], is_float=True)
+            input.requires_grad = True
+            encr_input = crypten.cryptensor(input)
+            encr_input.requires_grad = compute_gradients
 
-                # generate inputs:
-                input = get_random_test_tensor(
-                    size=input_sizes[module_name], is_float=True
+            kwargs = {"ceil_mode": True} if module_name == "MaxPool2d" else {}
+
+            # create PyTorch module:
+            args = module_args[module_name]
+            module = getattr(torch.nn, module_name)(*args, **kwargs)
+            module.train()
+
+            # create encrypted CrypTen module:
+            if from_pytorch:
+                encr_module = crypten.nn.from_pytorch(module, input)
+            else:
+                encr_module = getattr(crypten.nn, module_name)(*args, **kwargs)
+                for name, param in module.named_parameters():
+                    setattr(encr_module, name, param)
+
+            # check that module properly encrypts / decrypts and
+            # check that encrypting with current mode properly performs no-op
+            for encrypted in [False, True, True, False, True]:
+                encr_module.encrypt(mode=encrypted)
+                if encrypted:
+                    self.assertTrue(encr_module.encrypted, "module not encrypted")
+                else:
+                    self.assertFalse(encr_module.encrypted, "module encrypted")
+                for key in ["weight", "bias"]:
+                    if hasattr(module, key):  # if PyTorch model has key
+                        # find that key in the crypten.nn.Graph:
+                        if isinstance(encr_module, crypten.nn.Graph):
+                            for encr_node in encr_module.modules():
+                                if hasattr(encr_node, key):
+                                    encr_param = getattr(encr_node, key)
+                                    break
+
+                        # or get it from the crypten Module directly:
+                        else:
+                            encr_param = getattr(encr_module, key)
+
+                        # compare with reference:
+                        # NOTE: Because some parameters are initialized randomly
+                        # with different values on each process, we only want to
+                        # check that they are consistent with source parameter value
+                        reference = getattr(module, key)
+                        src_reference = comm.get().broadcast(reference, src=0)
+                        msg = "parameter %s in %s incorrect" % (key, module_name)
+                        if not encrypted:
+                            encr_param = crypten.cryptensor(encr_param, src=0)
+                        self._check(encr_param, src_reference, msg)
+
+            # compare model outputs:
+            self.assertTrue(encr_module.training, "training value incorrect")
+            reference = module(input)
+            encr_output = encr_module(encr_input)
+
+            msg = "from_pytorch" if from_pytorch else ""
+            self._check(encr_output, reference, f"{module_name} forward failed {msg}")
+
+            # test backward pass:
+            reference.sum().backward()
+            encr_output.sum().backward()
+            if compute_gradients:
+                self.assertIsNotNone(
+                    encr_input.grad, f"{module_name} grad failed to populate {msg}."
                 )
+                self._check(
+                    encr_input.grad,
+                    input.grad,
+                    f"{module_name} backward on input failed {msg}",
+                )
+            else:
+                self.assertIsNone(encr_input.grad)
+            for name, param in module.named_parameters():
+                encr_param = getattr(encr_module, name)
+                self._check(
+                    encr_param.grad,
+                    param.grad,
+                    f"{module_name} backward on {name} failed {msg}",
+                )
+
+    def test_linear(self):
+        """
+        Tests crypten.nn.Linear module.
+        """
+        dims = [(40, 80), (80, 1), (10, 10)]
+        sizes = [(1, 40), (4, 80), (6, 4, 2, 10)]
+        for compute_gradients in [True, False]:
+            for dim, size in zip(dims, sizes):
+                # generate inputs:
+                input = get_random_test_tensor(size=size, is_float=True)
                 input.requires_grad = True
                 encr_input = crypten.cryptensor(input)
                 encr_input.requires_grad = compute_gradients
 
                 # create PyTorch module:
-                module = getattr(torch.nn, module_name)(*module_args[module_name])
+                module = torch.nn.Linear(*dim)
                 module.train()
 
                 # create encrypted CrypTen module:
-                encr_module = crypten.nn.from_pytorch(module, input)
-
-                # check that module properly encrypts / decrypts and
-                # check that encrypting with current mode properly performs no-op
-                for encrypted in [False, True, True, False, True]:
-                    encr_module.encrypt(mode=encrypted)
-                    if encrypted:
-                        self.assertTrue(encr_module.encrypted, "module not encrypted")
-                    else:
-                        self.assertFalse(encr_module.encrypted, "module encrypted")
-                    for key in ["weight", "bias"]:
-                        if hasattr(module, key):  # if PyTorch model has key
-                            encr_param = None
-
-                            # find that key in the crypten.nn.Graph:
-                            if isinstance(encr_module, crypten.nn.Graph):
-                                for encr_node in encr_module.modules():
-                                    if hasattr(encr_node, key):
-                                        encr_param = getattr(encr_node, key)
-                                        break
-
-                            # or get it from the crypten Module directly:
-                            else:
-                                encr_param = getattr(encr_module, key)
-
-                            # compare with reference:
-                            # NOTE: Because some parameters are initialized randomly
-                            # with different values on each process, we only want to
-                            # check that they are consistent with source parameter value
-                            reference = getattr(module, key)
-                            src_reference = comm.get().broadcast(reference, src=0)
-                            msg = "parameter %s in %s incorrect" % (key, module_name)
-                            if not encrypted:
-                                encr_param = crypten.cryptensor(encr_param)
-                            self._check(encr_param, src_reference, msg)
+                encr_module = crypten.nn.Linear(*dim)
+                for n, p in module.named_parameters():
+                    p = comm.get().broadcast(p, src=0)
+                    encr_module.set_parameter(n, p)
+                encr_module.encrypt().train()
 
                 # compare model outputs:
                 self.assertTrue(encr_module.training, "training value incorrect")
                 reference = module(input)
                 encr_output = encr_module(encr_input)
-                self._check(encr_output, reference, "%s forward failed" % module_name)
+                self._check(encr_output, reference, "Linear forward failed")
 
                 # test backward pass:
                 reference.backward(torch.ones(reference.size()))
-                encr_output.backward()
+                encr_output.backward(encr_output.new(torch.ones(encr_output.size())))
                 if compute_gradients:
                     self._check(
-                        encr_input.grad,
-                        input.grad,
-                        "%s backward on input failed" % module_name,
+                        encr_input.grad, input.grad, "Linear backward on input failed"
                     )
                 else:
                     self.assertIsNone(encr_input.grad)
@@ -468,8 +554,32 @@ class TestNN(object):
                     self._check(
                         encr_param.grad,
                         param.grad,
-                        "%s backward on %s failed" % (module_name, name),
+                        "Linear backward on %s failed" % name,
                     )
+
+    def test_inplace_warning(self):
+        """Tests that a warning is thrown that indicates that the `inplace` kwarg
+        is ignored when a function is called with `inplace=True`
+        """
+        modules = [
+            "Dropout",
+            "DropoutNd",
+            "Dropout2d",
+            "Dropout3d",
+            "Hardtanh",
+            "ReLU",
+            "ReLU6",
+        ]
+        for module in modules:
+            module_str = (
+                module if module not in ["Dropout2d", "Dropout3d"] else "DropoutNd"
+            )
+            warning_str = (
+                f"CrypTen {module_str} module does not support inplace computation."
+            )
+            with self.assertLogs(logger=logging.getLogger(), level="WARNING") as cm:
+                getattr(crypten.nn, module)(inplace=True)
+            self.assertTrue(f"WARNING:root:{warning_str}" in cm.output)
 
     def test_sequential(self):
         """
@@ -487,7 +597,7 @@ class TestNN(object):
                 module_list = [
                     crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
                 ]
-                sequential = crypten.nn.Sequential(module_list)
+                sequential = crypten.nn.Sequential(*module_list)
                 sequential.encrypt()
 
                 # check container:
@@ -648,6 +758,43 @@ class TestNN(object):
             isinstance(model.fc1, crypten.nn.Linear), "modules __getattr__ failed"
         )
 
+        """
+        assign to model.weight should change model._parameters["weight"]
+        """
+        model.fc1.weight = torch.nn.Parameter(torch.zeros((2, 3)))
+
+        self.assertEqual(
+            model.fc1._parameters["weight"].tolist(),
+            torch.nn.Parameter(torch.zeros((2, 3))).tolist(),
+        )
+
+        """
+        assign to  model._parameters["weight"] should change model.weight
+        """
+        model.fc1._parameters["weight"] = torch.nn.Parameter(torch.ones((2, 3)))
+        self.assertEqual(
+            model.fc1.weight.tolist(), torch.nn.Parameter(torch.ones((2, 3))).tolist()
+        )
+
+        """
+        assign to  model._buffers["bufferedItem"] should change model.bufferedItem
+        """
+        model.fc1._buffers["bufferedItem"] = torch.nn.Parameter(torch.ones((2, 3)))
+        self.assertEqual(
+            model.fc1.bufferedItem.tolist(),
+            torch.nn.Parameter(torch.ones((2, 3))).tolist(),
+        )
+
+        """
+        assign to model.weight should change model._parameters["weight"]
+        """
+        model.fc1.bufferedItem = torch.nn.Parameter(torch.zeros((2, 3)))
+
+        self.assertEqual(
+            model.fc1._buffers["bufferedItem"].tolist(),
+            torch.nn.Parameter(torch.zeros((2, 3))).tolist(),
+        )
+
     def test_training(self):
         """
         Tests training of simple model in crypten.nn.
@@ -657,11 +804,9 @@ class TestNN(object):
         learning_rate = 0.1
         batch_size, num_inputs, num_intermediate, num_outputs = 8, 10, 5, 1
         model = crypten.nn.Sequential(
-            [
-                crypten.nn.Linear(num_inputs, num_intermediate),
-                crypten.nn.ReLU(),
-                crypten.nn.Linear(num_intermediate, num_outputs),
-            ]
+            crypten.nn.Linear(num_inputs, num_intermediate),
+            crypten.nn.ReLU(),
+            crypten.nn.Linear(num_intermediate, num_outputs),
         )
         model.train()
         model.encrypt()
@@ -794,106 +939,6 @@ class TestNN(object):
                 "loss has not decreased after training",
             )
 
-    def test_from_pytorch_training(self):
-        """Tests the from_pytorch code path for training CrypTen models"""
-        import torch.nn as nn
-        import torch.nn.functional as F
-
-        class ExampleNet(nn.Module):
-            def __init__(self):
-                super(ExampleNet, self).__init__()
-                self.conv1 = nn.Conv2d(1, 16, kernel_size=5, padding=1)
-                self.fc1 = nn.Linear(16 * 13 * 13, 100)
-                self.fc2 = nn.Linear(100, 2)
-
-            def forward(self, x):
-                out = self.conv1(x)
-                out = F.relu(out)
-                out = F.max_pool2d(out, 2)
-                out = out.view(out.size(0), -1)
-                out = self.fc1(out)
-                out = F.relu(out)
-                out = self.fc2(out)
-                return out
-
-        model_plaintext = ExampleNet()
-        batch_size = 5
-        x_orig = get_random_test_tensor(size=(batch_size, 1, 28, 28), is_float=True)
-        y_orig = (
-            get_random_test_tensor(size=(batch_size, 1), is_float=True).gt(0).long()
-        )
-        y_one_hot = onehot(y_orig, num_targets=2)
-
-        # encrypt training sample:
-        x_train = crypten.cryptensor(x_orig, requires_grad=True)
-        y_train = crypten.cryptensor(y_one_hot)
-        dummy_input = torch.empty((1, 1, 28, 28))
-
-        for loss_name in ["BCELoss", "CrossEntropyLoss", "MSELoss"]:
-            # create loss function
-            loss = getattr(crypten.nn, loss_name)()
-
-            # create encrypted model
-            model = crypten.nn.from_pytorch(model_plaintext, dummy_input)
-            model.train()
-            model.encrypt()
-
-            num_epochs = 3
-            learning_rate = 0.001
-
-            for i in range(num_epochs):
-                output = model(x_train)
-                if loss_name == "MSELoss":
-                    output_norm = output
-                else:
-                    output_norm = output.softmax(1)
-                loss_value = loss(output_norm, y_train)
-
-                # set gradients to "zero"
-                model.zero_grad()
-                for param in model.parameters():
-                    self.assertIsNone(param.grad, "zero_grad did not reset gradients")
-
-                # perform backward pass:
-                loss_value.backward()
-                for param in model.parameters():
-                    if param.requires_grad:
-                        self.assertIsNotNone(
-                            param.grad, "required parameter gradient not created"
-                        )
-
-                # update parameters
-                orig_parameters, upd_parameters = {}, {}
-                orig_parameters = self._compute_reference_parameters(
-                    "", orig_parameters, model, 0
-                )
-                model.update_parameters(learning_rate)
-                upd_parameters = self._compute_reference_parameters(
-                    "", upd_parameters, model, learning_rate
-                )
-
-                # FIX check that any parameter with a non-zero gradient has changed??
-                parameter_changed = False
-                for name, value in orig_parameters.items():
-                    if param.requires_grad and param.grad is not None:
-                        unchanged = torch.allclose(upd_parameters[name], value)
-                        if unchanged is False:
-                            parameter_changed = True
-                        self.assertTrue(
-                            parameter_changed, "no parameter changed in training step"
-                        )
-
-                # record initial and current loss
-                if i == 0:
-                    orig_loss = loss_value.get_plain_text()
-                curr_loss = loss_value.get_plain_text()
-
-            # check that the loss has decreased after training
-            self.assertTrue(
-                curr_loss.item() < orig_loss.item(),
-                "loss has not decreased after training",
-            )
-
     def test_batchnorm_module(self):
         """Test module correctly sets and updates running stats"""
         batchnorm_fn_and_size = (
@@ -990,6 +1035,287 @@ class TestNN(object):
             linear.encrypt(mode=encrypted)
             _run_test(sample, target)
             _run_test(crypten.cryptensor(sample), crypten.cryptensor(target))
+
+    def test_state_dict(self):
+        """
+        Tests dumping and loading of state dicts.
+        """
+        import io
+
+        def _check_equal(t1, t2):
+            """
+            Checks whether to tensors are identical.
+            """
+            if isinstance(t1, torch.nn.parameter.Parameter):
+                t1 = t1.data
+            if isinstance(t2, torch.nn.parameter.Parameter):
+                t2 = t2.data
+            self.assertEqual(type(t1), type(t2))
+            if isinstance(t1, crypten.CrypTensor):
+                t1 = t1.get_plain_text()
+                t2 = t2.get_plain_text()
+            self.assertTrue(t1.eq(t2).all())
+
+        def _check_state_dict(model, state_dict):
+            """
+            Checks if state_dict matches parameters in model.
+            """
+            # get all parameters, buffers, and names from model:
+            params_buffers = {}
+            for func in ["named_parameters", "named_buffers"]:
+                params_buffers.update({k: v for k, v in getattr(model, func)()})
+
+            # do all the checks:
+            self.assertEqual(len(params_buffers), len(state_dict))
+            for name, param_or_buffer in params_buffers.items():
+                self.assertIn(name, state_dict)
+                _check_equal(state_dict[name], param_or_buffer)
+
+        # test for individual modules:
+        module_args = {
+            "BatchNorm1d": (400,),
+            "BatchNorm2d": (3,),
+            "BatchNorm3d": (6,),
+            "Conv1d": (3, 6, 5),
+            "Conv2d": (3, 6, 5),
+            "Linear": (400, 120),
+        }
+        for module_name, args in module_args.items():
+            for encrypt in [False, True]:
+
+                # create module and get state dict:
+                module = getattr(crypten.nn, module_name)(*args)
+                if encrypt:
+                    module.encrypt()
+                state_dict = module.state_dict()
+                _check_state_dict(module, state_dict)
+
+                # load state dict into fresh module:
+                new_module = getattr(crypten.nn, module_name)(*args)
+                if encrypt:
+                    with self.assertRaises(AssertionError):
+                        new_module.load_state_dict(state_dict)
+                    new_module.encrypt()
+                new_module.load_state_dict(state_dict)
+                _check_state_dict(new_module, state_dict)
+
+                # check saving and loading from file for encrypted modules
+                if encrypt:
+                    f = io.BytesIO()
+                    crypten.save(module.state_dict(), f)
+                    f.seek(0)
+                    new_module2 = getattr(crypten.nn, module_name)(*args)
+                    new_module2.encrypt()
+                    new_module2.load_state_dict(crypten.load(f))
+                    _check_state_dict(new_module2, state_dict)
+
+        # tests for model that is sequence of modules:
+        for num_layers in range(1, 6):
+            for encrypt in [False, True]:
+
+                # some variables that we need:
+                input_size = (3, 10)
+                output_size = (input_size[0], input_size[1] - num_layers)
+                layer_idx = range(input_size[1], output_size[1], -1)
+
+                # construct sequential model:
+                module_list = [
+                    crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
+                ]
+                model = crypten.nn.Sequential(*module_list)
+                if encrypt:
+                    model.encrypt()
+
+                # check state dict:
+                state_dict = model.state_dict()
+                _check_state_dict(model, state_dict)
+
+                # load state dict into fresh model:
+                state_dict = model.state_dict()
+                module_list = [
+                    crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
+                ]
+                new_model = crypten.nn.Sequential(*module_list)
+                if encrypt:
+                    with self.assertRaises(AssertionError):
+                        new_model.load_state_dict(state_dict)
+                    new_model.encrypt()
+                new_model.load_state_dict(state_dict)
+
+                # check new model:
+                _check_state_dict(model, state_dict)
+
+                # check saving and loading from file for encrypted modules
+                if encrypt:
+                    f = io.BytesIO()
+                    crypten.save(model.state_dict(), f)
+                    f.seek(0)
+                    module_list = [
+                        crypten.nn.Linear(num_feat, num_feat - 1)
+                        for num_feat in layer_idx
+                    ]
+                    new_model2 = crypten.nn.Sequential(*module_list)
+                    new_model2.encrypt()
+                    new_model2.load_state_dict(crypten.load(f))
+                    _check_state_dict(new_model2, state_dict)
+
+    def test_to(self):
+        """Test Module.to, Module.cpu, and Module.cuda"""
+        module_list = [crypten.nn.Linear(10, 10) for _ in range(3)]
+        model = crypten.nn.Sequential(*module_list)
+
+        model_cpu = model.to("cpu")
+        cpu = torch.device("cpu")
+        for param in model_cpu.parameters():
+            self.assertEqual(param.device, cpu)
+        for buffer in model_cpu.buffers():
+            self.assertEqual(buffer.device, cpu)
+
+        model_cpu = model.cpu()
+        for param in model_cpu.parameters():
+            self.assertEqual(param.device, cpu)
+        for buffer in model_cpu.buffers():
+            self.assertEqual(buffer.device, cpu)
+
+        if torch.cuda.is_available():
+            cuda = torch.device("cuda:0")
+            model_cuda = model.cuda()
+            for param in model_cuda.parameters():
+                self.assertEqual(param.device, cuda)
+            for buffer in model_cuda.buffers():
+                self.assertEqual(buffer.device, cuda)
+
+            model_cuda = model.to("cuda:0")
+            for param in model_cuda.parameters():
+                self.assertEqual(param.device, cuda)
+            for buffer in model_cuda.buffers():
+                self.assertEqual(buffer.device, cuda)
+
+    def test_module_dict(self):
+        """Test ModuleDict module"""
+        module_dict = crypten.nn.ModuleDict()
+        self.assertEqual(len(module_dict), 0, "ModuleDict initialized incorrect size")
+
+        # Test initialization
+        module_dict = crypten.nn.ModuleDict(
+            {"conv2d": crypten.nn.Conv2d(10, 10, 3), "pool": crypten.nn.MaxPool2d(3)}
+        )
+        self.assertEqual(len(module_dict), 2, "ModuleDict initialized incorrect size")
+        self.assertTrue("conv2d" in module_dict.keys(), "ModuleDict init failed")
+        self.assertTrue(
+            isinstance(module_dict["conv2d"], crypten.nn.Conv2d),
+            "ModuleDict init failed",
+        )
+        self.assertTrue("pool" in module_dict.keys(), "ModuleDict init failed")
+        self.assertTrue(
+            isinstance(module_dict["pool"], crypten.nn.MaxPool2d),
+            "ModuleDict init failed",
+        )
+
+        # Test setitem
+        module_dict["conv1d"] = crypten.nn.Conv1d(5, 5, 3)
+        self.assertEqual(len(module_dict), 3, "ModuleDict setitem failed")
+        self.assertTrue("conv1d" in module_dict.keys(), "ModuleDict setitem failed")
+        self.assertTrue(
+            isinstance(module_dict["conv1d"], crypten.nn.Conv1d),
+            "ModuleDict setitem failed",
+        )
+
+        # Test pop
+        conv = module_dict.pop("conv2d")
+        self.assertTrue(isinstance(conv, crypten.nn.Conv2d), "ModuleDict pop failed")
+        self.assertEqual(len(module_dict), 2, "ModuleDict pop failed")
+        self.assertFalse("conv2d" in module_dict.keys(), "ModuleDict pop failed")
+
+        # Test list initialization
+        module_dict = crypten.nn.ModuleDict(
+            [["relu", crypten.nn.ReLU()], ["sigmoid", crypten.nn.Sigmoid()]]
+        )
+        self.assertEqual(len(module_dict), 2, "ModuleDict initialized incorrect size")
+        self.assertTrue("relu" in module_dict.keys(), "ModuleDict init failed")
+        self.assertTrue(
+            isinstance(module_dict["relu"], crypten.nn.ReLU), "ModuleDict init failed"
+        )
+        self.assertTrue("sigmoid" in module_dict.keys(), "ModuleDict init failed")
+        self.assertTrue(
+            isinstance(module_dict["sigmoid"], crypten.nn.Sigmoid),
+            "ModuleDict init failed",
+        )
+
+        # Test clear
+        module_dict.clear()
+        self.assertEqual(len(module_dict), 0, "ModuleDict clear failed")
+
+    def test_parameter_initializations(self):
+        """Test crypten.nn.init initializations"""
+        sizes = [
+            (),
+            (1,),
+            (5,),
+            (1, 1),
+            (1, 5),
+            (5, 5),
+            (1, 1, 1),
+            (5, 5, 5),
+            (1, 1, 1, 1),
+            (5, 5, 5, 5),
+        ]
+        deterministic = ["constant_", "dirac_", "ones_", "zeros_"]
+        non_deterministic = [
+            "kaiming_normal_",
+            "kaiming_uniform_",
+            "normal_",
+            "orthogonal_",
+            "sparse_",
+            "trunc_normal_",
+            "uniform_",
+            "xavier_normal_",
+            "xavier_uniform_",
+        ]
+        requires_more_dims = [
+            "dirac_",
+            "kaiming_normal_",
+            "kaiming_uniform_",
+            "orthogonal_",
+            "xavier_normal_",
+            "xavier_uniform_",
+        ]
+        only_two_dims = ["sparse_"]
+        args_dict = {"constant_": (0.5,), "sparse_": (0.2,)}
+        for init, size, private in itertools.product(
+            deterministic + non_deterministic, sizes, [False, True]
+        ):
+            if len(size) < 3 and init in requires_more_dims:
+                continue
+            if len(size) != 2 and init in only_two_dims:
+                continue
+
+            args = args_dict.get(init, ())
+            tensor = torch.empty(size)
+            encrypted = crypten.cryptensor(tensor) if private else tensor.clone()
+
+            # Set seed to assert values (and therefore distributions) are the same
+            torch.manual_seed(0)
+            reference = getattr(torch.nn.init, init)(tensor, *args)
+
+            torch.manual_seed(0)
+            encrypted_out = getattr(crypten.nn.init, init)(encrypted, *args)
+
+            self.assertTrue(
+                encrypted_out.size() == reference.size(),
+                f"crypten.nn.init.{init} size mismatch",
+            )
+            if private:
+                self._check(
+                    encrypted_out,
+                    reference,
+                    f"private crypten.nn.init.{init} failed.",
+                )
+            elif init in deterministic:
+                self.assertTrue(
+                    encrypted_out.eq(reference).all(),
+                    f"public crypten.nn.init.{init} failed.",
+                )
 
 
 # Run all unit tests with both TFP and TTP providers

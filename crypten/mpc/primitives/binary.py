@@ -5,13 +5,14 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from functools import reduce
-
 import crypten.communicator as comm
 
 # dependencies:
 import torch
 from crypten.common.rng import generate_kbit_random_tensor
+from crypten.common.tensor_types import is_tensor
+from crypten.common.util import torch_cat, torch_stack
+from crypten.cuda import CUDALongTensor
 from crypten.encoder import FixedPointEncoder
 
 from . import beaver, circuit
@@ -23,46 +24,84 @@ SENTINEL = -1
 # MPC tensor where shares are XOR-sharings.
 class BinarySharedTensor(object):
     """
-        Encrypted tensor object that uses binary sharing to perform computations.
+    Encrypted tensor object that uses binary sharing to perform computations.
 
-        Binary shares are computed by splitting each value of the input tensor
-        into n separate random values that xor together to the input tensor value,
-        where n is the number of parties present in the protocol (world_size).
+    Binary shares are computed by splitting each value of the input tensor
+    into n separate random values that xor together to the input tensor value,
+    where n is the number of parties present in the protocol (world_size).
     """
 
-    def __init__(self, tensor=None, size=None, src=0):
+    def __init__(
+        self, tensor=None, size=None, broadcast_size=False, src=0, device=None
+    ):
+        """
+        Creates the shared tensor from the input `tensor` provided by party `src`.
+
+        The other parties can specify a `tensor` or `size` to determine the size
+        of the shared tensor object to create. In this case, all parties must
+        specify the same (tensor) size to prevent the party's shares from varying
+        in size, which leads to undefined behavior.
+
+        Alternatively, the parties can set `broadcast_size` to `True` to have the
+        `src` party broadcast the correct size. The parties who do not know the
+        tensor size beforehand can provide an empty tensor as input. This is
+        guaranteed to produce correct behavior but requires an additional
+        communication round.
+
+        The parties can also set the `precision` and `device` for their share of
+        the tensor. If `device` is unspecified, it is set to `tensor.device`.
+        """
+
+        # do nothing if source is sentinel:
         if src == SENTINEL:
             return
+
+        # assertions on inputs:
         assert (
             isinstance(src, int) and src >= 0 and src < comm.get().get_world_size()
-        ), "invalid tensor source"
-
-        #  Assume 0 bits of precision unless encoder is set outside of init
-        self.encoder = FixedPointEncoder(precision_bits=0)
-        if tensor is not None:
-            tensor = self.encoder.encode(tensor)
-            size = tensor.size()
-
-        # Generate Psuedo-random Sharing of Zero and add source's tensor
-        self.share = BinarySharedTensor.PRZS(size).share
+        ), "specified source party does not exist"
         if self.rank == src:
-            assert tensor is not None, "Source must provide a data tensor"
+            assert tensor is not None, "source must provide a data tensor"
             if hasattr(tensor, "src"):
                 assert (
                     tensor.src == src
-                ), "Source of data tensor must match source of encryption"
+                ), "source of data tensor must match source of encryption"
+        if not broadcast_size:
+            assert (
+                tensor is not None or size is not None
+            ), "must specify tensor or size, or set broadcast_size"
+
+        # if device is unspecified, try and get it from tensor:
+        if device is None and tensor is not None and hasattr(tensor, "device"):
+            device = tensor.device
+
+        # assume zero bits of precision unless encoder is set outside of init:
+        self.encoder = FixedPointEncoder(precision_bits=0)
+        if tensor is not None:
+            tensor = self.encoder.encode(tensor)
+            tensor = tensor.to(device=device)
+            size = tensor.size()
+
+        # if other parties do not know tensor's size, broadcast the size:
+        if broadcast_size:
+            size = comm.get().broadcast_obj(size, src)
+
+        # generate pseudo-random zero sharing (PRZS) and add source's tensor:
+        self.share = BinarySharedTensor.PRZS(size, device=device).share
+        if self.rank == src:
             self.share ^= tensor
 
     @staticmethod
-    def from_shares(share, precision=None, src=0):
+    def from_shares(share, precision=None, src=0, device=None):
         """Generate a BinarySharedTensor from a share from each party"""
         result = BinarySharedTensor(src=SENTINEL)
-        result.share = share
+        share = share.to(device) if device is not None else share
+        result.share = CUDALongTensor(share) if share.is_cuda else share
         result.encoder = FixedPointEncoder(precision_bits=precision)
         return result
 
     @staticmethod
-    def PRZS(*size):
+    def PRZS(*size, device=None):
         """
         Generate a Pseudo-random Sharing of Zero (using arithmetic shares)
 
@@ -72,10 +111,50 @@ class BinarySharedTensor(object):
         numbers together.
         """
         tensor = BinarySharedTensor(src=SENTINEL)
-        current_share = generate_kbit_random_tensor(*size, generator=comm.get().g0)
-        next_share = generate_kbit_random_tensor(*size, generator=comm.get().g1)
+        current_share = generate_kbit_random_tensor(
+            *size, device=device, generator=comm.get().get_generator(0, device=device)
+        )
+        next_share = generate_kbit_random_tensor(
+            *size, device=device, generator=comm.get().get_generator(1, device=device)
+        )
         tensor.share = current_share ^ next_share
         return tensor
+
+    @staticmethod
+    def rand(*size, bits=64, device=None):
+        """
+        Generate a uniform random samples with a given size.
+        """
+        tensor = BinarySharedTensor(src=SENTINEL)
+        if isinstance(size[0], (torch.Size, tuple)):
+            size = size[0]
+        tensor.share = generate_kbit_random_tensor(size, bitlength=bits, device=device)
+        return tensor
+
+    @property
+    def device(self):
+        """Return the `torch.device` of the underlying _tensor"""
+        return self._tensor.device
+
+    @property
+    def is_cuda(self):
+        """Return True if the underlying _tensor is stored on GPU, False otherwise"""
+        return self._tensor.is_cuda
+
+    def to(self, *args, **kwargs):
+        """Call `torch.Tensor.to` on the underlying _tensor"""
+        self._tensor = self._tensor.to(*args, **kwargs)
+        return self
+
+    def cuda(self, *args, **kwargs):
+        """Call `torch.Tensor.cuda` on the underlying _tensor"""
+        self._tensor = CUDALongTensor(self._tensor.cuda(*args, **kwargs))
+        return self
+
+    def cpu(self, *args, **kwargs):
+        """Call `torch.Tensor.cpu` on the underlying _tensor"""
+        self._tensor = self._tensor.cpu(*args, **kwargs)
+        return self
 
     @property
     def rank(self):
@@ -98,6 +177,11 @@ class BinarySharedTensor(object):
         result.share = self.share
         return result
 
+    def copy_(self, other):
+        """Copies other tensor into this tensor."""
+        self.share.copy_(other.share)
+        self.encoder = other.encoder
+
     def __repr__(self):
         return f"BinarySharedTensor({self.share})"
 
@@ -111,7 +195,7 @@ class BinarySharedTensor(object):
 
     def __ixor__(self, y):
         """Bitwise XOR operator (element-wise) in place"""
-        if torch.is_tensor(y) or isinstance(y, int):
+        if is_tensor(y) or isinstance(y, int):
             if self.rank == 0:
                 self.share ^= y
         elif isinstance(y, BinarySharedTensor):
@@ -126,17 +210,17 @@ class BinarySharedTensor(object):
         if isinstance(y, BinarySharedTensor):
             broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
             result.share = broadcast_tensors[0].clone()
-        elif torch.is_tensor(y):
+        elif is_tensor(y):
             broadcast_tensors = torch.broadcast_tensors(result.share, y)
             result.share = broadcast_tensors[0].clone()
         return result.__ixor__(y)
 
     def __iand__(self, y):
         """Bitwise AND operator (element-wise) in place"""
-        if torch.is_tensor(y) or isinstance(y, int):
+        if is_tensor(y) or isinstance(y, int):
             self.share &= y
         elif isinstance(y, BinarySharedTensor):
-            self.share.data = beaver.AND(self, y).share.data
+            self.share.set_(beaver.AND(self, y).share.data)
         else:
             raise TypeError("Cannot AND %s with %s." % (type(y), type(self)))
         return self
@@ -148,7 +232,7 @@ class BinarySharedTensor(object):
         if isinstance(y, BinarySharedTensor):
             broadcast_tensors = torch.broadcast_tensors(result.share, y.share)
             result.share = broadcast_tensors[0].clone()
-        elif torch.is_tensor(y):
+        elif is_tensor(y):
             broadcast_tensors = torch.broadcast_tensors(result.share, y)
             result.share = broadcast_tensors[0].clone()
         return result.__iand__(y)
@@ -194,9 +278,27 @@ class BinarySharedTensor(object):
         """Compute [self] + [y] for xor-sharing"""
         return circuit.add(self, y)
 
+    def eq(self, y):
+        return circuit.eq(self, y)
+
+    def ne(self, y):
+        return self.eq(y) ^ 1
+
+    def lt(self, y):
+        return circuit.lt(self, y)
+
+    def le(self, y):
+        return circuit.le(self, y)
+
+    def gt(self, y):
+        return circuit.gt(self, y)
+
+    def ge(self, y):
+        return circuit.ge(self, y)
+
     def __setitem__(self, index, value):
         """Set tensor values by index"""
-        if torch.is_tensor(value) or isinstance(value, list):
+        if is_tensor(value) or isinstance(value, list):
             value = BinarySharedTensor(value)
         assert isinstance(
             value, BinarySharedTensor
@@ -211,7 +313,7 @@ class BinarySharedTensor(object):
             seq[0], BinarySharedTensor
         ), "Sequence must contain BinarySharedTensors"
         result = seq[0].shallow_copy()
-        result.share = torch.stack(
+        result.share = torch_stack(
             [BinarySharedTensor.share for BinarySharedTensor in seq], *args, **kwargs
         )
         return result
@@ -233,7 +335,7 @@ class BinarySharedTensor(object):
             x1 = x[(x.size(0) // 2) :]
             x = x0 + x1
             if extra is not None:
-                x.share = torch.cat([x.share, extra.share.unsqueeze(0)])
+                x.share = torch_cat([x.share, extra.share.unsqueeze(0)])
 
         if dim is None:
             x = x.squeeze()
@@ -289,7 +391,7 @@ class BinarySharedTensor(object):
 
         Returns: BinarySharedTensor or torch.tensor.
         """
-        if torch.is_tensor(condition):
+        if is_tensor(condition):
             condition = condition.long()
             is_binary = ((condition == 1) | (condition == 0)).all()
             assert is_binary, "condition values must be 0 or 1"
@@ -314,7 +416,7 @@ class BinarySharedTensor(object):
         is specified by its index in `src` for `dimension != dim` and by the
         corresponding value in `index` for `dimension = dim`.
         """
-        if torch.is_tensor(src):
+        if is_tensor(src):
             src = BinarySharedTensor(src)
         assert isinstance(
             src, BinarySharedTensor
@@ -329,10 +431,16 @@ class BinarySharedTensor(object):
         corresponding value in `index` for `dimension = dim`.
         """
         result = self.clone()
-        return result.scatter_(self, dim, index, src)
+        return result.scatter_(dim, index, src)
 
     # Bitwise operators
     __add__ = add
+    __eq__ = eq
+    __ne__ = ne
+    __lt__ = lt
+    __le__ = le
+    __gt__ = gt
+    __ge__ = ge
     __lshift__ = lshift
     __rshift__ = rshift
 
@@ -365,9 +473,9 @@ REGULAR_FUNCTIONS = [
     "flip",
     "reshape",
     "gather",
-    "scatter",
     "take",
     "split",
+    "permute",
 ]
 
 

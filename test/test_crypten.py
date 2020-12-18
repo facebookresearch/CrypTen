@@ -15,13 +15,14 @@ from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_te
 import crypten
 import torch
 import torch.nn.functional as F
+from crypten.common import serial
 from crypten.common.tensor_types import is_float_tensor
 from torch import nn
 
 
 class TestCrypten(MultiProcessTestCase):
     """
-        This class tests all member functions of crypten package
+    This class tests all member functions of crypten package
     """
 
     def setUp(self):
@@ -56,15 +57,18 @@ class TestCrypten(MultiProcessTestCase):
         encrypted1 = crypten.cryptensor(tensor1)
         encrypted2 = crypten.cryptensor(tensor2)
 
-        for op in ["cat", "stack"]:
-            reference = getattr(torch, op)([tensor1, tensor2])
-            encrypted_out = getattr(crypten, op)([encrypted1, encrypted2])
-            self._check(encrypted_out, reference, "%s failed" % op)
-
-            for dim in range(4):
-                reference = getattr(torch, op)([tensor1, tensor2], dim=dim)
-                encrypted_out = getattr(crypten, op)([encrypted1, encrypted2], dim=dim)
+        for module in [crypten, torch]:  # torch.cat on CrypTensor runs crypten.cat
+            for op in ["cat", "stack"]:
+                reference = getattr(torch, op)([tensor1, tensor2])
+                encrypted_out = getattr(module, op)([encrypted1, encrypted2])
                 self._check(encrypted_out, reference, "%s failed" % op)
+
+                for dim in range(4):
+                    reference = getattr(torch, op)([tensor1, tensor2], dim=dim)
+                    encrypted_out = getattr(module, op)(
+                        [encrypted1, encrypted2], dim=dim
+                    )
+                    self._check(encrypted_out, reference, "%s failed" % op)
 
     def test_rand(self):
         """Tests uniform random variable generation on [0, 1)"""
@@ -133,31 +137,128 @@ class TestCrypten(MultiProcessTestCase):
         self.assertIsInstance(encrypted_tensor, crypten.CrypTensor)
 
     def test_save_load(self):
-        """Test that crypten.save and crypten.load properly save and load tensors"""
+        """Test that crypten.save and crypten.load properly save and load
+        shares of cryptensors"""
+        import io
+        import pickle
+
+        def custom_load_function(f):
+            obj = pickle.load(f)
+            return obj
+
+        def custom_save_function(obj, f):
+            pickle.dump(obj, f)
+
+        all_save_fns = [torch.save, custom_save_function]
+        all_load_fns = [torch.load, custom_load_function]
+
+        tensor = get_random_test_tensor()
+        cryptensor1 = crypten.cryptensor(tensor)
+
+        for i, save_closure in enumerate(all_save_fns):
+            load_closure = all_load_fns[i]
+            f = [
+                io.BytesIO() for i in range(crypten.communicator.get().get_world_size())
+            ]
+            crypten.save(cryptensor1, f[self.rank], save_closure=save_closure)
+            f[self.rank].seek(0)
+            cryptensor2 = crypten.load(f[self.rank], load_closure=load_closure)
+            # test whether share matches
+            self.assertTrue(cryptensor1.share.allclose(cryptensor2.share))
+            # test whether tensor matches
+            self.assertTrue(
+                cryptensor1.get_plain_text().allclose(cryptensor2.get_plain_text())
+            )
+            attributes = [
+                a
+                for a in dir(cryptensor1)
+                if not a.startswith("__")
+                and not callable(getattr(cryptensor1, a))
+                and a not in ["share", "_tensor", "ctx"]
+            ]
+            for a in attributes:
+                attr1, attr2 = getattr(cryptensor1, a), getattr(cryptensor2, a)
+                if a == "encoder":
+                    self.assertTrue(attr1._scale == attr2._scale)
+                    self.assertTrue(attr1._precision_bits == attr2._precision_bits)
+                else:
+                    self.assertTrue(attr1 == attr2)
+
+    def test_plaintext_save_load_from_party(self):
+        """Test that crypten.save_from_party and crypten.load_from_party
+        properly save and load plaintext tensors"""
         import tempfile
+
+        import numpy as np
+
+        def custom_load_function(f):
+            np_arr = np.load(f)
+            tensor = torch.from_numpy(np_arr)
+            return tensor
+
+        def custom_save_function(obj, f):
+            np_arr = obj.numpy()
+            np.save(f, np_arr)
 
         comm = crypten.communicator
         filename = tempfile.NamedTemporaryFile(delete=True).name
+        all_save_fns = [torch.save, custom_save_function]
+        all_load_fns = [torch.load, custom_load_function]
+        all_file_completions = [".pth", ".npy"]
+        all_test_load_fns = [torch.load, np.load]
         for dimensions in range(1, 5):
             # Create tensors with different sizes on each rank
             size = [self.rank + 1] * dimensions
             size = tuple(size)
             tensor = torch.randn(size=size)
 
-            for src in range(comm.get().get_world_size()):
-                crypten.save(tensor, filename, src=src)
-                encrypted_load = crypten.load(filename, src=src)
+            for i, save_closure in enumerate(all_save_fns):
+                load_closure = all_load_fns[i]
+                test_load_fn = all_test_load_fns[i]
+                complete_file = filename + all_file_completions[i]
+                for src in range(comm.get().get_world_size()):
+                    crypten.save_from_party(
+                        tensor, complete_file, src=src, save_closure=save_closure
+                    )
 
-                reference_size = tuple([src + 1] * dimensions)
-                self.assertEqual(encrypted_load.size(), reference_size)
+                    # the following line will throw an error if an object saved with
+                    # torch.save is attempted to be loaded with np.load
+                    if self.rank == src:
+                        test_load_fn(complete_file)
 
-                size_out = [src + 1] * dimensions
-                reference = tensor if self.rank == src else torch.empty(size=size_out)
-                comm.get().broadcast(reference, src=src)
-                self._check(encrypted_load, reference, "crypten.load() failed")
+                    encrypted_load = crypten.load_from_party(
+                        complete_file, src=src, load_closure=load_closure
+                    )
 
-    def test_save_load_module(self):
-        """Test that crypten.save and crypten.load properly save and load modules"""
+                    reference_size = tuple([src + 1] * dimensions)
+                    self.assertEqual(encrypted_load.size(), reference_size)
+
+                    size_out = [src + 1] * dimensions
+                    reference = (
+                        tensor if self.rank == src else torch.empty(size=size_out)
+                    )
+                    comm.get().broadcast(reference, src=src)
+                    self._check(encrypted_load, reference, "crypten.load() failed")
+
+                    # test for invalid load_closure
+                    with self.assertRaises(TypeError):
+                        crypten.load_from_party(
+                            complete_file, src=src, load_closure=(lambda f: None)
+                        )
+
+                    # test pre-loaded
+                    encrypted_preloaded = crypten.load_from_party(
+                        src=src, preloaded=tensor
+                    )
+                    self._check(
+                        encrypted_preloaded,
+                        reference,
+                        "crypten.load() failed using preloaded",
+                    )
+
+    def test_plaintext_save_load_module_from_party(self):
+        """Test that crypten.save_from_party and crypten.load_from_party
+        properly save and load plaintext modules"""
         import tempfile
 
         comm = crypten.communicator
@@ -167,12 +268,13 @@ class TestCrypten(MultiProcessTestCase):
 
             test_model = model_type(200, 10)
             test_model.set_all_parameters(rank)
+            serial.register_safe_class(model_type)
 
             filename = tempfile.NamedTemporaryFile(delete=True).name
             for src in range(comm.get().get_world_size()):
-                crypten.save(test_model, filename, src=src)
+                crypten.save_from_party(test_model, filename, src=src)
 
-                result = crypten.load(filename, src=src)
+                result = crypten.load_from_party(filename, src=src)
                 if src == rank:
                     for param in result.parameters(recurse=True):
                         self.assertTrue(
@@ -220,6 +322,25 @@ class TestCrypten(MultiProcessTestCase):
                 f"{'private' if y_is_private else 'public'} y "
                 "where failed with private condition",
             )
+
+    def test_is_initialized(self):
+        """Tests that the is_initialized flag is set properly"""
+        comm = crypten.communicator
+
+        self.assertTrue(crypten.is_initialized())
+        self.assertTrue(comm.is_initialized())
+
+        crypten.uninit()
+        self.assertFalse(crypten.is_initialized())
+        self.assertFalse(comm.is_initialized())
+
+        # note that uninit() kills the TTP process, so we need to restart it:
+        if self.rank == self.MAIN_PROCESS_RANK and crypten.mpc.ttp_required():
+            self.processes += [self._spawn_ttp()]
+
+        crypten.init()
+        self.assertTrue(crypten.is_initialized())
+        self.assertTrue(comm.is_initialized())
 
 
 # Modules used for testing saveing / loading of modules

@@ -32,6 +32,7 @@ class InProcessCommunicator(Communicator):
         self.world_size = world_size
         self.rank = rank
         self.reset_communication_stats()
+        self._name = f"rank{rank}"
 
         with InProcessCommunicator.lock:
             if InProcessCommunicator.mailbox is None:
@@ -200,3 +201,14 @@ class InProcessCommunicator(Communicator):
     def get_rank(self):
         """Returns the rank of the current process."""
         return self.rank
+
+    def set_name(self, name):
+        """Sets the party name of the current rank."""
+        assert isinstance(
+            name, str
+        ), f"Improper name provided to process on rank {self.get_rank()}"
+        self._name = name
+
+    def get_name(self):
+        """Returns the party name of the current rank."""
+        return self._name

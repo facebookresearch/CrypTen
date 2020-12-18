@@ -23,7 +23,7 @@ from crypten.mpc.primitives import ArithmeticSharedTensor
 
 class TestArithmetic(MultiProcessTestCase):
     """
-        This class tests all functions of the ArithmeticSharedTensor.
+    This class tests all functions of the ArithmeticSharedTensor.
     """
 
     def setUp(self):
@@ -72,8 +72,8 @@ class TestArithmetic(MultiProcessTestCase):
 
     def test_encrypt_decrypt(self):
         """
-            Tests tensor encryption and decryption for both positive
-            and negative values.
+        Tests tensor encryption and decryption for both positive
+        and negative values.
         """
         sizes = [
             (),
@@ -91,14 +91,29 @@ class TestArithmetic(MultiProcessTestCase):
             (5, 3, 32, 32),
         ]
         for size in sizes:
+
+            # encryption and decryption without source:
             reference = get_random_test_tensor(size=size, is_float=True)
             encrypted_tensor = ArithmeticSharedTensor(reference)
             self._check(encrypted_tensor, reference, "en/decryption failed")
-
             for dst in range(self.world_size):
                 self._check(
                     encrypted_tensor, reference, "en/decryption failed", dst=dst
                 )
+
+            # encryption and decryption with source:
+            for src in range(self.world_size):
+                input_tensor = reference if src == self.rank else []
+                encrypted_tensor = ArithmeticSharedTensor(
+                    input_tensor, src=src, broadcast_size=True
+                )
+                for dst in range(self.world_size):
+                    self._check(
+                        encrypted_tensor,
+                        reference,
+                        "en/decryption with broadcast_size failed",
+                        dst=dst,
+                    )
 
     def test_arithmetic(self):
         """Tests arithmetic functions on encrypted tensor."""
@@ -333,11 +348,11 @@ class TestArithmetic(MultiProcessTestCase):
                             "%s %s failed" % ("private" if private else "public", func),
                         )
                         if func.endswith("_"):
-                            # Check in-place scatter/scatter-add worked
+                            # Check in-place scatter/scatter-add modified input
                             self._check(
                                 encrypted,
                                 reference,
-                                "%s %s failed"
+                                "%s %s failed to modify input"
                                 % ("private" if private else "public", func),
                             )
                         else:
@@ -345,7 +360,7 @@ class TestArithmetic(MultiProcessTestCase):
                             self._check(
                                 encrypted,
                                 tensor1,
-                                "%s %s failed"
+                                "%s %s unintendedly modified input"
                                 % ("private" if private else "public", func),
                             )
 
@@ -433,6 +448,35 @@ class TestArithmetic(MultiProcessTestCase):
                     encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
 
+    def test_permute(self):
+        """Test the permute operations"""
+        sizes = [
+            (1,),
+            (5,),
+            (1, 5),
+            (1, 5, 7),
+            (7, 1, 5),
+            (5, 7, 1),
+            (1, 3, 5, 7),
+            (5, 3, 32, 32),
+        ]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            encrypted_tensor = ArithmeticSharedTensor(tensor)
+
+            # test reversing the dimensions
+            dim_arr = [x - 1 for x in range(tensor.dim(), 0, -1)]
+            reference = tensor.permute(dim_arr)
+            encrypted_out = encrypted_tensor.permute(dim_arr)
+            self._check(encrypted_out, reference, "permute failed")
+
+            # test one particular non-reversed permutation
+            if tensor.dim() == 4:
+                dim_arr = [1, 3, 0, 2]
+                reference = tensor.permute(dim_arr)
+                encrypted_out = encrypted_tensor.permute(dim_arr)
+                self._check(encrypted_out, reference, "permute failed")
+
     def test_conv1d_smaller_signal_one_channel(self):
         self._conv1d(5, 1)
 
@@ -452,6 +496,8 @@ class TestArithmetic(MultiProcessTestCase):
         ochannels = [1, 3, 6]
         paddings = [0, 1]
         strides = [1, 2]
+        dilations = [1, 2]
+        groupings = [1, 2]
 
         for func_name in ["conv1d", "conv_transpose1d"]:
             for kernel_type in [lambda x: x, ArithmeticSharedTensor]:
@@ -461,25 +507,42 @@ class TestArithmetic(MultiProcessTestCase):
                     out_channels,
                     padding,
                     stride,
+                    dilation,
+                    groups,
                 ) in itertools.product(
-                    nbatches, kernel_sizes, ochannels, paddings, strides
+                    nbatches,
+                    kernel_sizes,
+                    ochannels,
+                    paddings,
+                    strides,
+                    dilations,
+                    groupings,
                 ):
-                    input_size = (batches, in_channels, signal_size)
+                    input_size = (batches, in_channels * groups, signal_size)
                     signal = get_random_test_tensor(size=input_size, is_float=True)
 
                     if func_name == "conv1d":
-                        k_size = (out_channels, in_channels, kernel_size)
+                        k_size = (out_channels * groups, in_channels, kernel_size)
                     else:
-                        k_size = (in_channels, out_channels, kernel_size)
+                        k_size = (in_channels * groups, out_channels, kernel_size)
                     kernel = get_random_test_tensor(size=k_size, is_float=True)
 
                     reference = getattr(F, func_name)(
-                        signal, kernel, padding=padding, stride=stride
+                        signal,
+                        kernel,
+                        padding=padding,
+                        stride=stride,
+                        dilation=dilation,
+                        groups=groups,
                     )
                     encrypted_signal = ArithmeticSharedTensor(signal)
                     encrypted_kernel = kernel_type(kernel)
                     encrypted_conv = getattr(encrypted_signal, func_name)(
-                        encrypted_kernel, padding=padding, stride=stride
+                        encrypted_kernel,
+                        padding=padding,
+                        stride=stride,
+                        dilation=dilation,
+                        groups=groups,
                     )
 
                     self._check(encrypted_conv, reference, f"{func_name} failed")
@@ -503,6 +566,8 @@ class TestArithmetic(MultiProcessTestCase):
         ochannels = [1, 3, 6]
         paddings = [0, 1, (0, 1)]
         strides = [1, 2, (1, 2)]
+        dilations = [1, 2]
+        groupings = [1, 2]
 
         for func_name in ["conv2d", "conv_transpose2d"]:
             for kernel_type in [lambda x: x, ArithmeticSharedTensor]:
@@ -512,55 +577,71 @@ class TestArithmetic(MultiProcessTestCase):
                     out_channels,
                     padding,
                     stride,
+                    dilation,
+                    groups,
                 ) in itertools.product(
-                    nbatches, kernel_sizes, ochannels, paddings, strides
+                    nbatches,
+                    kernel_sizes,
+                    ochannels,
+                    paddings,
+                    strides,
+                    dilations,
+                    groupings,
                 ):
-
                     # sample input:
-                    input_size = (batches, in_channels, *image_size)
+                    input_size = (batches, in_channels * groups, *image_size)
                     input = get_random_test_tensor(size=input_size, is_float=True)
 
                     # sample filtering kernel:
                     if func_name == "conv2d":
-                        k_size = (out_channels, in_channels, *kernel_size)
+                        k_size = (out_channels * groups, in_channels, *kernel_size)
                     else:
-                        k_size = (in_channels, out_channels, *kernel_size)
+                        k_size = (in_channels * groups, out_channels, *kernel_size)
                     kernel = get_random_test_tensor(size=k_size, is_float=True)
+
+                    if crypten.communicator.get().get_rank() and groups == 2:
+                        print(k_size)
 
                     # perform filtering:
                     encr_matrix = ArithmeticSharedTensor(input)
                     encr_kernel = kernel_type(kernel)
                     encr_conv = getattr(encr_matrix, func_name)(
-                        encr_kernel, padding=padding, stride=stride
+                        encr_kernel,
+                        padding=padding,
+                        stride=stride,
+                        dilation=dilation,
+                        groups=groups,
                     )
 
                     # check that result is correct:
                     reference = getattr(F, func_name)(
-                        input, kernel, padding=padding, stride=stride
+                        input,
+                        kernel,
+                        padding=padding,
+                        stride=stride,
+                        dilation=dilation,
+                        groups=groups,
                     )
                     self._check(encr_conv, reference, "%s failed" % func_name)
 
     def test_pooling(self):
         """Test avgPool of encrypted tensor."""
-        for func in ["avg_pool2d", "sum_pool2d"]:
-            for width in range(2, 5):
-                for width2 in range(1, width):
-                    matrix_size = (1, 4, 5, width)
-                    matrix = get_random_test_tensor(size=matrix_size, is_float=True)
-                    pool_size = width2
-                    for stride in range(1, width2):
-                        for padding in range(2):
-                            reference = F.avg_pool2d(
-                                matrix, pool_size, stride=stride, padding=padding
-                            )
-                            if func == "sum_pool2d":
-                                reference *= width2 * width2
+        for width in range(2, 5):
+            for width2 in range(1, width):
+                matrix_size = (1, 4, 5, width)
+                matrix = get_random_test_tensor(size=matrix_size, is_float=True)
+                pool_size = width2
+                for stride in range(1, width2):
+                    for padding in range(2):
+                        reference = F.avg_pool2d(
+                            matrix, pool_size, stride=stride, padding=padding
+                        )
 
-                            encrypted_matrix = ArithmeticSharedTensor(matrix)
-                            encrypted_pool = getattr(encrypted_matrix, func)(
-                                pool_size, stride=stride, padding=padding
-                            )
-                            self._check(encrypted_pool, reference, "%s failed" % func)
+                        encrypted_matrix = ArithmeticSharedTensor(matrix)
+                        encrypted_pool = encrypted_matrix.avg_pool2d(
+                            pool_size, stride=stride, padding=padding
+                        )
+                        self._check(encrypted_pool, reference, "avg_pool2d failed")
 
     def test_take(self):
         """Tests take function of encrypted tensor"""
@@ -880,10 +961,36 @@ class TestArithmetic(MultiProcessTestCase):
                 encrypted_out = encrypted.gather(dim, index)
                 self._check(encrypted_out, reference, f"gather failed with size {size}")
 
-    # TODO: Write the following unit tests
-    @unittest.skip("Test not implemented")
     def test_split(self):
-        pass
+        """Test split function of encrypted tensor"""
+        sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
+
+        for size in sizes:
+            for dim in range(len(size)):
+                tensor = get_random_test_tensor(size=size, is_float=True)
+                encrypted = ArithmeticSharedTensor(tensor)
+
+                for idx in range(6):
+                    split = (idx, 5 - idx)
+                    reference0, reference1 = tensor.split(split, dim=dim)
+                    encrypted_out0, encrypted_out1 = encrypted.split(split, dim=dim)
+
+                    self._check(
+                        encrypted_out0, reference0, f"split failed with input {split}"
+                    )
+                    self._check(
+                        encrypted_out1, reference1, f"split failed with input {split}"
+                    )
+
+                split = (5,)
+                (reference,) = tensor.split(split, dim=dim)
+                (encrypted_out,) = encrypted.split(split, dim=dim)
+                self._check(
+                    encrypted_out, reference, f"split failed with input {split}"
+                )
+
+                with self.assertRaises(RuntimeError):
+                    encrypted_out.split((5, 1))
 
 
 # This code only runs when executing the file outside the test harness

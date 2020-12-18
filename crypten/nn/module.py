@@ -5,10 +5,13 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import itertools
+import logging
 from collections import OrderedDict
 
 import crypten
 import torch
+from crypten.common.util import adaptive_pool2d_helper
 
 
 class Module:
@@ -16,12 +19,19 @@ class Module:
     Base Module class that mimics the torch.nn.Module class.
     """
 
+    # allow for versioning of modules:
+    _version = 1
+
     def __init__(self):
         self._parameters = OrderedDict()
         self._buffers = OrderedDict()
         self._modules = OrderedDict()
         self.encrypted = False
         self.train()
+
+    def __repr__(self):
+        encrypted_str = "encrypted" if self.encrypted else "unencrypted"
+        return f"{type(self).__name__} {encrypted_str} module"
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
@@ -53,21 +63,26 @@ class Module:
         return self.train(False)
 
     def register_module(self, name, module):
-        """Registers module in the container."""
+        """Registers child module in the module."""
         self._modules[name] = module
 
     def modules(self):
-        """Returns iterator over modules."""
+        """Returns iterator over modules (non-recursively)."""
+        # TODO: Add option to do this recursively, akin to PyTorch.
         for _, module in self.named_modules():
             yield module
 
     def named_modules(self):
         """Returns iterator over named modules (non-recursively)."""
+        # TODO: Add option to do this recursively, akin to PyTorch.
         for name, module in self._modules.items():
             yield name, module
 
     def register_parameter(self, name, param, requires_grad=True):
-        """Register parameter in the module."""
+        """
+        Register parameter in the module. This function cannot register
+        parameters in child modules.
+        """
         if name in self._parameters or hasattr(self, name):
             raise ValueError("Parameter or field %s already exists." % name)
         if torch.is_tensor(param):  # unencrypted model
@@ -80,12 +95,14 @@ class Module:
         setattr(self, name, param)
 
     def set_parameter(self, name, param):
-        """Sets value of parameter in the module."""
+        """
+        Sets value of parameter in the module. This function cannot set
+        parameters in child modules.
+        """
         if name not in self._parameters or not hasattr(self, name):
             raise ValueError("Parameter %s does not exist." % name)
         self._parameters[name] = param
         setattr(self, name, param)
-        # FIXME: Naming logic for get/set_parameters when recursing.
 
     def set_parameter_from_shares(self, name, share, **kwargs):
         """
@@ -95,6 +112,8 @@ class Module:
         Supported named arguments for `MPCTensor` parameters include the `precision`
         of the encoder (default = `None`), the rank of the `src` (default = 0),
         and the `ptype` of the shares (default = `crypten.mpc.arithmetic`).
+
+        This function cannot set the parameters in child modules.
         """
 
         # functionality is only supported when parameters are MPCTensors:
@@ -109,29 +128,152 @@ class Module:
         # load parameters from shares:
         self._parameters[name] = cls.from_shares(share, **kwargs)
         setattr(self, name, self._parameters[name])
-        # FIXME: Naming logic for get/set_parameters when recursing.
 
     def parameters(self, recurse=True):
         """Iterator over parameters."""
         for _, param in self.named_parameters(recurse=recurse):
             yield param
 
-    def named_parameters(self, recurse=True):
+    def named_parameters(self, recurse=True, prefix=None):
         """Iterator over named parameters."""
         for name, param in self._parameters.items():
-            yield name, param
+            param_name = name if prefix is None else prefix + "." + name
+            yield param_name, param
         if recurse:
-            for module in self.modules():
-                yield from module.named_parameters(recurse=recurse)
-                # FIXME: Naming logic for get/set_parameters when recursing.
+            for module_name, module in self.named_modules():
+                pre = module_name if prefix is None else prefix + "." + module_name
+                yield from module.named_parameters(recurse=recurse, prefix=pre)
+
+    def _save_to_state_dict(self, destination, prefix, keep_vars):
+        """
+        Saves module state to `destination` dictionary, containing a state
+        of the module, but not its descendants. The specified `prefix` will be
+        used in names of parameters and buffers in this module. The `keep_vars`
+        boolean determines if parameters and buffers are kept on the autograd tape.
+        """
+        for name, param in self.named_parameters(recurse=False):
+            if param is not None:
+                destination[prefix + name] = param if keep_vars else param.detach()
+        for name, buffer in self.named_buffers(recurse=False):
+            if buffer is not None:
+                destination[prefix + name] = buffer if keep_vars else buffer.detach()
+
+    def state_dict(self, destination=None, prefix="", keep_vars=False):
+        """
+        Returns a dictionary containing the state of the module. Both parameters
+        and persistent buffers (e.g., running averages) are included. Keys are
+        corresponding parameter and buffer names.
+        """
+
+        # save parameters and buffers of current module:
+        if destination is None:
+            destination = OrderedDict()
+            destination._metadata = {"version": Module._version}
+        self._save_to_state_dict(destination, prefix, keep_vars)
+
+        # recurse over modules:
+        for name, module in self.named_modules():
+            if module is not None:
+                module.state_dict(destination, prefix + name + ".", keep_vars=keep_vars)
+        return destination
+
+    def _load_from_state_dict(self, state_dict, prefix, strict):
+        """
+        Copies parameters and buffers from `state_dict` into only this module
+        but not its children. This is called on every submodule in the
+        `load_state_dict` function.
+        """
+
+        # get state dict for just the current module (without children)
+        local_named_params = itertools.chain(
+            self.named_parameters(), self.named_buffers()
+        )
+        local_state = {key: val for key, val in local_named_params if val is not None}
+
+        # in strict mode, check for missing keys in the state_dict:
+        if strict:
+            for name in local_state.keys():
+                key = prefix + name
+                if key not in state_dict:
+                    raise ValueError("Key {} not found in state dict.".format(key))
+
+        # loop over parameters / buffers in module:
+        for name, param in local_state.items():
+            key = prefix + name
+            input_param = state_dict[key]
+
+            # size in state_dict should match size of parameters:
+            if input_param.size() != param.size():
+                raise ValueError(
+                    "Size mismatch for {}: copying a param with"
+                    "shape {} from checkpoint, the shape in"
+                    "current model is {}.".format(key, input_param.size(), param.size())
+                )
+                continue
+
+            # cannot copy encrypted tensors into unencrypted models and vice versa:
+            param_encrypted = isinstance(input_param, crypten.CrypTensor)
+            if param_encrypted:
+                assert (
+                    self.encrypted
+                ), "cannot copy encrypted parameters into unencrypted model"
+            else:
+                assert (
+                    not self.encrypted
+                ), "cannot copy unencrypted parameters into encrypted model"
+
+            # copy parameters from state_dict:
+            with crypten.no_grad(), torch.no_grad():
+                param.copy_(input_param)
+
+    def load_state_dict(self, state_dict, strict=True):
+        """
+        Copies parameters and buffers from `state_dict` into this module and its
+        children. If `strict` is `True`, then the keys of `state_dict` must
+        exactly match the keys returned by this module's `state_dict` function.
+        """
+
+        # check version of state_dict:
+        if strict:
+            metadata = getattr(state_dict, "_metadata", None)
+            if metadata is None:
+                raise ValueError("Specified state_dict does not have metadata.")
+            version = metadata.get("version", -1)
+            if version != Module._version:
+                raise ValueError(
+                    "Specified state_dict has incorrect version: {}".format(version)
+                )
+
+        # make copy state_dict so that load() can modify it:
+        state_dict = state_dict.copy()
+
+        def load(module, prefix=""):
+            """
+            Closure that performs the loading of a module recursively.
+            """
+            module._load_from_state_dict(state_dict, prefix, strict)
+            for name, child in module.named_modules():
+                if child is not None:
+                    load(child, prefix + name + ".")
+
+        # perform the actual loading:
+        load(self)
+        load = None  # break load->load reference cycle
 
     def zero_grad(self):
         """Sets gradients of all parameters to zero."""
         for param in self.parameters():
             param.grad = None
 
-    def update_parameters(self, learning_rate):
-        """Performs gradient step on parameters."""
+    def update_parameters(self, learning_rate, grad_threshold=100):
+        """Performs gradient step on parameters.
+
+        Parameters:
+            grad_threshold - Because arithmetic operations can extremely rarely
+                    return large incorrect results, we zero-out all elements
+                    with magnitude larger than this given threshold. To turn
+                    off thresholding, set to `None`.
+        """
         assert self.training, "module not in training mode"
         with crypten.no_grad(), torch.no_grad():
             for param in self.parameters():
@@ -143,7 +285,18 @@ class Module:
                         "model using encrypted gradients. Encrypt "
                         "model before updating parameters."
                     )
-                param.sub_(param.grad.mul(learning_rate))
+
+                # Threshold gradients to prevent gradient explosion from wrap overflow
+                if self.encrypted and grad_threshold is not None:
+                    # Compute based on square value since abs is more expensive
+                    square_threshold = grad_threshold * grad_threshold
+                    grad = param.grad.mul(
+                        param.grad.square().lt(square_threshold, _scale=False)
+                    )
+                else:
+                    grad = param.grad
+
+                param.sub_(grad.mul_(learning_rate))
 
     def register_buffer(self, name, buffer):
         """
@@ -156,7 +309,10 @@ class Module:
         setattr(self, name, buffer)
 
     def set_buffer(self, name, buffer):
-        """Sets value of buffer in the module."""
+        """
+        Sets value of buffer in the module. This function cannot set the
+        parameters in child modules.
+        """
         if name not in self._buffers or not hasattr(self, name):
             raise ValueError("Buffer %s does not exist." % name)
         self._buffers[name] = buffer
@@ -167,13 +323,74 @@ class Module:
         for _, buffer in self.named_buffers(recurse=recurse):
             yield buffer
 
-    def named_buffers(self, recurse=True):
+    def named_buffers(self, recurse=True, prefix=None):
         """Iterator over named buffers."""
         for name, buffer in self._buffers.items():
-            yield name, buffer
+            buffer_name = name if prefix is None else prefix + "." + name
+            yield buffer_name, buffer
         if recurse:
-            for module in self.modules():
-                yield from module.named_buffers(recurse=recurse)
+            for module_name, module in self.named_modules():
+                pre = module_name if prefix is None else prefix + "." + module_name
+                yield from module.named_buffers(recurse=recurse, prefix=pre)
+
+    def to(self, *args, **kwargs):
+        """
+        Moves and/or casts the parameters and buffers.
+
+        This can be called as
+
+        `to(device=None, dtype=None, non_blocking=False)`
+        `to(dtype, non_blocking=False)`
+        `to(tensor, non_blocking=False)`
+        `to(memory_format=torch.channels_last)`
+
+        Args:
+            device (torch.device) – the desired device of the parameters
+            and buffers in this module
+            dtype (torch.dtype) – the desired floating point type of the
+            floating point parameters and buffers in this module
+            tensor (torch.Tensor) – Tensor whose dtype and device are the
+            desired dtype and device for all parameters and buffers in this module
+            memory_format (torch.memory_format) – the desired memory format
+            for 4D parameters and buffers in this module (keyword only argument)
+
+        """
+        for name, param in self._parameters.items():
+            self.set_parameter(name, param.to(*args, **kwargs))
+        for name, buffer in self._buffers.items():
+            self.set_buffer(name, buffer.to(*args, **kwargs))
+
+        for module in self.modules():
+            module.to(*args, **kwargs)
+        return self
+
+    def cuda(self, device=None):
+        """
+        Moves all model parameters and buffers to the GPU.
+
+        Args:
+            device (int, optional) – if specified, all parameters will be copied
+            to that device
+        """
+        for name, param in self._parameters.items():
+            self.set_parameter(name, param.cuda(device=device))
+        for name, buffer in self._buffers.items():
+            self.set_buffer(name, buffer.cuda(device=device))
+
+        for module in self.modules():
+            module.cuda(device=device)
+        return self
+
+    def cpu(self):
+        """Moves all model parameters and buffers to the CPU."""
+        for name, param in self._parameters.items():
+            self.set_parameter(name, param.cpu())
+        for name, buffer in self._buffers.items():
+            self.set_buffer(name, buffer.cpu())
+
+        for module in self.modules():
+            module.cpu()
+        return self
 
     def _apply(self, fn):
         """Applies a function recursively on all modules."""
@@ -203,13 +420,16 @@ class Module:
 
             # encrypt / decrypt buffers:
             for name, buffer in self.named_buffers(recurse=False):
-                if mode:  # encrypt buffer
+                # encrypt buffer only if it's a torch tensor (not shapes)
+                if mode and torch.is_tensor(buffer):
                     self.set_buffer(
                         name,
                         crypten.cryptensor(buffer, **{"src": src}, requires_grad=False),
                     )
-                else:  # decrypt buffer
+                # decrypt buffer if it's a cryptensor
+                elif isinstance(buffer, crypten.CrypTensor):
                     self.set_buffer(name, buffer.get_plain_text())
+                    self._buffers[name].requires_grad = False
 
             # apply encryption recursively:
             return self._apply(lambda m: m.encrypt(mode=mode, src=src))
@@ -242,7 +462,7 @@ class Module:
 
     def __getattr__(self, name):
         """Redefine __getattr__ so that any parameters, modules or buffers
-           inside the Module object can be accessed as attributes
+        inside the Module object can be accessed as attributes
         """
         if "_parameters" in self.__dict__:
             parameters = self.__dict__["_parameters"]
@@ -262,8 +482,8 @@ class Module:
 
     def __setattr__(self, name, value):
         """Redefine __setattr__ so that any submodules created
-           inside the Module object are registered with _modules
-           OrderedDict.
+        inside the Module object are registered with _modules
+        OrderedDict.
         """
 
         def remove_from(*dicts):
@@ -289,7 +509,17 @@ class Module:
                 )
             modules[name] = value
         else:
+            for key in ["_parameters", "_modules", "_buffers"]:
+                if key in self.__dict__ and name in self.__dict__[key]:
+                    values = self.__dict__[key]
+                    values[name] = value
+                    return
             object.__setattr__(self, name, value)
+
+    def add_module(self, name, module):
+        """Adds and registers a submodule with a given name"""
+        assert name not in self._modules.keys(), "Module %s already exists." % name
+        self.register_module(name, module)
 
 
 class Container(Module):
@@ -319,13 +549,13 @@ class Graph(Container):
         if graph is not None:
             self._graph = graph
 
-    def add_module(self, name, module, input_names):
+    def add_module(self, name, module, input_names=None):
         assert name not in self._graph, "Module %s already exists." % name
         self.register_module(name, module)
-        self._graph[name] = input_names
+        if input_names is not None:
+            self._graph[name] = input_names
 
     def forward(self, input):
-
         # keep track of all values that have been computed:
         values = {self.input_name: input}
         computed = {key: False for key in self._graph.keys()}
@@ -377,13 +607,89 @@ class Sequential(Graph):
     Sequence of modules.
     """
 
-    def __init__(self, module_list):
+    def __init__(self, *module_list):
         super().__init__("input", "output")
+        if len(module_list) == 1 and isinstance(module_list[0], list):
+            raise DeprecationWarning(
+                "passing crypten.nn.Sequential a list is deprecated. Please "
+                "pass unpacked arguments (e.g. Sequential(*my_modules))."
+            )
+            module_list = module_list[0]
         num_modules = len(module_list)
         for idx, module in enumerate(module_list):
             module_name = "output" if idx + 1 == num_modules else "module_%d" % idx
             input_name = "input" if idx == 0 else "module_%d" % (idx - 1)
             self.add_module(module_name, module, [input_name])
+
+
+class ModuleDict(Module):
+    r"""Holds submodules in a dictionary.
+
+    :class:`~crypten.nn.ModuleDict` can be indexed like a regular Python dictionary,
+    but modules it contains are properly registered, and will be visible by all
+    :class:`~crypten.nn.Module` methods.
+
+    :class:`~crypten.nn.ModuleDict` is an **ordered** dictionary that respects
+
+    * the order of insertion, and
+
+    * in :meth:`~crypten.nn.ModuleDict.update`, the order of the merged ``OrderedDict``
+      or another :class:`~crypten.nn.ModuleDict` (the argument to :meth:`~crypten.nn.ModuleDict.update`).
+
+    Note that :meth:`~crypten.nn.ModuleDict.update` with other unordered mapping
+    types (e.g., Python's plain ``dict``) does not preserve the order of the
+    merged mapping.
+
+    Arguments:
+        modules (iterable, optional): a mapping (dictionary) of (string: module)
+            or an iterable of key-value pairs of type (string, module)
+
+    Example::
+
+        class MyModule(nn.Module):
+            def __init__(self):
+                super(MyModule, self).__init__()
+                self.choices = nn.ModuleDict({
+                        'conv': nn.Conv2d(10, 10, 3),
+                        'pool': nn.MaxPool2d(3)
+                })
+                self.activations = nn.ModuleDict([
+                        ['lrelu', nn.LeakyReLU()],
+                        ['prelu', nn.PReLU()]
+                ])
+
+            def forward(self, x, choice, act):
+                x = self.choices[choice](x)
+                x = self.activations[act](x)
+                return x
+    """
+
+    def __init__(self, modules=None):
+        super(ModuleDict, self).__init__()
+        if modules is not None:
+            self.update(modules)
+
+
+__module_dict_func_names = [
+    "__getitem__",
+    "__setitem__",
+    "__delitem__",
+    "__len__",
+    "__iter__",
+    "__contains__",
+    "clear",
+    "pop",
+    "keys",
+    "items",
+    "values",
+    "update",
+    "forward",
+]
+
+
+for func_name in __module_dict_func_names:
+    func = getattr(torch.nn.ModuleDict, func_name)
+    setattr(ModuleDict, func_name, func)
 
 
 class Constant(Module):
@@ -418,19 +724,34 @@ class Add(Module):
     """
 
     def forward(self, input):
-        assert isinstance(input, (list, tuple)), "input must be list or tuple"
-        assert len(input) == 2, "input must contain two tensors"
-        return input[0].add(input[1])
+        num_parameters = len(list(self.parameters()))
+        if num_parameters == 0:
+            assert isinstance(input, (list, tuple)), "input must be list or tuple"
+            assert len(input) == 2, "input must contain two tensors"
+            return input[0].add(input[1])
+        elif num_parameters == 1:
+            return input.add(list(self.parameters())[0])
+        else:
+            raise ValueError("Add cannot have more than one parameter.")
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
-        return Add()
+        module = Add()
+        if parameters:
+            len_param = len(parameters)
+            assert len_param == 1, "Add module can have maximum one parameter"
+            for key, value in parameters.items():
+                module.register_parameter(key, value)
+        return module
 
 
 class Sub(Module):
     """
     Module that subtracts two values.
     """
+
+    # TODO: Allow subtract to have a parameter as well, like add.
+    # Note that parameter needs to define ordering for subtraction
 
     def forward(self, input):
         assert isinstance(input, (list, tuple)), "input must be list or tuple"
@@ -455,7 +776,43 @@ class Exp(Module):
         return Exp()
 
 
-class ReduceSum(Module):
+class _Reduce(Module):
+    """
+    Base class for the functionality of ONNX ReduceMean (defined here as Mean),
+    and ONNX ReduceSum (defined here as Sum).
+    """
+
+    def __init__(self, dim, keepdim=False, reduction_fn="mean"):
+        super().__init__()
+        self.dim = dim
+        self.keepdim = keepdim
+        self.reduction_fn = reduction_fn
+
+    def forward(self, input):
+        return getattr(input, self.reduction_fn)(self.dim, keepdim=self.keepdim)
+
+
+class Mean(_Reduce):
+    """
+    Module that computes the mean of the input tensor's element along the provided axes.
+    If `keepdim` is True, the output tensor is of the same size as input
+    except in the dimension(s) `dim` where it is of size 1.
+    Otherwise, `dim` is squeezed, resulting in the output tensor having 1
+    (or `len(dim)`) fewer dimension(s).
+    """
+
+    def __init__(self, dim, keepdim=False):
+        super().__init__(dim, keepdim, "mean")
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        keepdim = _identify_bool_attributes_with_defaults(attributes, "keepdims", 1)
+        return Mean(attributes["axes"], keepdim)
+
+
+class Sum(_Reduce):
     """
     Module that computes the sum of the input tensor's element along the provided axes.
     If `keepdim` is True, the output tensor is of the same size as input
@@ -465,22 +822,46 @@ class ReduceSum(Module):
     """
 
     def __init__(self, dim, keepdim=False):
-        super().__init__()
-        self.dim = dim
-        self.keepdim = keepdim
-
-    def forward(self, input):
-        return input.sum(self.dim, keepdim=self.keepdim)
+        super().__init__(dim, keepdim, "sum")
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         if attributes is None:
             attributes = {}
-        dim = attributes["axes"]
-        if "keepdims" not in attributes:
-            attributes["keepdims"] = 1
-        keepdim = True if attributes["keepdims"] == 1 else False
-        return ReduceSum(dim, keepdim)
+        keepdim = _identify_bool_attributes_with_defaults(attributes, "keepdims", 1)
+        return Sum(attributes["axes"], keepdim)
+
+
+class Transpose(Module):
+    """
+    Module that transposes the input tensor similar to
+    `numpy.transpose`. For example, when perm=(1, 0, 2), given an input
+    tensor of shape (1, 2, 3), the output shape will be (2, 1, 3). Note
+    that the signature of this module matches the ONNX specification
+    and differs from `torch.transpose`
+
+    Args:
+        `perm`: list of ints
+    """
+
+    def __init__(self, perm):
+        super().__init__()
+        self.perm = perm
+
+    def forward(self, input):
+        assert input.dim() == len(self.perm)
+        return input.permute(self.perm)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        # TODO: ONNX specification says the permutation should be
+        # reversed if not provided in the attributes.  Because we
+        # don't have the input size here, we need figure out a
+        # different way of supporting this, if we want to do that.
+        perm = attributes["perm"]
+        return Transpose(perm)
 
 
 class Squeeze(Module):
@@ -652,21 +1033,19 @@ class Reshape(Module):
     dimensions and the number of elements in :attr:`self`.
 
     Args:
-        input (tuple of ints): the new shape
+        input (tuple): contains input tensor and shape (torch.Size)
     """
 
-    def forward(self, input):
-        assert isinstance(input, (list, tuple)), "input must be list or tuple"
-        tensor, shape = input
+    def __init__(self, shape):
+        super(Reshape, self).__init__()
+        self.shape = shape
 
-        # shape is not data so we can get plain text
-        if crypten.is_encrypted_tensor(shape):
-            shape = shape.get_plain_text()
-        return tensor.reshape(shape.long().tolist())
+    def forward(self, tensor):
+        return tensor.reshape(self.shape)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
-        return Reshape()
+        return Reshape(attributes["shape"])
 
 
 class Dropout(Module):
@@ -684,8 +1063,12 @@ class Dropout(Module):
         - Output: :math:`(*)`. Output is of the same shape as input
     """
 
-    def __init__(self, p=0.5):
+    def __init__(self, p=0.5, inplace=False):
         super().__init__()
+        if inplace:
+            logging.warning(
+                "CrypTen Dropout module does not support inplace computation."
+            )
         self.p = p
 
     def forward(self, input):
@@ -712,14 +1095,17 @@ class DropoutNd(Module):
         p (float, optional): probability of an element to be zero-ed.
     """
 
-    def __init__(self, p=0.5):
+    def __init__(self, p=0.5, inplace=False):
         super().__init__()
+        if inplace:
+            logging.warning(
+                "CrypTen DropoutNd module does not support inplace computation."
+            )
         self.p = p
 
     def forward(self, input):
         if self.training:
-            result = input._feature_dropout(p=self.p)
-            return result
+            return input._feature_dropout(p=self.p)
         return input
 
     @staticmethod
@@ -819,10 +1205,10 @@ class _ConstantPad(Module):
     Module that pads a tensor.
     """
 
-    def __init__(self, padding, value, mode="constant"):
+    def __init__(self, padding, value, ndims, mode="constant"):
         super().__init__()
         if isinstance(padding, (int)):
-            padding = [padding]
+            padding = [padding, padding] * ndims
         self.padding = padding
         self.value = value
         self.mode = mode
@@ -835,7 +1221,7 @@ class _ConstantPad(Module):
         if attributes is None:
             attributes = {}
         return _ConstantPad(
-            attributes["pads"], attributes["value"], mode=attributes["mode"]
+            attributes["pads"], attributes["value"], None, mode=attributes["mode"]
         )
 
 
@@ -844,7 +1230,8 @@ class ConstantPad1d(_ConstantPad):
     Module that pads a 1D tensor.
     """
 
-    pass
+    def __init__(self, padding, value, mode="constant"):
+        super(ConstantPad1d, self).__init__(padding, value, 1, mode=mode)
 
 
 class ConstantPad2d(_ConstantPad):
@@ -852,7 +1239,8 @@ class ConstantPad2d(_ConstantPad):
     Module that pads a 2D tensor.
     """
 
-    pass
+    def __init__(self, padding, value, mode="constant"):
+        super(ConstantPad2d, self).__init__(padding, value, 2, mode=mode)
 
 
 class ConstantPad3d(_ConstantPad):
@@ -860,7 +1248,8 @@ class ConstantPad3d(_ConstantPad):
     Module that pads a 3D tensor.
     """
 
-    pass
+    def __init__(self, padding, value, mode="constant"):
+        super(ConstantPad3d, self).__init__(padding, value, 3, mode=mode)
 
 
 class Linear(Module):
@@ -891,9 +1280,10 @@ class Linear(Module):
             self.register_parameter("bias", pytorch_module.bias)
 
     def forward(self, x):
-        if x.dim() > 2:
-            x = x.view(x.size(0), -1)
-        return x.matmul(self.weight.t()) + self.bias
+        output = x.matmul(self.weight.t())
+        if hasattr(self, "bias"):
+            output = output.add(self.bias)
+        return output
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
@@ -911,6 +1301,68 @@ class Linear(Module):
         return module
 
 
+class MatMul(Module):
+    """
+    Matrix product of two tensors.
+    The behavior depends on the dimensionality of the tensors as followsf
+        - If both tensors are 1-dimensional, the dot product (scalar) is returned.
+        - If both arguments are 2-dimensional, the matrix-matrix product is returned.
+        - If the first argument is 1-dimensional and the second argument is
+        2-dimensional, a 1 is prepended to its dimension for the purpose of the
+        matrix multiply. After the matrix multiply, the prepended dimension is removed.
+        - If the first argument is 2-dimensional and the second argument is
+        1-dimensional, the matrix-vector product is returned.
+        - If both arguments are at least 1-dimensional and at least one argument is
+        N-dimensional (where N > 2), then a batched matrix multiply is returned.
+        If the first argument is 1-dimensional, a 1 is prepended to its dimension
+        for the purpose of the batched matrix multiply and removed after. If the
+        second argument is 1-dimensional, a 1 is appended to its dimension for the
+        purpose of the batched matrix multiple and removed after.
+        The non-matrix (i.e. batch) dimensions are broadcasted (and thus
+        must be broadcastable).  For example, if :attr:`input` is a
+        :math:`(j \times 1 \times n \times m)` tensor and :attr:`other` is
+        a :math:`(k \times m \times p)` tensor, :attr:`out` will be an
+        :math:`(j \times k \times n \times p)` tensor.
+
+    Arguments:
+        Option 1: [input1, input2]
+            input1: first input matrix to be multiplied
+            input2: second input matrix to be multiplied.
+        Option 2: input1
+            input1: first input matrix to be multiplied, if module
+            is already initialized with the second (i.e. multiplier) matrix.
+    """
+
+    def __init__(self, weight=None):
+        super().__init__()
+        if weight is not None:
+            self.register_parameter("weight", weight)
+
+    def forward(self, x):
+        if hasattr(self, "weight"):
+            output = x.matmul(self.weight)
+        else:
+            assert isinstance(x, (list, tuple)), "input must be list or tuple"
+            assert len(x) == 2, "input must contain two tensors"
+            output = x[0].matmul(x[1])
+        return output
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if parameters is None:
+            parameters = {}
+        # set parameters if they exist
+        if parameters:
+            assert len(parameters) == 1, "Can have maximum one parameter"
+            weight_param = list(parameters.keys())[0]
+            value = parameters[weight_param]
+            module = MatMul(weight=value)
+        else:
+            module = MatMul()
+        return module
+
+
+# TODO: Eliminate copy-pasta by implementing _Conv parent class
 class Conv1d(Module):
     r"""
     Module that performs 1D convolution.
@@ -994,7 +1446,15 @@ class Conv1d(Module):
     """  # noqa: W605
 
     def __init__(
-        self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        groups=1,
+        bias=True,
     ):
 
         # check inputs:
@@ -1009,6 +1469,8 @@ class Conv1d(Module):
             kernel_size,
             stride=stride,
             padding=padding,
+            dilation=dilation,
+            groups=groups,
             bias=bias,
         )
         self.register_parameter("weight", pytorch_module.weight)
@@ -1018,9 +1480,17 @@ class Conv1d(Module):
         # set other instance fields:
         self.stride = stride
         self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
 
     def forward(self, x):
-        x = x.conv1d(self.weight, stride=self.stride, padding=self.padding)
+        x = x.conv1d(
+            self.weight,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=self.groups,
+        )
         if hasattr(self, "bias"):
             x = x.add(self.bias.unsqueeze(-1))
         return x
@@ -1033,10 +1503,6 @@ class Conv1d(Module):
             parameters = {}
         if attributes is None:
             attributes = {}
-        assert attributes["group"] == 1, "group convolution not supported"
-        assert all(
-            dilation == 1 for dilation in attributes["dilations"]
-        ), "dilated convolutions not supported"
 
         # initialize module:
         in_channels = parameters["weight"].size(1)
@@ -1047,6 +1513,8 @@ class Conv1d(Module):
             attributes["kernel_shape"][0],
             stride=attributes["strides"][0],
             padding=attributes["pads"][0],
+            dilation=attributes["dilations"][0],
+            groups=attributes["group"],
             bias=("bias" in parameters),
         )
 
@@ -1145,7 +1613,15 @@ class Conv2d(Module):
     """
 
     def __init__(
-        self, in_channels, out_channels, kernel_size, stride=1, padding=0, bias=True
+        self,
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        groups=1,
+        bias=True,
     ):
         # check inputs:
         super().__init__()
@@ -1166,6 +1642,8 @@ class Conv2d(Module):
             kernel_size,
             stride=stride,
             padding=padding,
+            dilation=dilation,
+            groups=groups,
             bias=bias,
         )
         self.register_parameter("weight", pytorch_module.weight)
@@ -1175,9 +1653,17 @@ class Conv2d(Module):
         # set other instance fields:
         self.stride = stride
         self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
 
     def forward(self, x):
-        x = x.conv2d(self.weight, stride=self.stride, padding=self.padding)
+        x = x.conv2d(
+            self.weight,
+            stride=self.stride,
+            padding=self.padding,
+            dilation=self.dilation,
+            groups=self.groups,
+        )
         if hasattr(self, "bias"):
             x = x.add(self.bias.unsqueeze(-1).unsqueeze(-1))
         return x
@@ -1189,17 +1675,10 @@ class Conv2d(Module):
             parameters = {}
         if attributes is None:
             attributes = {}
-        assert _all_the_same(["kernel_shape"]), "only square kernels are supported"
-        assert _all_the_same(
-            attributes["strides"]
-        ), "stride must be the same in each dimension"
-        assert _all_the_same(
-            attributes["pads"]
-        ), "padding must be the same in each dimension"
-        assert attributes["group"] == 1, "group convolution not supported"
-        assert all(
-            dilation == 1 for dilation in attributes["dilations"]
-        ), "dilated convolutions not supported"
+        if "pads" not in attributes:
+            attributes["pads"] = [0, 0]
+        if "group" not in attributes:
+            attributes["group"] = 1
 
         # initialize module:
         in_channels = parameters["weight"].size(1)
@@ -1207,9 +1686,11 @@ class Conv2d(Module):
         module = Conv2d(
             in_channels,
             out_channels,
-            attributes["kernel_shape"][0],
-            stride=attributes["strides"][0],
-            padding=attributes["pads"][0],
+            attributes["kernel_shape"],
+            stride=attributes["strides"],
+            padding=attributes["pads"],
+            dilation=attributes["dilations"],
+            groups=attributes["group"],
             bias=("bias" in parameters),
         )
 
@@ -1226,12 +1707,120 @@ class ReLU(Module):
     :math:`\text{ReLU}(x)= \max(0, x)`
     """
 
+    def __init__(self, inplace=False):
+        super().__init__()
+        if inplace:
+            logging.warning("CrypTen ReLU module does not support inplace computation.")
+
     def forward(self, x):
         return x.relu()
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         return ReLU()
+
+
+class Hardtanh(Module):
+    r"""Applies the Hardtanh function element-wise
+
+    HardTtnh is defined as:
+
+    .. math::
+        \text{Hardtanh}(x) = \begin{cases}
+            1 & \text{ if } x > 1 \\
+            -1 & \text{ if } x < -1 \\
+            x & \text{ otherwise } \\
+        \end{cases}
+
+    The range of the linear region :math:`[-1, 1]` can be adjusted using
+    :attr:`min_val` and :attr:`max_val`.
+
+    Args:
+        min_val: minimum value of the linear region range. Default: -1
+        max_val: maximum value of the linear region range. Default: 1
+        inplace: can optionally do the operation in-place. Default: ``False``
+
+    Keyword arguments :attr:`min_value` and :attr:`max_value`
+    have been deprecated in favor of :attr:`min_val` and :attr:`max_val`.
+
+    Shape:
+        - Input: :math:`(N, *)` where `*` means, any number of additional
+          dimensions
+        - Output: :math:`(N, *)`, same shape as the input
+
+    .. image:: ../scripts/activation_images/Hardtanh.png
+
+    Examples::
+
+        >>> m = nn.Hardtanh(-2, 2)
+        >>> input = torch.randn(2)
+        >>> output = m(input)
+    """
+
+    def __init__(self, min_val=-1.0, max_val=1.0, inplace=False):
+        super().__init__()
+        self.min_val = min_val
+        self.max_val = max_val
+        if inplace:
+            logging.warning(
+                "CrypTen Hardtanh module does not support inplace computation."
+            )
+
+    def forward(self, input):
+        return input.hardtanh(self.min_val, self.max_val)
+
+    def extra_repr(self):
+        return "min_val={}, max_val={}".format(self.min_val, self.max_val)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Hardtanh(min_val=attributes["min"], max_val=attributes["max"])
+
+
+class ReLU6(Hardtanh):
+    r"""Applies the element-wise function:
+
+    .. math::
+        \text{ReLU6}(x) = \min(\max(0,x), 6)
+
+    Args:
+        inplace: can optionally do the operation in-place. Default: ``False``
+
+    Shape:
+        - Input: :math:`(N, *)` where `*` means, any number of additional
+          dimensions
+        - Output: :math:`(N, *)`, same shape as the input
+
+    .. image:: ../scripts/activation_images/ReLU6.png
+
+    Examples::
+
+        >>> m = nn.ReLU6()
+        >>> input = torch.randn(2)
+        >>> output = m(input)
+    """
+
+    def __init__(self, inplace=False):
+        if inplace:
+            logging.warning(
+                "CrypTen ReLU6 module does not support inplace computation."
+            )
+        super(ReLU6, self).__init__(min_val=0, max_val=6, inplace=False)
+
+
+class Sigmoid(Module):
+    r"""Applies the element-wise function:
+
+    .. math::
+        \text{Sigmoid}(x) = \sigma(x) = \frac{1}{1 + \exp(-x)}
+    """
+
+    def forward(self, x):
+        return x.sigmoid()
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Sigmoid()
 
 
 class Softmax(Module):
@@ -1336,16 +1925,21 @@ class _Pool2d(Module):
         https://github.com/vdumoulin/conv_arithmetic/blob/master/README.md
     """
 
-    def __init__(self, pool_type, kernel_size, stride=1, padding=0):
+    def __init__(self, pool_type, kernel_size, stride=None, padding=0, ceil_mode=False):
         super().__init__()
         self.pool_type = pool_type
         self.kernel_size = kernel_size
         self.padding = padding
         self.stride = stride
+        self.ceil_mode = ceil_mode
 
     def forward(self, x):
         args = [self.kernel_size]
-        kwargs = {"stride": self.stride, "padding": self.padding}
+        kwargs = {
+            "stride": self.stride,
+            "padding": self.padding,
+            "ceil_mode": self.ceil_mode,
+        }
         if self.pool_type == "average":
             return x.avg_pool2d(*args, **kwargs)
         elif self.pool_type == "max":
@@ -1365,13 +1959,16 @@ class _Pool2d(Module):
         assert _all_the_same(
             attributes["strides"]
         ), "stride must be the same in each dimension"
-        assert _all_the_same(
-            attributes["pads"]
-        ), "padding must be the same in each dimension"
+        attributes["ceil_mode"] = attributes.get("ceil_mode", 0)
+        attributes["ceil_mode"] = attributes["ceil_mode"] > 0
 
         # initialize module
         args = [attributes["kernel_shape"][0]]
-        kwargs = {"stride": attributes["strides"][0], "padding": attributes["pads"][0]}
+        kwargs = {
+            "stride": attributes["strides"][0],
+            "padding": attributes["pads"][0],
+            "ceil_mode": attributes["ceil_mode"],
+        }
         if pool_type == "average":
             return AvgPool2d(*args, **kwargs)
         elif pool_type == "max":
@@ -1423,8 +2020,10 @@ class AvgPool2d(_Pool2d):
                 \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
     """
 
-    def __init__(self, kernel_size, stride=1, padding=0):
-        super().__init__("average", kernel_size, stride=stride, padding=padding)
+    def __init__(self, kernel_size, stride=None, padding=0, ceil_mode=False):
+        super().__init__(
+            "average", kernel_size, stride=stride, padding=padding, ceil_mode=ceil_mode
+        )
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
@@ -1438,14 +2037,107 @@ class MaxPool2d(_Pool2d):
     Module that performs 2D max pooling (see :meth:`AvgPool2d`)
     """
 
-    def __init__(self, kernel_size, stride=1, padding=0):
-        super().__init__("max", kernel_size, stride=stride, padding=padding)
+    def __init__(self, kernel_size, stride=None, padding=0, ceil_mode=False):
+        super().__init__(
+            "max", kernel_size, stride=stride, padding=padding, ceil_mode=ceil_mode
+        )
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         return super(MaxPool2d, MaxPool2d).from_onnx(
             "max", parameters=parameters, attributes=attributes
         )
+
+
+class AdaptiveAvgPool2d(Module):
+    r"""Applies a 2D adaptive average pooling over an input signal composed of several input planes.
+
+    The output is of size H x W, for any input size.
+    The number of output features is equal to the number of input planes.
+
+    Args:
+        output_size: the target output size of the image of the form H x W.
+                     Can be a tuple (H, W) or a single H for a square image H x H.
+                     H and W can be either a ``int``, or ``None`` which means the size will
+                     be the same as that of the input.
+
+    Examples:
+        >>> # target output size of 5x7
+        >>> m = nn.AdaptiveAvgPool2d((5,7))
+        >>> input = crypten.randn(1, 64, 8, 9)
+        >>> output = m(input)
+        >>> # target output size of 7x7 (square)
+        >>> m = nn.AdaptiveAvgPool2d(7)
+        >>> input = crypten.randn(1, 64, 10, 9)
+        >>> output = m(input)
+        >>> # target output size of 10x7
+        >>> m = nn.AdaptiveAvgPool2d((None, 7))
+        >>> input = crypten.randn(1, 64, 10, 9)
+        >>> output = m(input)
+    """
+
+    def __init__(self, output_size):
+        super(AdaptiveAvgPool2d, self).__init__()
+        self.output_size = output_size
+
+    def extra_repr(self) -> str:
+        return "output_size={}".format(self.output_size)
+
+    def forward(self, input_tensor):
+        resized_input, args, kwargs = adaptive_pool2d_helper(
+            input_tensor, self.output_size, reduction="mean"
+        )
+        return resized_input.avg_pool2d(*args, **kwargs)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return AdaptiveAvgPool2d(attributes["shape"])
+
+
+class AdaptiveMaxPool2d(Module):
+    r"""Applies a 2D adaptive max pooling over an input signal composed of several input planes.
+
+    The output is of size H x W, for any input size.
+    The number of output features is equal to the number of input planes.
+
+    Args:
+        output_size: the target output size of the image of the form H x W.
+                     Can be a tuple (H, W) or a single H for a square image H x H.
+                     H and W can be either a ``int``, or ``None`` which means the size will
+                     be the same as that of the input.
+
+    Examples:
+        >>> # target output size of 5x7
+        >>> m = nn.AdaptiveMaxPool2d((5,7))
+        >>> input = crypten.randn(1, 64, 8, 9)
+        >>> output = m(input)
+        >>> # target output size of 7x7 (square)
+        >>> m = nn.AdaptiveMaxPool2d(7)
+        >>> input = crypten.randn(1, 64, 10, 9)
+        >>> output = m(input)
+        >>> # target output size of 10x7
+        >>> m = nn.AdaptiveMaxPool2d((None, 7))
+        >>> input = crypten.randn(1, 64, 10, 9)
+        >>> output = m(input)
+
+    """
+
+    def __init__(self, output_size):
+        super(AdaptiveMaxPool2d, self).__init__()
+        self.output_size = output_size
+
+    def extra_repr(self) -> str:
+        return "output_size={}".format(self.output_size)
+
+    def forward(self, input_tensor):
+        resized_input, args, kwargs = adaptive_pool2d_helper(
+            input_tensor, self.output_size, reduction="max"
+        )
+        return resized_input.max_pool2d(*args, **kwargs)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return AdaptiveMaxPool2d(attributes["shape"])
 
 
 class GlobalAveragePool(Module):
@@ -1492,6 +2184,9 @@ class _BatchNorm(Module):
         self.eps = eps
         self.momentum = momentum
 
+        # do not precompute inverse variance during training
+        self.inv_var = None
+
     def forward(self, input):
         return input.batchnorm(
             self.weight,
@@ -1501,6 +2196,7 @@ class _BatchNorm(Module):
             training=self.training,
             eps=self.eps,
             momentum=self.momentum,
+            inv_var=self.inv_var,
         )
 
     @staticmethod
@@ -1511,9 +2207,12 @@ class _BatchNorm(Module):
             parameters = {}
         if attributes is None:
             attributes = {}
+
         num_features = len(parameters["running_mean"])
 
         # create module:
+        if "momentum" not in attributes:
+            attributes["momentum"] = 0.1
         kwargs = {"eps": attributes["epsilon"], "momentum": attributes["momentum"]}
         module = _BatchNorm(num_features, **kwargs)
 
@@ -1524,6 +2223,15 @@ class _BatchNorm(Module):
             else:
                 module.set_parameter(key, value)
         return module
+
+    def train(self, mode=True):
+        """Freezes the inverse variance during inference to save computation"""
+        super().train(mode=mode)
+        if self.training:
+            self.inv_var = None
+        else:
+            self.inv_var = self.running_var.add(self.eps).inv_sqrt()
+        return self
 
 
 class BatchNorm1d(_BatchNorm):
@@ -1550,8 +2258,31 @@ class BatchNorm3d(_BatchNorm):
     pass
 
 
+class GroupNorm(Module):
+    """
+    Module that performs group normalization on tensors.
+    """
+
+    def __init__(self, num_groups, num_channels, eps=1e-5, affine=True):
+        raise NotImplementedError("GroupNorm is not implemented.")
+
+
 def _all_the_same(items):
     """
     Checks whether all values in a list are the same.
     """
     return all(items[0] == item for item in items)
+
+
+def _identify_bool_attributes_with_defaults(
+    attributes, attr_name, attr_value, default=True
+):
+    """For boolean attributes that have default values in the ONNX specification
+    checks to see if they are present in `attributes`, and assigns the
+    default if not present and appropriate value if present. Note `attr_value`
+    must be the value `attributes[attr_name]` if the default is to be kept.
+    """
+    output = default
+    if attr_name in attributes and attributes[attr_name] != attr_value:
+        output = not default
+    return output

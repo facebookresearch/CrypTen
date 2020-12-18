@@ -5,14 +5,27 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import warnings
+import logging
+from dataclasses import dataclass
 from functools import wraps
 
 import crypten
 import torch
-from crypten.common.util import pool_reshape
+from crypten import communicator as comm
+from crypten.common.tensor_types import is_tensor
+from crypten.common.util import (
+    ConfigBase,
+    adaptive_pool2d_helper,
+    pool2d_reshape,
+    torch_cat,
+    torch_stack,
+)
+from crypten.cuda import CUDALongTensor
 
 from ..cryptensor import CrypTensor
+from ..encoder import FixedPointEncoder
+from .max_helper import _argmax_helper, _max_helper_all_tree_reductions
+from .primitives.binary import BinarySharedTensor
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
 
@@ -45,7 +58,7 @@ def mode(ptype, inplace=False):
     return function_wrapper
 
 
-def _one_hot_to_index(tensor, dim, keepdim):
+def _one_hot_to_index(tensor, dim, keepdim, device=None):
     """
     Converts a one-hot tensor output from an argmax / argmin function to a
     tensor containing indices from the input tensor from which the result of the
@@ -53,30 +66,84 @@ def _one_hot_to_index(tensor, dim, keepdim):
     """
     if dim is None:
         result = tensor.flatten()
-        result = result * torch.tensor(list(range(tensor.nelement())))
+        result = result * torch.tensor(list(range(tensor.nelement())), device=device)
         return result.sum()
     else:
         size = [1] * tensor.dim()
         size[dim] = tensor.size(dim)
-        result = tensor * torch.tensor(list(range(tensor.size(dim)))).view(size)
+        result = tensor * torch.tensor(
+            list(range(tensor.size(dim))), device=device
+        ).view(size)
         return result.sum(dim, keepdim=keepdim)
 
 
+@dataclass
+class MPCConfig:
+    """
+    A configuration object for use by the MPCTensor.
+    """
+
+    # Used by max / argmax / min / argmin
+    max_method: str = "log_reduction"
+
+
+# Global config
+config = MPCConfig()
+
+
+class ConfigManager(ConfigBase):
+    r"""
+    Use this to temporarily change a value in the `mpc.config` object. The
+    following sets `config.exp_iterations` to `10` for one function
+    invocation and then sets it back to the previous value::
+
+        with ConfigManager("exp_iterations", 10):
+            tensor.exp()
+
+    """
+
+    def __init__(self, *args):
+        super().__init__(config, *args)
+
+
 class MPCTensor(CrypTensor):
-    def __init__(self, tensor, ptype=Ptype.arithmetic, *args, **kwargs):
+    def __init__(self, tensor, ptype=Ptype.arithmetic, device=None, *args, **kwargs):
+        """
+        Creates the shared tensor from the input `tensor` provided by party `src`.
+        The `ptype` defines the type of sharing used (default: arithmetic).
+
+        The other parties can specify a `tensor` or `size` to determine the size
+        of the shared tensor object to create. In this case, all parties must
+        specify the same (tensor) size to prevent the party's shares from varying
+        in size, which leads to undefined behavior.
+
+        Alternatively, the parties can set `broadcast_size` to `True` to have the
+        `src` party broadcast the correct size. The parties who do not know the
+        tensor size beforehand can provide an empty tensor as input. This is
+        guaranteed to produce correct behavior but requires an additional
+        communication round.
+
+        The parties can also set the `precision` and `device` for their share of
+        the tensor. If `device` is unspecified, it is set to `tensor.device`.
+        """
+        if tensor is None:
+            raise ValueError("Cannot initialize tensor with None.")
 
         # take required_grad from kwargs, input tensor, or set to False:
-        default = tensor.requires_grad if tensor is torch.is_tensor(tensor) else False
+        default = tensor.requires_grad if torch.is_tensor(tensor) else False
         requires_grad = kwargs.pop("requires_grad", default)
 
         # call CrypTensor constructor:
         super().__init__(requires_grad=requires_grad)
-        if tensor is None:
-            return  # TODO: Can we remove this and do staticmethods differently?
+        if device is None and hasattr(tensor, "device"):
+            device = tensor.device
 
         # create the MPCTensor:
         tensor_type = ptype.to_tensor()
-        self._tensor = tensor_type(tensor, *args, **kwargs)
+        if tensor is []:
+            self._tensor = torch.tensor([], device=device)
+        else:
+            self._tensor = tensor_type(tensor=tensor, device=device, *args, **kwargs)
         self.ptype = ptype
 
     @staticmethod
@@ -88,7 +155,7 @@ class MPCTensor(CrypTensor):
 
     @staticmethod
     def from_shares(share, precision=None, src=0, ptype=Ptype.arithmetic):
-        result = MPCTensor(None)
+        result = MPCTensor([])
         from_shares = ptype.to_tensor().from_shares
         result._tensor = from_shares(share, precision=precision, src=src)
         result.ptype = ptype
@@ -97,7 +164,7 @@ class MPCTensor(CrypTensor):
     def clone(self):
         """Create a deep copy of the input tensor."""
         # TODO: Rename this to __deepcopy__()?
-        result = MPCTensor(None)
+        result = MPCTensor([])
         result._tensor = self._tensor.clone()
         result.ptype = self.ptype
         return result
@@ -105,18 +172,64 @@ class MPCTensor(CrypTensor):
     def shallow_copy(self):
         """Create a shallow copy of the input tensor."""
         # TODO: Rename this to __copy__()?
-        result = MPCTensor(None)
+        result = MPCTensor([])
         result._tensor = self._tensor
         result.ptype = self.ptype
         return result
 
-    # Handle share types and conversions
-    def to(self, ptype, **kwargs):
-        """Converts self._tensor to the given ptype
+    def copy_(self, other):
+        """Copies value of other MPCTensor into this MPCTensor."""
+        assert isinstance(other, MPCTensor), "other must be MPCTensor"
+        self._tensor.copy_(other._tensor)
+        self.ptype = other.ptype
+
+    def to(self, *args, **kwargs):
+        r"""
+        Depending on the input arguments,
+        converts underlying share to the given ptype or
+        performs `torch.to` on the underlying torch tensor
+
+        To convert underlying share to the given ptype, call `to` as:
+            to(ptype, **kwargs)
+
+        It will call MPCTensor.to_ptype with the arguments provided above.
+
+        Otherwise, `to` performs `torch.to` on the underlying
+        torch tensor. See
+        https://pytorch.org/docs/stable/tensors.html?highlight=#torch.Tensor.to
+        for a reference of the parameters that can be passed in.
 
         Args:
             ptype: Ptype.arithmetic or Ptype.binary.
         """
+        if "ptype" in kwargs:
+            return self._to_ptype(**kwargs)
+        elif args and isinstance(args[0], Ptype):
+            ptype = args[0]
+            return self._to_ptype(ptype, **kwargs)
+        else:
+            share = self.share.to(*args, **kwargs)
+            if share.is_cuda:
+                share = CUDALongTensor(share)
+            self.share = share
+            return self
+
+    def _to_ptype(self, ptype, **kwargs):
+        r"""
+        Convert MPCTensor's underlying share to the corresponding ptype
+        (ArithmeticSharedTensor, BinarySharedTensor)
+
+        Args:
+            ptype (Ptype.arithmetic or Ptype.binary): The ptype to convert
+                the shares to.
+            precision (int, optional): Precision of the fixed point encoder when
+                converting a binary share to an arithmetic share. It will be ignored
+                if the ptype doesn't match.
+            bits (int, optional): If specified, will only preserve the bottom `bits` bits
+                of a binary tensor when converting from a binary share to an arithmetic share.
+                It will be ignored if the ptype doesn't match.
+        """
+
         retval = self.clone()
         if retval.ptype == ptype:
             return retval
@@ -131,6 +244,26 @@ class MPCTensor(CrypTensor):
     def binary(self):
         """Converts self._tensor to binary secret sharing"""
         return self.to(Ptype.binary)
+
+    @property
+    def device(self):
+        """Return the `torch.device` of the underlying share"""
+        return self.share.device
+
+    @property
+    def is_cuda(self):
+        """Return True if the underlying share is stored on GPU, False otherwise"""
+        return self.share.is_cuda
+
+    def cuda(self, *args, **kwargs):
+        """Call `torch.Tensor.cuda` on the underlying share"""
+        self.share = CUDALongTensor(self.share.cuda(*args, **kwargs))
+        return self
+
+    def cpu(self):
+        """Call `torch.Tensor.cpu` on the underlying share"""
+        self.share = self.share.cpu()
+        return self
 
     def get_plain_text(self, dst=None):
         """Decrypts the tensor."""
@@ -152,8 +285,6 @@ class MPCTensor(CrypTensor):
         """Returns a representation of the tensor useful for debugging."""
         from crypten.debug import debug_mode
 
-        if not hasattr(self, "_tensor"):
-            return f"MPCTensor(None)"
         share = self.share
         plain_text = self._tensor.get_plain_text() if debug_mode() else "HIDDEN"
         ptype = self.ptype
@@ -165,7 +296,7 @@ class MPCTensor(CrypTensor):
     def __setitem__(self, index, value):
         """Set tensor values by index"""
         if not isinstance(value, MPCTensor):
-            value = MPCTensor(value, ptype=self.ptype)
+            value = MPCTensor(value, ptype=self.ptype, device=self.device)
         self._tensor.__setitem__(index, value._tensor)
 
     @property
@@ -211,9 +342,8 @@ class MPCTensor(CrypTensor):
 
         # Operate on all input tensors
         result = tensors[0].clone()
-        result.share = getattr(torch, op)(
-            [tensor.share for tensor in tensors], *args, **kwargs
-        )
+        funcs = {"cat": torch_cat, "stack": torch_stack}
+        result.share = funcs[op]([tensor.share for tensor in tensors], *args, **kwargs)
         return result
 
     @staticmethod
@@ -227,21 +357,59 @@ class MPCTensor(CrypTensor):
         return MPCTensor.__cat_stack_helper("stack", tensors, *args, **kwargs)
 
     @staticmethod
-    def rand(*sizes):
+    def rand(*sizes, device=None):
         """
-        Returns a tensor with elements uniformly sampled in [0, 1) using the
-        trusted third party.
+        Returns a tensor with elements uniformly sampled in [0, 1). The uniform
+        random samples are generated by generating random bits using fixed-point
+        encoding and converting the result to an ArithmeticSharedTensor.
         """
-        rand = MPCTensor(None)
-        rand._tensor = crypten.mpc.get_default_provider().rand(*sizes)
-        rand.ptype = Ptype.arithmetic
-        return rand
+        rand = MPCTensor([])
+        encoder = FixedPointEncoder()
+        rand._tensor = BinarySharedTensor.rand(
+            *sizes, bits=encoder._precision_bits, device=device
+        )
+        rand._tensor.encoder = encoder
+        rand.ptype = Ptype.binary
+        return rand.to(Ptype.arithmetic, bits=encoder._precision_bits)
+
+    @staticmethod
+    def randn(*sizes, device=None):
+        """
+        Returns a tensor with normally distributed elements. Samples are
+        generated using the Box-Muller transform with optimizations for
+        numerical precision and MPC efficiency.
+        """
+        u = MPCTensor.rand(*sizes, device=device).flatten()
+        odd_numel = u.numel() % 2 == 1
+        if odd_numel:
+            u = MPCTensor.cat([u, MPCTensor.rand((1,), device=device)])
+
+        n = u.numel() // 2
+        u1 = u[:n]
+        u2 = u[n:]
+
+        # Radius = sqrt(- 2 * log(u1))
+        r2 = -2 * u1.log(input_in_01=True)
+        r = r2.sqrt()
+
+        # Theta = cos(2 * pi * u2) or sin(2 * pi * u2)
+        cos, sin = u2.sub(0.5).mul(6.28318531).cossin()
+
+        # Generating 2 independent normal random variables using
+        x = r.mul(sin)
+        y = r.mul(cos)
+        z = MPCTensor.cat([x, y])
+
+        if odd_numel:
+            z = z[1:]
+
+        return z.view(*sizes)
 
     def bernoulli(self):
         """Returns a tensor with elements in {0, 1}. The i-th element of the
         output will be 1 with probability according to the i-th value of the
         input tensor."""
-        return self > MPCTensor.rand(self.size())
+        return self > MPCTensor.rand(self.size(), device=self.device)
 
     # TODO: It seems we can remove all Dropout implementations below?
     def dropout(self, p=0.5, training=True, inplace=False):
@@ -256,12 +424,17 @@ class MPCTensor(CrypTensor):
                 Default: ``False``
         """
         assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
+        if training and inplace:
+            logging.warning(
+                "CrypTen dropout does not support inplace computation during training."
+            )
+
         if not training:
             if inplace:
                 return self
             else:
                 return self.clone()
-        rand_tensor = MPCTensor.rand(self.size())
+        rand_tensor = MPCTensor.rand(self.size(), device=self.device)
         dropout_tensor = rand_tensor > p
         if inplace:
             result_tensor = self.mul_(dropout_tensor).div_(1 - p)
@@ -312,6 +485,11 @@ class MPCTensor(CrypTensor):
         :math:`\text{input}[i, j]`)."""
         assert self.dim() >= 2, "feature dropout requires dimension to be at least 2"
         assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
+        if training and inplace:
+            logging.warning(
+                "CrypTen _feature_dropout does not support inplace computation during training."
+            )
+
         if not training:
             if inplace:
                 return self
@@ -320,7 +498,7 @@ class MPCTensor(CrypTensor):
         # take first 2 dimensions
         feature_dropout_size = self.size()[0:2]
         # create dropout tensor over the first two dimensions
-        rand_tensor = MPCTensor.rand(feature_dropout_size)
+        rand_tensor = MPCTensor.rand(feature_dropout_size, device=self.device)
         feature_dropout_tensor = rand_tensor > p
         # Broadcast to remaining dimensions
         for i in range(2, self.dim()):
@@ -369,14 +547,39 @@ class MPCTensor(CrypTensor):
     @mode(Ptype.arithmetic)
     def eq(self, y, _scale=True):
         """Returns self == y"""
+        if comm.get().get_world_size() == 2:
+            return (self - y)._eqz_2PC(_scale=_scale)
+
         return 1 - self.ne(y, _scale=_scale)
 
     @mode(Ptype.arithmetic)
     def ne(self, y, _scale=True):
         """Returns self != y"""
+        if comm.get().get_world_size() == 2:
+            return 1 - self.eq(y, _scale=_scale)
+
         difference = self - y
-        difference.share = torch.stack([difference.share, -(difference.share)])
+        difference.share = torch_stack([difference.share, -(difference.share)])
         return difference._ltz(_scale=_scale).sum(0)
+
+    @mode(Ptype.arithmetic)
+    def _eqz_2PC(self, _scale=True):
+        """Returns self == 0"""
+        # Create BinarySharedTensors from shares
+        x0 = MPCTensor(self.share, src=0, ptype=Ptype.binary)
+        x1 = MPCTensor(-self.share, src=1, ptype=Ptype.binary)
+
+        # Perform equality testing using binary shares
+        x0._tensor = x0._tensor.eq(x1._tensor)
+        x0.encoder = x0.encoder if _scale else self.encoder
+
+        # Convert to Arithmetic sharing
+        result = x0.to(Ptype.arithmetic, bits=1)
+
+        if not _scale:
+            result.encoder._scale = 1
+
+        return result
 
     @mode(Ptype.arithmetic)
     def sign(self, _scale=True):
@@ -414,12 +617,14 @@ class MPCTensor(CrypTensor):
             return self.flatten().weighted_index(dim=0).view(self.size())
 
         x = self.cumsum(dim)
-        max_weight = x.index_select(dim, torch.tensor(x.size(dim) - 1))
-        r = MPCTensor.rand(max_weight.size()) * max_weight
+        max_weight = x.index_select(
+            dim, torch.tensor(x.size(dim) - 1, device=self.device)
+        )
+        r = MPCTensor.rand(max_weight.size(), device=self.device) * max_weight
 
         gt = x.gt(r, _scale=False)
         shifted = gt.roll(1, dims=dim)
-        shifted.share.index_fill_(dim, torch.tensor(0), 0)
+        shifted.share.index_fill_(dim, torch.tensor(0, device=self.device), 0)
 
         return gt - shifted
 
@@ -446,39 +651,6 @@ class MPCTensor(CrypTensor):
         return sample, indices
 
     # max / min-related functions
-    def _argmax_helper(self, dim=None):
-        """Returns 1 for all elements that have the highest value in the appropriate
-           dimension of the tensor.
-        """
-
-        dim = -1 if dim is None else dim
-        row_length = self.size(dim) if self.size(dim) > 1 else 2
-
-        # Copy each row (length - 1) times to compare to each other row
-        a = self.expand(row_length - 1, *self.size())
-
-        # Generate cyclic permutations for each row
-        b = crypten.stack([self.roll(i + 1, dims=dim) for i in range(row_length - 1)])
-
-        # Use either prod or sum & comparison depending on size
-        if row_length - 1 < torch.iinfo(torch.long).bits * 2:
-            pairwise_comparisons = a.ge(b, _scale=False)
-            result = pairwise_comparisons.prod(0)
-            result.share *= self.encoder._scale
-            result.encoder = self.encoder
-        else:
-            # Sum of columns with all 1s will have value equal to (length - 1).
-            # Using ge() since it is slightly faster than eq()
-            pairwise_comparisons = a.ge(b)
-            result = pairwise_comparisons.sum(0).ge(row_length - 1)
-        return result
-
-        """
-        pairwise_comparisons = a.ge(b, _scale=False)
-
-        return result
-        """
-
     @mode(Ptype.arithmetic)
     def argmax(self, dim=None, keepdim=False, one_hot=True):
         """Returns the indices of the maximum value of all elements in the
@@ -486,16 +658,20 @@ class MPCTensor(CrypTensor):
         """
         # TODO: Make dim an arg.
         if self.dim() == 0:
-            return MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
+            result = (
+                MPCTensor(torch.ones((), device=self.device))
+                if one_hot
+                else MPCTensor(torch.zeros((), device=self.device))
+            )
+            return result
 
-        input = self.flatten() if dim is None else self
-        result = input._argmax_helper(dim)
+        result = _argmax_helper(
+            self, dim, one_hot, config.max_method, _return_max=False
+        )
 
-        # Break ties by using a uniform weighted sample among tied indices
-        result = result.weighted_index(dim)
-
-        result = result.view(self.size()) if dim is None else result
-        return result if one_hot else _one_hot_to_index(result, dim, keepdim)
+        if not one_hot:
+            result = _one_hot_to_index(result, dim, keepdim, self.device)
+        return result
 
     @mode(Ptype.arithmetic)
     def argmin(self, dim=None, keepdim=False, one_hot=True):
@@ -509,17 +685,36 @@ class MPCTensor(CrypTensor):
     def max(self, dim=None, keepdim=False, one_hot=True):
         """Returns the maximum value of all elements in the input tensor."""
         # TODO: Make dim an arg.
+        method = config.max_method
         if dim is None:
-            argmax_result = self.argmax(one_hot=True)
-            max_result = self.mul(argmax_result).sum()
+            if method in ["log_reduction", "double_log_reduction"]:
+                # max_result can be obtained directly
+                max_result = _max_helper_all_tree_reductions(self, method=method)
+            else:
+                # max_result needs to be obtained through argmax
+                with ConfigManager("max_method", method):
+                    argmax_result = self.argmax(one_hot=True)
+                max_result = self.mul(argmax_result).sum()
             return max_result
         else:
-            argmax_result = self.argmax(dim=dim, one_hot=True)
-            max_result = (self * argmax_result).sum(dim=dim, keepdim=keepdim)
+            argmax_result, max_result = _argmax_helper(
+                self, dim=dim, one_hot=True, method=method, _return_max=True
+            )
+            if max_result is None:
+                max_result = (self * argmax_result).sum(dim=dim, keepdim=keepdim)
+            if keepdim:
+                max_result = (
+                    max_result.unsqueeze(dim)
+                    if max_result.dim() < self.dim()
+                    else max_result
+                )
             if one_hot:
                 return max_result, argmax_result
             else:
-                return max_result, _one_hot_to_index(argmax_result, dim, keepdim)
+                return (
+                    max_result,
+                    _one_hot_to_index(argmax_result, dim, keepdim, self.device),
+                )
 
     @mode(Ptype.arithmetic)
     def min(self, dim=None, keepdim=False, one_hot=True):
@@ -532,20 +727,31 @@ class MPCTensor(CrypTensor):
             return -result[0], result[1]
 
     @mode(Ptype.arithmetic)
-    def max_pool2d(self, kernel_size, padding=None, stride=None, return_indices=False):
+    def max_pool2d(
+        self,
+        kernel_size,
+        padding=0,
+        stride=None,
+        dilation=1,
+        ceil_mode=False,
+        return_indices=False,
+    ):
         """Applies a 2D max pooling over an input signal composed of several
         input planes.
         """
         max_input = self.shallow_copy()
-        max_input.share, output_size = pool_reshape(
+        max_input.share, output_size = pool2d_reshape(
             self.share,
             kernel_size,
             padding=padding,
             stride=stride,
-            # padding with extremely negative values to avoid choosing pads
-            # -2 ** 40 is acceptable since it is lower than the supported range
-            # which is -2 ** 32 because multiplication can otherwise fail.
-            pad_value=(-2 ** 40),
+            dilation=dilation,
+            ceil_mode=ceil_mode,
+            # padding with extremely negative values to avoid choosing pads.
+            # The magnitude of this value should not be too large because
+            # multiplication can otherwise fail.
+            pad_value=(-(2 ** 24)),
+            # TODO: Find a better solution for padding with max_pooling
         )
         max_vals, argmax_vals = max_input.max(dim=-1, one_hot=True)
         max_vals = max_vals.view(output_size)
@@ -558,7 +764,14 @@ class MPCTensor(CrypTensor):
 
     @mode(Ptype.arithmetic)
     def _max_pool2d_backward(
-        self, indices, kernel_size, padding=None, stride=None, output_size=None
+        self,
+        indices,
+        kernel_size,
+        padding=None,
+        stride=None,
+        dilation=1,
+        ceil_mode=False,
+        output_size=None,
     ):
         """Implements the backwards for a `max_pool2d` call."""
         # Setup padding
@@ -574,8 +787,14 @@ class MPCTensor(CrypTensor):
             stride = kernel_size
         if isinstance(stride, int):
             stride = stride, stride
-        assert isinstance(padding, tuple), "stride must be a int, tuple, or None"
+        assert isinstance(stride, tuple), "stride must be a int, tuple, or None"
         s0, s1 = stride
+
+        # Setup dilation
+        if isinstance(stride, int):
+            dilation = dilation, dilation
+        assert isinstance(dilation, tuple), "dilation must be a int, tuple, or None"
+        d0, d1 = dilation
 
         # Setup kernel_size
         if isinstance(kernel_size, int):
@@ -602,19 +821,70 @@ class MPCTensor(CrypTensor):
                 s1 * self.size(3) - 2 * p1,
             )
 
+        # Account for input padding
+        result_size = list(output_size)
+        result_size[-2] += 2 * p0
+        result_size[-1] += 2 * p1
+
+        # Account for input padding implied by ceil_mode
+        if ceil_mode:
+            c0 = self.size(-1) * s1 + (k1 - 1) * d1 - output_size[-1]
+            c1 = self.size(-2) * s0 + (k0 - 1) * d0 - output_size[-2]
+            result_size[-2] += c0
+            result_size[-1] += c1
+
         # Sum the one-hot gradient blocks at corresponding index locations.
-        result = MPCTensor(torch.zeros(output_size)).pad([p0, p0, p1, p1])
+        result = MPCTensor(torch.zeros(result_size))
         for i in range(self.size(2)):
             for j in range(self.size(3)):
                 left_ind = s0 * i
                 top_ind = s1 * j
 
                 result[
-                    :, :, left_ind : left_ind + k0, top_ind : top_ind + k1
+                    :,
+                    :,
+                    left_ind : left_ind + k0 * d0 : d0,
+                    top_ind : top_ind + k1 * d1 : d1,
                 ] += kernels[:, :, i, j]
 
+        # Remove input padding
+        if ceil_mode:
+            result = result[:, :, : result.size(2) - c0, : result.size(3) - c1]
         result = result[:, :, p0 : result.size(2) - p0, p1 : result.size(3) - p1]
+
         return result
+
+    def adaptive_avg_pool2d(self, output_size):
+        r"""
+        Applies a 2D adaptive average pooling over an input signal composed of
+        several input planes.
+
+        See :class:`~torch.nn.AdaptiveAvgPool2d` for details and output shape.
+
+        Args:
+            output_size: the target output size (single integer or
+                double-integer tuple)
+        """
+        resized_input, args, kwargs = adaptive_pool2d_helper(
+            self, output_size, reduction="mean"
+        )
+        return resized_input.avg_pool2d(*args, **kwargs)
+
+    def adaptive_max_pool2d(self, output_size, return_indices=False):
+        r"""Applies a 2D adaptive max pooling over an input signal composed of
+        several input planes.
+
+        See :class:`~torch.nn.AdaptiveMaxPool2d` for details and output shape.
+
+        Args:
+            output_size: the target output size (single integer or
+                double-integer tuple)
+            return_indices: whether to return pooling indices. Default: ``False``
+        """
+        resized_input, args, kwargs = adaptive_pool2d_helper(
+            self, output_size, reduction="max"
+        )
+        return resized_input.max_pool2d(*args, **kwargs, return_indices=return_indices)
 
     def where(self, condition, y):
         """Selects elements from self or y based on condition
@@ -627,7 +897,7 @@ class MPCTensor(CrypTensor):
 
         Returns: MPCTensor or torch.tensor
         """
-        if torch.is_tensor(condition):
+        if is_tensor(condition):
             condition = condition.float()
             y_masked = y * (1 - condition)
         else:
@@ -636,106 +906,36 @@ class MPCTensor(CrypTensor):
 
         return self * condition + y_masked
 
-    # Logistic Functions
-    @mode(Ptype.arithmetic)
-    def sigmoid(self, maxval_tanh=6, terms_tanh=32, reciprocal_method=None):
-        """Computes the sigmoid function as
-                sigmoid(x) = (tanh(x /2) + 1) / 2
-        Args:
-            maxval_tanh (int): interval width used for tanh chebyshev polynomials
-            terms_tanh (int): highest degree of Chebyshev polynomials for tanh.
-                         Must be even and at least 6.
-        """
-        if reciprocal_method:
-            warnings.warn(
-                "reciprocal_method is deprecated in favor of Chebyshev approximations",
-                DeprecationWarning,
-            )
+    def hardtanh(self, min_value=-1, max_value=1):
+        r"""Applies the HardTanh function element-wise
 
-        tanh_approx = self.div(2).tanh(maxval=maxval_tanh, terms=terms_tanh)
-        return tanh_approx.div(2) + 0.5
-
-    @mode(Ptype.arithmetic)
-    def tanh(self, maxval=6, terms=32, reciprocal_method=None):
-        r"""Computes tanh via Chebyshev approximation with truncation.
+        HardTanh is defined as:
 
         .. math::
-            tanh(x) = \sum_{j=1}^terms c_{2j - 1} P_{2j - 1} (x / maxval)
+            \text{HardTanh}(x) = \begin{cases}
+                1 & \text{ if } x > 1 \\
+                -1 & \text{ if } x < -1 \\
+                x & \text{ otherwise } \\
+            \end{cases}
 
-        where c_i is the ith Chebyshev series coefficient and P_i is ith polynomial.
-        The approximation is truncated to +/-1 outside [-maxval, maxval].
-
-        Args:
-            maxval (int): interval width used for computing chebyshev polynomials
-            terms (int): highest degree of Chebyshev polynomials.
-                         Must be even and at least 6.
-        """
-        if reciprocal_method:
-            warnings.warn(
-                "reciprocal_method is deprecated in favor of Chebyshev approximations",
-                DeprecationWarning,
-            )
-
-        coeffs = crypten.common.util.chebyshev_series(torch.tanh, maxval, terms)[1::2]
-        tanh_polys = self.div(maxval)._chebyshev_polynomials(terms)
-        tanh_polys_flipped = (
-            tanh_polys.unsqueeze(dim=-1).transpose(0, -1).squeeze(dim=0)
-        )
-        out = tanh_polys_flipped.matmul(coeffs)
-        # truncate outside [-maxval, maxval]
-        out = self._truncate_tanh(maxval, out)
-        return out
-
-    def _truncate_tanh(self, maxval, out):
-        """Truncates `out` to +/-1 when self is outside [-maxval, maxval].
+        The range of the linear region :math:`[-1, 1]` can be adjusted using
+        :attr:`min_val` and :attr:`max_val`.
 
         Args:
-            maxval (int): interval width outside of which to truncate
-            out (torch.tensor or MPCTensor): tensor to truncate
+            min_val: minimum value of the linear region range. Default: -1
+            max_val: maximum value of the linear region range. Default: 1
         """
-        too_high, too_low = crypten.stack([self, -self]).gt(maxval)
-        in_range = -too_high - too_low + 1
-        out = too_high - too_low + out.mul(in_range)
-        return out
+        intermediate = MPCTensor.stack([self - min_value, self - max_value]).relu()
+        intermediate = intermediate[0].sub(intermediate[1])
+        return intermediate.add_(min_value)
 
-    @mode(Ptype.arithmetic)
-    def softmax(self, dim, **kwargs):
-        """Compute the softmax of a tensor's elements along a given dimension
+    def relu6(self):
+        r"""Applies the element-wise function:
+
+        .. math::
+            \text{ReLU6}(x) = \min(\max(0,x), 6)
         """
-        # 0-d case
-        if self.dim() == 0:
-            assert dim == 0, "Improper dim argument"
-            return MPCTensor(torch.ones(()))
-
-        if self.size(dim) == 1:
-            return MPCTensor(torch.ones(self.size()))
-
-        maximum_value = self.max(dim, keepdim=True)[0]
-        logits = self - maximum_value
-        numerator = logits.exp()
-        inv_denominator = numerator.sum(dim, keepdim=True).reciprocal(all_pos=True)
-        return numerator * inv_denominator
-
-    @mode(Ptype.arithmetic)
-    def log_softmax(self, dim, **kwargs):
-        """Applies a softmax followed by a logarithm.
-        While mathematically equivalent to log(softmax(x)), doing these two
-        operations separately is slower, and numerically unstable. This function
-        uses an alternative formulation to compute the output and gradient correctly.
-        """
-        # 0-d case
-        if self.dim() == 0:
-            assert dim == 0, "Improper dim argument"
-            return MPCTensor(torch.zeros(()))
-
-        if self.size(dim) == 1:
-            return MPCTensor(torch.zeros(self.size()))
-
-        maximum_value = self.max(dim, keepdim=True)[0]
-        logits = self - maximum_value
-        normalize_term = logits.exp().sum(dim, keepdim=True)
-        result = logits - normalize_term.log()
-        return result
+        return self.hardtanh(min_value=0, max_value=6)
 
     @mode(Ptype.arithmetic)
     def pad(self, pad, mode="constant", value=0):
@@ -756,8 +956,8 @@ class MPCTensor(CrypTensor):
         """
         # Coefficient input type-checking
         if isinstance(coeffs, list):
-            coeffs = torch.tensor(coeffs)
-        assert torch.is_tensor(coeffs) or crypten.is_encrypted_tensor(
+            coeffs = torch.tensor(coeffs, device=self.device)
+        assert is_tensor(coeffs) or crypten.is_encrypted_tensor(
             coeffs
         ), "Polynomial coefficients must be a list or tensor"
         assert coeffs.dim() == 1, "Polynomial coefficients must be a 1-D tensor"
@@ -769,7 +969,9 @@ class MPCTensor(CrypTensor):
         # Compute terms of polynomial using exponentially growing tree
         terms = crypten.stack([self, self.square()])
         while terms.size(0) < coeffs.size(0):
-            highest_term = terms.index_select(0, torch.tensor(terms.size(0) - 1))
+            highest_term = terms.index_select(
+                0, torch.tensor(terms.size(0) - 1, device=self.device)
+            )
             new_terms = getattr(terms, func)(highest_term)
             terms = crypten.cat([terms, new_terms])
 
@@ -780,97 +982,6 @@ class MPCTensor(CrypTensor):
 
         # Multiply terms by coefficients and sum
         return terms.mul(coeffs).sum(0)
-
-    # Approximations:
-    def exp(self, iterations=8):
-        """Approximates the exponential function using a limit approximation:
-
-        .. math::
-
-            exp(x) = \lim_{n \\rightarrow \\infty} (1 + x / n) ^ n
-
-        Here we compute exp by choosing n = 2 ** d for some large d equal to
-        `iterations`. We then compute (1 + x / n) once and square `d` times.
-
-        Args:
-            iterations (int): number of iterations for limit approximation
-        """  # noqa: W605
-        result = 1 + self.div(2 ** iterations)
-        for _ in range(iterations):
-            result = result.square()
-        return result
-
-    def log(self, iterations=2, exp_iterations=8, order=8):
-        r"""
-        Approximates the natural logarithm using 8th order modified
-        Householder iterations. This approximation is accurate within 2% relative
-        error on [0.0001, 250].
-
-        Iterations are computed by: :math:`h = 1 - x * exp(-y_n)`
-
-        .. math::
-
-            y_{n+1} = y_n - \sum_k^{order}\frac{h^k}{k}
-
-        Args:
-            iterations (int): number of Householder iterations for the approximation
-            exp_iterations (int): number of iterations for limit approximation of exp
-            order (int): number of polynomial terms used (order of Householder approx)
-        """
-
-        # Initialization to a decent estimate (found by qualitative inspection):
-        #                ln(x) = x/120 - 20exp(-2x - 1.0) + 3.0
-        term1 = self.div(120)
-        term2 = self.mul(2).add(1.0).neg().exp().mul(20)
-        y = term1 - term2 + 3.0
-
-        # 8th order Householder iterations
-        for _ in range(iterations):
-            h = 1 - self * (-y).exp(iterations=exp_iterations)
-            y -= h.polynomial([1 / (i + 1) for i in range(order)])
-        return y
-
-    def reciprocal(self, method="NR", nr_iters=10, log_iters=1, all_pos=False):
-        """
-        Methods:
-            'NR' : `Newton-Raphson`_ method computes the reciprocal using iterations
-                    of :math:`x_{i+1} = (2x_i - self * x_i^2)` and uses
-                    :math:`3*exp(-(x-.5)) + 0.003` as an initial guess
-
-            'log' : Computes the reciprocal of the input from the observation that:
-                    :math:`x^{-1} = exp(-log(x))`
-
-        Args:
-            nr_iters (int):  determines the number of Newton-Raphson iterations to run
-                         for the `NR` method
-            log_iters (int): determines the number of Householder iterations to run
-                         when computing logarithms for the `log` method
-            all_pos (bool): determines whether all elements
-                       of the input are known to be positive, which optimizes
-                       the step of computing the sign of the input.
-
-        .. _Newton-Raphson:
-            https://en.wikipedia.org/wiki/Newton%27s_method
-        """
-        if not all_pos:
-            sgn = self.sign(_scale=False)
-            abs = sgn * self
-            rec = abs.reciprocal(
-                method=method, nr_iters=nr_iters, log_iters=log_iters, all_pos=True
-            )
-            return sgn * rec
-
-        if method == "NR":
-            # Initialization to a decent estimate (found by qualitative inspection):
-            #                1/x = 3exp(.5 - x) + 0.003
-            result = 3 * (0.5 - self).exp() + 0.003
-            for _ in range(nr_iters):
-                result += result - result.square().mul_(self)
-            return result
-        elif method == "log":
-            return (-self.log(iterations=log_iters)).exp()
-        else:
-            raise ValueError("Invalid method %s given for reciprocal function" % method)
 
     def div(self, y):
         r"""Divides each element of :attr:`self` with the scalar :attr:`y` or
@@ -894,7 +1005,7 @@ class MPCTensor(CrypTensor):
         result = self.clone()
         if isinstance(y, CrypTensor):
             result.share = torch.broadcast_tensors(result.share, y.share)[0].clone()
-        elif torch.is_tensor(y):
+        elif is_tensor(y):
             result.share = torch.broadcast_tensors(result.share, y)[0].clone()
         return result.div_(y)
 
@@ -919,13 +1030,13 @@ class MPCTensor(CrypTensor):
                 " pos_pow with positive-valued base."
             )
         if p < -1:
-            return self.reciprocal(**kwargs).pow(-p)
+            return self.reciprocal().pow(-p)
         elif p == -1:
-            return self.reciprocal(**kwargs)
+            return self.reciprocal()
         elif p == 0:
             # Note: This returns 0 ** 0 -> 1 when inputs have zeros.
             # This is consistent with PyTorch's pow function.
-            return MPCTensor(torch.ones(self.size()))
+            return MPCTensor(torch.ones_like(self.share))
         elif p == 1:
             return self.clone()
         elif p == 2:
@@ -938,7 +1049,7 @@ class MPCTensor(CrypTensor):
     def pow_(self, p, **kwargs):
         """In-place version of pow_ function"""
         result = self.pow(p)
-        self.share.data = result.share.data
+        self.share.set_(result.share.data)
         return self
 
     def pos_pow(self, p):
@@ -954,12 +1065,6 @@ class MPCTensor(CrypTensor):
         if isinstance(p, int) or (isinstance(p, float) and int(p) == p):
             return self.pow(p)
         return self.log().mul_(p).exp()
-
-    def sqrt(self):
-        """
-        Computes the square root of the input by raising it to the 0.5 power
-        """
-        return self.pos_pow(0.5)
 
     def norm(self, p="fro", dim=None, keepdim=False):
         """Computes the p-norm of the input tensor (or along a dimension)."""
@@ -989,80 +1094,6 @@ class MPCTensor(CrypTensor):
         else:
             raise ValueError(f"Improper value p ({p})for p-norm")
 
-    def _eix(self, iterations=10):
-        """Computes e^(i * self) where i is the imaginary unit.
-        Returns (Re{e^(i * self)}, Im{e^(i * self)} = cos(self), sin(self)
-        """
-        re = 1
-        im = self.div(2 ** iterations)
-
-        # First iteration uses knowledge that `re` is public and = 1
-        re -= im.square()
-        im *= 2
-
-        # Compute (a + bi)^2 -> (a^2 - b^2) + (2ab)i `iterations` times
-        for _ in range(iterations - 1):
-            a2 = re.square()
-            b2 = im.square()
-            im = im.mul_(re)
-            im._tensor *= 2
-            re = a2 - b2
-
-        return re, im
-
-    def cos(self, iterations=10):
-        """Computes the cosine of the input using cos(x) = Re{exp(i * x)}
-
-        Args:
-            iterations (int): for approximating exp(i * x)
-        """
-        return self.cossin(iterations=iterations)[0]
-
-    def sin(self, iterations=10):
-        """Computes the sine of the input using sin(x) = Im{exp(i * x)}
-
-        Args:
-            iterations (int): for approximating exp(i * x)
-        """
-        return self.cossin(iterations=iterations)[1]
-
-    def cossin(self, iterations=10):
-        """Computes cosine and sine of input via exp(i * x).
-
-        Args:
-            iterations (int): for approximating exp(i * x)
-        """
-        return self._eix(iterations=iterations)
-
-    def _chebyshev_polynomials(self, terms):
-        r"""Evaluates odd degree Chebyshev polynomials at x
-
-        Chebyshev Polynomials of the first kind are defined as
-
-        .. math::
-            P_0(x) = 1, P_1(x) = x, P_n(x) = 2 P_{n - 1}(x) - P_{n-2}(x)
-
-        Args:
-            self (MPCTensor): input at which polynomials are evaluated
-            terms (int): highest degree of Chebyshev polynomials.
-                         Must be even and at least 6.
-        Returns:
-            MPCTensor of polynomials evaluated at self of shape `(terms, *self)`
-        """
-        if terms % 2 != 0 or terms < 6:
-            raise ValueError("Chebyshev terms must be even and >= 6")
-
-        polynomials = [self.clone()]
-        y = 4 * self.square() - 2
-        z = y - 1
-        polynomials.append(z.mul(self))
-
-        for k in range(2, terms // 2):
-            next_polynomial = y * polynomials[k - 1] - polynomials[k - 2]
-            polynomials.append(next_polynomial)
-
-        return crypten.stack(polynomials)
-
     def index_add(self, dim, index, tensor):
         """Performs out-of-place index_add: Accumulate the elements of tensor into the
         self tensor by adding to the indices in the order given in index.
@@ -1074,7 +1105,7 @@ class MPCTensor(CrypTensor):
         self tensor by adding to the indices in the order given in index.
         """
         assert index.dim() == 1, "index needs to be a vector"
-        public = isinstance(tensor, (int, float)) or torch.is_tensor(tensor)
+        public = isinstance(tensor, (int, float)) or is_tensor(tensor)
         private = isinstance(tensor, MPCTensor)
         if public:
             self._tensor.index_add_(dim, index, tensor)
@@ -1093,7 +1124,7 @@ class MPCTensor(CrypTensor):
     def scatter_add_(self, dim, index, other):
         """Adds all values from the tensor other into self at the indices
         specified in the index tensor."""
-        public = isinstance(other, (int, float)) or torch.is_tensor(other)
+        public = isinstance(other, (int, float)) or is_tensor(other)
         private = isinstance(other, CrypTensor)
         if public:
             self._tensor.scatter_add_(dim, index, other)
@@ -1109,7 +1140,7 @@ class MPCTensor(CrypTensor):
         is specified by its index in `src` for `dimension != dim` and by the
         corresponding value in `index` for `dimension = dim`.
         """
-        if torch.is_tensor(src):
+        if is_tensor(src):
             src = MPCTensor(src)
         assert isinstance(src, MPCTensor), "Unrecognized scatter src type: %s" % type(
             src
@@ -1124,14 +1155,20 @@ class MPCTensor(CrypTensor):
 
     def unbind(self, dim=0):
         shares = self.share.unbind(dim=dim)
-        results = tuple(MPCTensor(0, ptype=self.ptype) for _ in range(len(shares)))
+        results = tuple(
+            MPCTensor(0, ptype=self.ptype, device=self.device)
+            for _ in range(len(shares))
+        )
         for i in range(len(shares)):
             results[i].share = shares[i]
         return results
 
     def split(self, split_size, dim=0):
         shares = self.share.split(split_size, dim=dim)
-        results = tuple(MPCTensor(0, ptype=self.ptype) for _ in range(len(shares)))
+        results = tuple(
+            MPCTensor(0, ptype=self.ptype, device=self.device)
+            for _ in range(len(shares))
+        )
         for i in range(len(shares)):
             results[i].share = shares[i]
         return results
@@ -1144,7 +1181,7 @@ class MPCTensor(CrypTensor):
         Args:
             enc_tensor (MPCTensor): with encrypted shares.
         """
-        if torch.is_tensor(enc_tensor):
+        if is_tensor(enc_tensor):
             enc_tensor = MPCTensor(enc_tensor)
         assert isinstance(enc_tensor, MPCTensor), "enc_tensor must be an MPCTensor"
         self.share.set_(enc_tensor.share)
@@ -1153,7 +1190,6 @@ class MPCTensor(CrypTensor):
 
 OOP_UNARY_FUNCTIONS = {
     "avg_pool2d": Ptype.arithmetic,
-    "sum_pool2d": Ptype.arithmetic,
     "take": Ptype.arithmetic,
     "square": Ptype.arithmetic,
     "mean": Ptype.arithmetic,
@@ -1288,6 +1324,7 @@ REGULAR_FUNCTIONS = [
     "cumsum",
     "reshape",
     "gather",
+    "permute",
 ]
 
 

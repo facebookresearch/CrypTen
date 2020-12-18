@@ -6,6 +6,9 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import timeit
+
+import torch
 
 
 class Communicator:
@@ -104,6 +107,14 @@ class Communicator:
         """Returns the rank of the current process."""
         raise NotImplementedError("get_rank is not implemented")
 
+    def set_name(self):
+        """Sets the party name of the current process."""
+        raise NotImplementedError("set_name is not implemented")
+
+    def get_name(self):
+        """Returns the party name of the current process."""
+        raise NotImplementedError("get_name is not implemented")
+
     def reset_communication_stats(self):
         """Resets communication statistics."""
         raise NotImplementedError("reset_communication_stats is not implemented")
@@ -120,17 +131,61 @@ class Communicator:
         """Resets communication statistics."""
         self.comm_rounds = 0
         self.comm_bytes = 0
+        self.comm_time = 0
 
     def print_communication_stats(self):
         """Prints communication statistics."""
         logging.info("====Communication Stats====")
-        logging.info("Rounds: %d" % self.comm_rounds)
-        logging.info("Bytes : %d" % self.comm_bytes)
+        logging.info("Rounds: {}".format(self.comm_rounds))
+        logging.info("Bytes : {}".format(self.comm_bytes))
+        logging.info("Comm time: {}".format(self.comm_time))
 
     def _log_communication(self, nelement):
         """Updates log of communication statistics."""
         self.comm_rounds += 1
         self.comm_bytes += nelement * self.BYTES_PER_ELEMENT
+
+    def _log_communication_time(self, comm_time):
+        self.comm_time += comm_time
+
+    def get_generator(self, idx, device=None):
+        """
+        Get the corresponding RNG generator, as specified by its index and device
+
+        Args:
+            idx: The index of the generator, can be either 0 or 1
+            device: The device that the generator lives in.
+        """
+
+        if device is None:
+            device = torch.device("cpu")
+        else:
+            device = torch.device(device)
+
+        if idx == 0:
+            if device.type == "cuda":
+                assert hasattr(
+                    self, "g0_cuda"
+                ), "Generator g0_cuda is not initialized, call crypten.init() first"
+                return self.g0_cuda
+            else:
+                assert hasattr(
+                    self, "g0"
+                ), "Generator g0 is not initialized, call crypten.init() first"
+                return self.g0
+        elif idx == 1:
+            if device.type == "cuda":
+                assert hasattr(
+                    self, "g1_cuda"
+                ), "Generator g1_cuda is not initialized, call crypten.init() first"
+                return self.g1_cuda
+            else:
+                assert hasattr(
+                    self, "g1"
+                ), "Generator g1 is not initialized, call crypten.init() first"
+                return self.g1
+        else:
+            raise RuntimeError(f"Generator idx {idx} out of bounds.")
 
 
 def _logging(func):
@@ -157,6 +212,14 @@ def _logging(func):
                 self._log_communication(nbytes)
             else:  # one tensor communicated
                 self._log_communication(args[0].nelement())
+
+            tic = timeit.timeit()
+            result = func(self, *args, **kwargs)
+            toc = timeit.timeit()
+
+            self._log_communication_time(toc - tic)
+            return result
+
         return func(self, *args, **kwargs)
 
     return logging_wrapper

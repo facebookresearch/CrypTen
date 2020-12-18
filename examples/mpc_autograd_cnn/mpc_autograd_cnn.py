@@ -174,7 +174,7 @@ class CNN(nn.Module):
         out = self.conv1(x)
         out = F.relu(out)
         out = F.max_pool2d(out, 2)
-        out = out.view(out.size(0), -1)
+        out = out.view(-1, 16 * 12 * 12)
         out = self.fc1(out)
         out = F.relu(out)
         out = self.fc2(out)

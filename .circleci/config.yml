@@ -7,8 +7,10 @@ setup_venv: &setup_venv
     python3 -m venv ~/crypten-test
     . ~/crypten-test/bin/activate
     pip3 install --upgrade pip
-    pip3 install onnx==1.6.0 tensorboard
-    pip3 install torch==1.5.0.dev20200220+cpu torchvision==0.6.0.dev20200220+cpu -f https://download.pytorch.org/whl/nightly/cpu/torch_nightly.html
+    pip3 install onnx==1.7.0 tensorboard pandas sklearn
+    pip3 install torch>=1.7.0 torchvision>=0.8.1
+    pip3 install tensorflow
+    pip3 install tf2onnx
 
 
 # -------------------------------------------------------------------------------------
@@ -17,7 +19,7 @@ setup_venv: &setup_venv
 jobs:
   rununittests:
     docker:
-      - image: circleci/python:3.7.4-buster
+      - image: circleci/python:3.7.5-buster
     resource_class: 2xlarge+
     working_directory: ~/CrypTen
     steps:
@@ -88,7 +90,7 @@ jobs:
 
   runcifartests0:
     docker:
-      - image: circleci/python:3.7.4-buster
+      - image: circleci/python:3.7.5-buster
     resource_class: 2xlarge+
     working_directory: ~/CrypTen
     steps:
@@ -119,7 +121,7 @@ jobs:
 
   runcifartests2:
     docker:
-      - image: circleci/python:3.7.4-buster
+      - image: circleci/python:3.7.5-buster
     resource_class: 2xlarge+
     working_directory: ~/CrypTen
     steps:
@@ -134,7 +136,7 @@ jobs:
 
   runcifartests3:
     docker:
-      - image: circleci/python:3.7.4-buster
+      - image: circleci/python:3.7.5-buster
     resource_class: 2xlarge+
     working_directory: ~/CrypTen
     steps:
@@ -149,7 +151,7 @@ jobs:
 
   runcifartests4:
     docker:
-      - image: circleci/python:3.7.4-buster
+      - image: circleci/python:3.7.5-buster
     resource_class: 2xlarge+
     working_directory: ~/CrypTen
     steps:
@@ -164,7 +166,7 @@ jobs:
 
   runcifartests5:
     docker:
-      - image: circleci/python:3.7.4-buster
+      - image: circleci/python:3.7.5-buster
     resource_class: 2xlarge+
     working_directory: ~/CrypTen
     steps:

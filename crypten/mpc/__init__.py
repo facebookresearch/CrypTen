@@ -11,11 +11,20 @@ from crypten.mpc import primitives  # noqa: F401
 from crypten.mpc import provider  # noqa: F40
 
 from .context import run_multiprocess
-from .mpc import MPCTensor
+from .mpc import ConfigManager, MPCConfig, MPCTensor, config
 from .ptype import ptype
 
 
-__all__ = ["MPCTensor", "primitives", "provider", "ptype", "run_multiprocess"]
+__all__ = [
+    "MPCTensor",
+    "ConfigManager",
+    "MPCConfig",
+    "config",
+    "primitives",
+    "provider",
+    "ptype",
+    "run_multiprocess",
+]
 
 # the different private type attributes of an mpc encrypted tensor
 arithmetic = ptype.arithmetic
@@ -37,10 +46,19 @@ def set_default_provider(new_default_provider):
     assert_msg = "Provider %s is not supported" % new_default_provider
     if isinstance(new_default_provider, str):
         assert new_default_provider in __SUPPORTED_PROVIDERS.keys(), assert_msg
+        new_default_provider = __SUPPORTED_PROVIDERS[new_default_provider]
     else:
         assert new_default_provider in __SUPPORTED_PROVIDERS.values(), assert_msg
     __default_provider = new_default_provider
     os.environ["CRYPTEN_PROVIDER_NAME"] = new_default_provider.NAME
+
+
+def set_config(new_config):
+    global config
+    config = new_config
+    import crypten.mpc
+
+    crypten.mpc.mpc.config = new_config
 
 
 def get_default_provider():

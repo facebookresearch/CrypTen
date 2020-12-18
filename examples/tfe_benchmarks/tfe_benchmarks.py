@@ -331,7 +331,7 @@ def validate(val_loader, model, criterion, print_freq=10, flatten=False):
 def save_checkpoint(
     state, is_best, filename="checkpoint.pth.tar", model_best="model_best.pth.tar"
 ):
-    # TODO: use crypten.save() in future.
+    # TODO: use crypten.save_from_party() in future.
     rank = comm.get().get_rank()
     # only save for process rank = 0
     if rank == 0:
@@ -424,7 +424,7 @@ class NetworkB(nn.Module):
         out = self.batchnorm2(out)
         out = F.relu(out)
         out = F.avg_pool2d(out, 2)
-        out = out.view(out.size(0), -1)
+        out = out.view(-1, 16 * 4 * 4)
         out = self.fc1(out)
         out = self.batchnorm3(out)
         out = F.relu(out)
@@ -452,7 +452,7 @@ class NetworkC(nn.Module):
         out = self.batchnorm2(out)
         out = F.relu(out)
         out = F.avg_pool2d(out, 2)
-        out = out.view(out.size(0), -1)
+        out = out.view(-1, 50 * 4 * 4)
         out = self.fc1(out)
         out = self.batchnorm3(out)
         out = F.relu(out)

@@ -10,9 +10,11 @@ __version__ = "0.1.0"
 import copy
 import warnings
 
+import crypten.common
 import crypten.communicator as comm
 import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
+import crypten.optim  # noqa: F401
 import torch
 
 # other imports:
@@ -26,10 +28,35 @@ enable_grad = CrypTensor.enable_grad
 set_grad_enabled = CrypTensor.set_grad_enabled
 
 
-def init():
+def init(party_name=None, device=None):
+    """
+    Initialize CrypTen. It will initialize communicator, setup party
+    name for file save / load, and setup seeds for Random Number Generatiion.
+    By default the function will initialize a set of RNG generators on CPU.
+    If torch.cuda.is_available() returns True, it will initialize an additional
+    set of RNG generators on GPU. Users can specify the GPU device the generators are
+    initialized with device.
+
+    Args:
+        party_name (str): party_name for file save and load, default is None
+        device (int, str, torch.device): Specify device for RNG generators on
+        GPU. Must be a GPU device.
+    """
+    # Return and raise warning if initialized
+    if comm.is_initialized():
+        warnings.warn("CrypTen is already initialized.", RuntimeWarning)
+        return
+
+    # Initialize communicator
     comm._init(use_threads=False, init_ttp=crypten.mpc.ttp_required())
+
+    # Setup party name for file save / load
+    if party_name is not None:
+        comm.get().set_name(party_name)
+
+    # Setup seeds for Random Number Generation
     if comm.get().get_rank() < comm.get().get_world_size():
-        _setup_przs()
+        _setup_przs(device=device)
         if crypten.mpc.ttp_required():
             crypten.mpc.provider.ttp_provider.TTPClient._init()
 
@@ -143,22 +170,30 @@ def is_encrypted_tensor(obj):
     return isinstance(obj, CrypTensor)
 
 
-def _setup_przs():
+def _setup_przs(device=None):
     """
-        Generate shared random seeds to generate pseudo-random sharings of
-        zero. The random seeds are shared such that each process shares
-        one seed with the previous rank process and one with the next rank.
-        This allows for the generation of `n` random values, each known to
-        exactly two of the `n` parties.
+    Generate shared random seeds to generate pseudo-random sharings of
+    zero. The random seeds are shared such that each process shares
+    one seed with the previous rank process and one with the next rank.
+    This allows for the generation of `n` random values, each known to
+    exactly two of the `n` parties.
 
-        For arithmetic sharing, one of these parties will add the number
-        while the other subtracts it, allowing for the generation of a
-        pseudo-random sharing of zero. (This can be done for binary
-        sharing using bitwise-xor rather than addition / subtraction)
+    For arithmetic sharing, one of these parties will add the number
+    while the other subtracts it, allowing for the generation of a
+    pseudo-random sharing of zero. (This can be done for binary
+    sharing using bitwise-xor rather than addition / subtraction)
     """
     # Initialize RNG Generators
     comm.get().g0 = torch.Generator()
     comm.get().g1 = torch.Generator()
+
+    device = "cuda" if device is None else device
+    device = torch.device(device)
+    assert device.type == "cuda", "Must be a GPU device"
+
+    if torch.cuda.is_available():
+        comm.get().g0_cuda = torch.Generator(device=device)
+        comm.get().g1_cuda = torch.Generator(device=device)
 
     # Generate random seeds for Generators
     # NOTE: Chosen seed can be any number, but we choose as a random 64-bit
@@ -172,7 +207,7 @@ def _setup_przs():
     import numpy
 
     numpy.random.seed(seed=None)
-    next_seed = torch.tensor(numpy.random.randint(-2 ** 63, 2 ** 63 - 1, (1,)))
+    next_seed = torch.tensor(numpy.random.randint(-(2 ** 63), 2 ** 63 - 1, (1,)))
     prev_seed = torch.LongTensor([0])  # placeholder
 
     # Send random seed to next party, receive random seed from prev party
@@ -194,10 +229,24 @@ def _setup_przs():
     comm.get().g0.manual_seed(next_seed.item())
     comm.get().g1.manual_seed(prev_seed.item())
 
+    # Create global generator
+    global_seed = torch.tensor(numpy.random.randint(-(2 ** 63), 2 ** 63 - 1, (1,)))
+    global_seed = comm.get().broadcast(global_seed, 0)
+    comm.get().global_generator = torch.Generator()
+    comm.get().global_generator.manual_seed(global_seed.item())
 
-def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
+
+def load_from_party(
+    f=None,
+    preloaded=None,
+    encrypted=False,
+    dummy_model=None,
+    src=0,
+    load_closure=torch.load,
+    **kwargs
+):
     """
-    Loads an object saved with `torch.save()` or `crypten.save()`.
+    Loads an object saved with `torch.save()` or `crypten.save_from_party()`.
 
     Args:
         f: a file-like object (has to implement `read()`, `readline()`,
@@ -215,6 +264,9 @@ def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
             party will attempt to read in the specified file. If `src` is
             specified, the source party will read the tensor from `f` and it
             will broadcast it to the other parties
+        load_closure: Custom load function that matches the interface of `torch.load`,
+        to be used when the tensor is saved with a custom save function in
+        `crypten.save_from_party`. Additional kwargs are passed on to the closure.
     """
     if dummy_model is not None:
         warnings.warn(
@@ -230,7 +282,14 @@ def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
 
         # source party
         if comm.get().get_rank() == src:
-            result = preloaded if preloaded else torch.load(f, **kwargs)
+            assert (f is None and (preloaded is not None)) or (
+                (f is not None) and preloaded is None
+            ), "Exactly one of f and preloaded must not be None"
+
+            if f is None:
+                result = preloaded
+            if preloaded is None:
+                result = load_closure(f, **kwargs)
 
             # Zero out the tensors / modules to hide loaded data from broadcast
             if torch.is_tensor(result):
@@ -239,6 +298,7 @@ def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
                 result_zeros = copy.deepcopy(result)
                 result_zeros.set_all_parameters(0)
             else:
+                result = comm.get().broadcast_obj(-1, src)
                 raise TypeError("Unrecognized load type %s" % type(result))
 
             comm.get().broadcast_obj(result_zeros, src)
@@ -246,6 +306,8 @@ def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
         # Non-source party
         else:
             result = comm.get().broadcast_obj(None, src)
+            if isinstance(result, int) and result == -1:
+                raise TypeError("Unrecognized load type from src party")
 
         if torch.is_tensor(result):
             result = crypten.cryptensor(result, src=src)
@@ -256,7 +318,26 @@ def load(f, preloaded=None, encrypted=False, dummy_model=None, src=0, **kwargs):
         return result
 
 
-def save(obj, f, src=0, **kwargs):
+def load(f, load_closure=torch.load, **kwargs):
+    """
+    Loads shares from an encrypted object saved with `crypten.save()`
+    Args:
+        f: a file-like object (has to implement `read()`, `readline()`,
+              `tell()`, and `seek()`), or a string containing a file name
+        load_closure: Custom load function that matches the interface of
+        `torch.load`, to be used when the tensor is saved with a custom
+        save function in `crypten.save`. Additional kwargs are passed on
+        to the closure.
+    """
+    # TODO: Add support for loading from correct device (kwarg: map_location=device)
+    if load_closure == torch.load:
+        obj = load_closure(f)
+    else:
+        obj = load_closure(f, **kwargs)
+    return obj
+
+
+def save_from_party(obj, f, src=0, save_closure=torch.save, **kwargs):
     """
     Saves a CrypTensor or PyTorch tensor to a file.
 
@@ -265,6 +346,9 @@ def save(obj, f, src=0, **kwargs):
         f: a file-like object (has to implement `read()`, `readline()`,
               `tell()`, and `seek()`), or a string containing a file name
         src: The source party that writes data to the specified file.
+        save_closure: Custom save function that matches the interface of `torch.save`,
+        to be used when the tensor is saved with a custom load function in
+        `crypten.load_from_party`. Additional kwargs are passed on to the closure.
     """
     if is_encrypted_tensor(obj):
         raise NotImplementedError("Saving encrypted tensors is not yet supported")
@@ -275,9 +359,26 @@ def save(obj, f, src=0, **kwargs):
         ), "Save failed: src must be an integer in [0, world_size)"
 
         if comm.get().get_rank() == src:
-            torch.save(obj, f, **kwargs)
+            save_closure(obj, f, **kwargs)
 
     # Implement barrier to avoid race conditions that require file to exist
+    comm.get().barrier()
+
+
+def save(obj, f, save_closure=torch.save, **kwargs):
+    """
+    Saves the shares of CrypTensor or an encrypted model to a file.
+
+    Args:
+        obj: The CrypTensor or PyTorch tensor to be saved
+        f: a file-like object (has to implement `read()`, `readline()`,
+              `tell()`, and `seek()`), or a string containing a file name
+        save_closure: Custom save function that matches the interface of `torch.save`,
+        to be used when the tensor is saved with a custom load function in
+        `crypten.load`. Additional kwargs are passed on to the closure.
+    """
+    # TODO: Add support for saving to correct device (kwarg: map_location=device)
+    save_closure(obj, f, **kwargs)
     comm.get().barrier()
 
 
@@ -331,6 +432,15 @@ def rand(*sizes, cryptensor_type=None):
     if cryptensor_type is None:
         cryptensor_type = get_default_cryptensor_type()
     return __CRYPTENSOR_TYPES__[cryptensor_type].rand(*sizes)
+
+
+def randn(*sizes, cryptensor_type=None):
+    """
+    Returns a tensor with normally distributed elements.
+    """
+    if cryptensor_type is None:
+        cryptensor_type = get_default_cryptensor_type()
+    return __CRYPTENSOR_TYPES__[cryptensor_type].randn(*sizes)
 
 
 def bernoulli(tensor, cryptensor_type=None):

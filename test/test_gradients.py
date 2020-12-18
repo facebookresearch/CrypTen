@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import copy
 import itertools
 import logging
 import unittest
@@ -74,7 +75,14 @@ class TestGradients:
         self.assertTrue(test_passed, msg=msg)
 
     def _check_forward_backward(
-        self, func_name, input_tensor, *args, torch_func_name=None, msg=None, **kwargs
+        self,
+        func_name,
+        input_tensor,
+        *args,
+        torch_func_name=None,
+        msg=None,
+        addl_args=None,
+        **kwargs,
     ):
         """Checks forward and backward against PyTorch
 
@@ -93,6 +101,11 @@ class TestGradients:
         input.requires_grad = True
         input_encr = crypten.cryptensor(input, requires_grad=True)
 
+        crypten_kwargs = copy.deepcopy(kwargs)
+        if addl_args is not None:
+            for item, val in addl_args.items():
+                crypten_kwargs[item] = val
+
         for private in [False, True]:
             input.grad = None
             input_encr.grad = None
@@ -106,7 +119,7 @@ class TestGradients:
                 torch_func = self._get_torch_func(func_name)
 
             reference = torch_func(input, *args, **kwargs)
-            encrypted_out = getattr(input_encr, func_name)(*args_encr, **kwargs)
+            encrypted_out = getattr(input_encr, func_name)(*args_encr, **crypten_kwargs)
 
             # extract argmax output for max / min with keepdim=False
             if isinstance(encrypted_out, (list, tuple)):
@@ -211,26 +224,77 @@ class TestGradients:
             else:
                 self._check_forward_backward(func, tensor1, 2.0)
 
-    def test_reductions(self):
-        """Tests reductions on tensors of various sizes."""
-        reductions = ["sum", "mean", "max", "min"]
-        for size in SIZES:
+    def test_sum_mean_reductions(self):
+        reductions = ["sum", "mean"]
+        self._reductions_helper(reductions)
+
+    def test_max_min_reductions_pairwise(self):
+        reductions = ["max", "min"]
+        self._reductions_helper(reductions, "pairwise")
+
+    def test_max_min_reductions_log_reduction(self):
+        reductions = ["max", "min"]
+        self._reductions_helper(reductions, "log_reduction")
+
+    def test_max_min_reductions_double_log_reduction(self):
+        reductions = ["max", "min"]
+        self._reductions_helper(reductions, "double_log_reduction")
+
+    def test_max_min_reductions_accelerated_cascade(self):
+        reductions = ["max", "min"]
+        self._reductions_helper(reductions, "accelerated_cascade")
+
+    def _reductions_helper(self, input_reductions, method=None):
+        """Tests input reductions on tensors of various sizes."""
+        for size in SIZES[: min(5, len(SIZES))]:
             tensor = get_random_test_tensor(size=size, is_float=True)
-            for reduction in reductions:
-                self._check_forward_backward(reduction, tensor)
+            for reduction in input_reductions:
+                if method is None:
+                    self._check_forward_backward(reduction, tensor)
+                else:
+                    with crypten.mpc.ConfigManager("max_method", method):
+                        self._check_forward_backward(reduction, tensor)
 
                 # Check dim 0 if tensor is 0-dimensional
                 dims = 1 if tensor.dim() == 0 else tensor.dim()
                 for dim in range(dims):
+
+                    # check when keepdim is not provided as a kwarg
+                    if method is None:
+                        self._check_forward_backward(reduction, tensor, dim=dim)
+                    else:
+                        with crypten.mpc.ConfigManager("max_method", method):
+                            self._check_forward_backward(reduction, tensor, dim=dim)
+
+                    # check when keepdim is provided as a kwarg
                     for keepdim in [False, True]:
-                        self._check_forward_backward(
-                            reduction, tensor, dim, keepdim=keepdim
-                        )
+                        if method is None:
+                            self._check_forward_backward(
+                                reduction, tensor, dim, keepdim=keepdim
+                            )
+                            self._check_forward_backward(
+                                reduction, tensor, dim=dim, keepdim=keepdim
+                            )
+                        else:
+                            with crypten.mpc.ConfigManager("max_method", method):
+                                self._check_forward_backward(
+                                    reduction, tensor, dim, keepdim=keepdim
+                                )
+                                self._check_forward_backward(
+                                    reduction, tensor, dim=dim, keepdim=keepdim
+                                )
 
     def test_matmul(self):
         """Test matmul with broadcasting."""
         matmul_sizes = [(1, 1), (1, 5), (5, 1), (5, 5)]
         batch_dims = [(), (1,), (5,), (1, 1), (1, 5), (5, 5)]
+
+        matched_sizes = [
+            ((1,), (1,)),
+            ((10,), (10,)),
+            ((10,), (10, 5)),
+            ((5, 10), (10,)),
+        ]
 
         matmul_funcs = ["matmul", "__matmul__", "__imatmul__"]
         torch_funcs = ["matmul", "__matmul__", "__matmul__"]
@@ -246,6 +310,14 @@ class TestGradients:
                     self._check_forward_backward(
                         func, tensor1, tensor2, torch_func_name=torch_funcs[i]
                     )
+
+            for sizes in matched_sizes:
+                tensor1 = get_random_test_tensor(size=sizes[0], is_float=True)
+                tensor2 = get_random_test_tensor(size=sizes[1], is_float=True)
+
+                self._check_forward_backward(
+                    func, tensor1, tensor2, torch_func_name=torch_funcs[i]
+                )
 
     def test_unary_functions(self):
         """Test unary functions on tensors of various sizes."""
@@ -275,6 +347,29 @@ class TestGradients:
                     tensor = tensor.abs()
 
                 self._check_forward_backward(func, tensor)
+
+    def test_hardtanh(self):
+        tensor = torch.arange(-10, 10, dtype=torch.float32)
+        for minval in range(-10, 10):
+            for maxval in range(minval, 11):
+                self._check_forward_backward("hardtanh", tensor, minval, maxval)
+        self._check_forward_backward("relu6", tensor)
+
+    def test_inplace_warning(self):
+        """Tests that a warning is thrown that indicates that the `inplace` kwarg
+        is ignored when a function is called with `inplace=True`
+        """
+        tensor = get_random_test_tensor(is_float=True)
+        encrypted = crypten.cryptensor(tensor)
+
+        functions = ["dropout", "_feature_dropout"]
+        for func in functions:
+            warning_str = (
+                f"CrypTen {func} does not support inplace computation during training."
+            )
+            with self.assertLogs(logger=logging.getLogger(), level="WARNING") as cm:
+                getattr(encrypted, func)(inplace=True)
+            self.assertTrue(f"WARNING:root:{warning_str}" in cm.output)
 
     def test_dot_ger(self):
         """Test inner and outer products of encrypted tensors."""
@@ -348,22 +443,45 @@ class TestGradients:
         kernel_sizes = [1, 2, 3]
         paddings = [0, 1]
         strides = [1, 2]
+        dilations = [1, 2]
+        groupings = [1, 2]
 
-        for batches in nbatches:
-            size = (batches, in_channels, signal_size)
+        for (
+            batches,
+            kernel_size,
+            out_channels,
+            padding,
+            stride,
+            dilation,
+            groups,
+        ) in itertools.product(
+            nbatches,
+            kernel_sizes,
+            nout_channels,
+            paddings,
+            strides,
+            dilations,
+            groupings,
+        ):
+            # TODO: Fix conv1d gradient in this case:
+            if in_channels > 1 and groups > 1:
+                continue
+
+            size = (batches, in_channels * groups, signal_size)
             signal = get_random_test_tensor(size=size, is_float=True)
 
-            for kernel_size, out_channels in itertools.product(
-                kernel_sizes, nout_channels
-            ):
-                kernel_size = (out_channels, in_channels, kernel_size)
-                kernel = get_random_test_tensor(size=kernel_size, is_float=True)
+            kernel_size = (out_channels * groups, in_channels, kernel_size)
+            kernel = get_random_test_tensor(size=kernel_size, is_float=True)
 
-                for padding in paddings:
-                    for stride in strides:
-                        self._check_forward_backward(
-                            "conv1d", signal, kernel, stride=stride, padding=padding
-                        )
+            self._check_forward_backward(
+                "conv1d",
+                signal,
+                kernel,
+                stride=stride,
+                padding=padding,
+                dilation=dilation,
+                groups=groups,
+            )
 
     def test_conv2d_square_image_one_channel(self):
         self._conv2d((5, 5), 1)
@@ -379,28 +497,44 @@ class TestGradients:
 
     def _conv2d(self, image_size, in_channels):
         """Test convolution of encrypted tensor with public/private tensors."""
-
         nbatches = [1, 3]
         kernel_sizes = [(1, 1), (2, 2), (2, 3)]
+        ochannels = [1, 3]
         paddings = [0, 1, (0, 1)]
         strides = [1, 2, (1, 2)]
-        nout_channels = [1, 5]
+        dilations = [1, 2, (1, 2)]
+        groupings = [1, 2]
 
-        for batches in nbatches:
-            size = (batches, in_channels, *image_size)
+        for (
+            batches,
+            kernel_size,
+            out_channels,
+            padding,
+            stride,
+            dilation,
+            groups,
+        ) in itertools.product(
+            nbatches, kernel_sizes, ochannels, paddings, strides, dilations, groupings
+        ):
+            # TODO: Fix conv2d gradient in this case:
+            if in_channels > 1 and groups > 1:
+                continue
+
+            size = (batches, in_channels * groups, *image_size)
             image = get_random_test_tensor(size=size, is_float=True)
 
-            for kernel_size, out_channels in itertools.product(
-                kernel_sizes, nout_channels
-            ):
-                kernel_size = (out_channels, in_channels, *kernel_size)
-                kernel = get_random_test_tensor(size=kernel_size, is_float=True)
+            kernel_size = (out_channels * groups, in_channels, *kernel_size)
+            kernel = get_random_test_tensor(size=kernel_size, is_float=True)
 
-                for padding in paddings:
-                    for stride in strides:
-                        self._check_forward_backward(
-                            "conv2d", image, kernel, stride=stride, padding=padding
-                        )
+            self._check_forward_backward(
+                "conv2d",
+                image,
+                kernel,
+                stride=stride,
+                padding=padding,
+                dilation=dilation,
+                groups=groups,
+            )
 
     def test_max_pool2d(self):
         """Tests max pooling gradient"""
@@ -413,12 +547,14 @@ class TestGradients:
     def _check_pooling(self, func):
         """Helper for testing pooling gradients to avoid test timeouts"""
         image_sizes = [(5, 5), (6, 7)]
-        nchannels = [1, 3, 5]
-        nbatches = [1, 5]
+        nchannels = [1, 3]
+        nbatches = [1, 3]
 
         kernel_sizes = [1, 2, (2, 3)]
         paddings = [1, (0, 0)]
         strides = [1, (2, 2)]
+        dilations = [1, 2]
+        ceil_modes = [False, True]
 
         for image_size, channels, batches, kernel_size in itertools.product(
             image_sizes, nchannels, nbatches, kernel_sizes
@@ -426,13 +562,85 @@ class TestGradients:
             size = (batches, channels, *image_size)
             image = get_random_test_tensor(size=size, is_float=True)
 
-            for padding, stride in itertools.product(paddings, strides):
+            for padding, stride, ceil_mode in itertools.product(
+                paddings, strides, ceil_modes
+            ):
                 # Skip invalid padding sizes
                 if kernel_size == 1 and padding == 1:
                     continue
-                self._check_forward_backward(
-                    func, image, kernel_size, padding=padding, stride=stride
-                )
+                if func == "max_pool2d":
+                    for dilation in dilations:
+                        self._check_max_pool2d_forward_backward(
+                            image, kernel_size, padding, stride, dilation, ceil_mode
+                        )
+                else:
+                    self._check_forward_backward(
+                        func, image, kernel_size, padding=padding, stride=stride
+                    )
+
+    def _check_max_pool2d_forward_backward(
+        self, image, kernel_size, padding, stride, dilation, ceil_mode, tol=0.1
+    ):
+        """Checks forward and backward are for max pool 2d.
+        Verifies gradients by checking sum of non-matching elements to account for
+        differences in tie resolution in max between PyTorch and CrypTen:
+        PyTorch returns smallest index for max entries,
+        whereas CrypTen returns a random index.
+
+        Args:
+            image (torch.tensor): input
+            kernel_size (tuple of ints): size of the window over which to compute max
+            padding (int or tuple of ints): implicit zero padding to added on both sides
+            stride (int or tuple of ints): the stride of the window
+            ceil_mode (bool): determines whether output size is rounded down or up
+        """
+        # check forward
+        image = image.clone()
+        image.requires_grad = True
+        image_enc = crypten.cryptensor(image, requires_grad=True)
+
+        out = torch.nn.functional.max_pool2d(
+            image,
+            kernel_size,
+            padding=padding,
+            stride=stride,
+            dilation=dilation,
+            ceil_mode=ceil_mode,
+        )
+        out_enc = image_enc.max_pool2d(
+            kernel_size,
+            padding=padding,
+            stride=stride,
+            dilation=dilation,
+            ceil_mode=ceil_mode,
+        )
+        if out.isinf().any():
+            self.assertTrue(
+                out.size() == out_enc.size(), "max_pool2d forward incorrect"
+            )
+            return  # backward will break if output is -inf
+        else:
+            self._check(out_enc, out, "max_pool2d forward incorrect")
+
+        # check backward
+        grad_output = get_random_test_tensor(size=out.size(), is_float=True)
+        grad_output_enc = crypten.cryptensor(grad_output)
+        out.backward(grad_output)
+        out_enc.backward(grad_output_enc)
+
+        # check sum of non-matching gradient entries
+        crypten_grad = image_enc.grad.get_plain_text()
+        non_matching_indices = (image.grad - crypten_grad).abs() > tol
+        sum_is_close = (
+            crypten_grad[non_matching_indices].sum()
+            - image.grad[non_matching_indices].sum()
+        ) < tol
+        if not sum_is_close:
+            msg = "max_pool2d backward failed"
+            logging.info(msg)
+            logging.info(f"Result: crypten image gradient {crypten_grad}")
+            logging.info(f"Result - Reference {image.grad - crypten_grad}")
+            self.assertTrue(sum_is_close, msg=msg)
 
     def test_square(self):
         """Tests square function gradient.
@@ -515,45 +723,49 @@ class TestGradients:
             self._check_forward_backward("clone", tensor)
 
     def test_cat_stack(self):
-        for func in ["cat", "stack"]:
-            for dimensions in range(1, 5):
-                size = [5] * dimensions
-                for num_tensors in range(1, 5):
-                    for dim in range(dimensions):
-                        tensors = [
-                            get_random_test_tensor(size=size, is_float=True)
-                            for _ in range(num_tensors)
-                        ]
-                        encrypted_tensors = [
-                            crypten.cryptensor(t, requires_grad=True) for t in tensors
-                        ]
-                        for i in range(len(tensors)):
-                            tensors[i].grad = None
-                            tensors[i].requires_grad = True
-                            encrypted_tensors[i].grad = None
-                            encrypted_tensors[i].requires_grad = True
+        for module in [crypten, torch]:  # torch.cat on CrypTensor runs crypten.cat
+            for func in ["cat", "stack"]:
+                for dimensions in range(1, 5):
+                    size = [5] * dimensions
+                    for num_tensors in range(1, 5):
+                        for dim in range(dimensions):
+                            tensors = [
+                                get_random_test_tensor(size=size, is_float=True)
+                                for _ in range(num_tensors)
+                            ]
+                            encrypted_tensors = [
+                                crypten.cryptensor(t, requires_grad=True)
+                                for t in tensors
+                            ]
+                            for i in range(len(tensors)):
+                                tensors[i].grad = None
+                                tensors[i].requires_grad = True
+                                encrypted_tensors[i].grad = None
+                                encrypted_tensors[i].requires_grad = True
 
-                        # Forward
-                        reference = getattr(torch, func)(tensors, dim=dim)
-                        encrypted_out = getattr(crypten, func)(
-                            encrypted_tensors, dim=dim
-                        )
-                        self._check(encrypted_out, reference, f"{func} forward failed")
-
-                        # Backward
-                        grad_output = get_random_test_tensor(
-                            size=reference.size(), is_float=True
-                        )
-                        encrypted_grad_output = crypten.cryptensor(grad_output)
-
-                        reference.backward(grad_output)
-                        encrypted_out.backward(encrypted_grad_output)
-                        for i in range(len(tensors)):
-                            self._check(
-                                encrypted_tensors[i].grad,
-                                tensors[i].grad,
-                                f"{func} backward failed",
+                            # Forward
+                            reference = getattr(torch, func)(tensors, dim=dim)
+                            encrypted_out = getattr(module, func)(
+                                encrypted_tensors, dim=dim
                             )
+                            self._check(
+                                encrypted_out, reference, f"{func} forward failed"
+                            )
+
+                            # Backward
+                            grad_output = get_random_test_tensor(
+                                size=reference.size(), is_float=True
+                            )
+                            encrypted_grad_output = crypten.cryptensor(grad_output)
+
+                            reference.backward(grad_output)
+                            encrypted_out.backward(encrypted_grad_output)
+                            for i in range(len(tensors)):
+                                self._check(
+                                    encrypted_tensors[i].grad,
+                                    tensors[i].grad,
+                                    f"{func} backward failed",
+                                )
 
     def test_dropout(self):
         """Tests forward for dropout"""
@@ -594,76 +806,81 @@ class TestGradients:
         """
         Tests batchnorm forward and backward steps with training on / off.
         """
-        # sizes for 1D, 2D, and 3D batchnorm
-        # batch_size (dim=0) > 500 and increase tolerance to avoid flaky precision
-        # errors in inv_var, which involves sqrt and reciprocal
-        sizes = [(800, 5), (500, 8, 15), (600, 10, 3, 15)]
-        tolerance = 0.5
-
+        tolerance = 0.1
+        sizes = [(8, 5), (16, 3), (32, 5), (8, 6, 4), (8, 4, 3, 5)]
         for size in sizes:
-            for is_trainning in (False, True):
-                tensor = get_random_test_tensor(size=size, is_float=True)
-                tensor.requires_grad = True
-                encrypted_input = crypten.cryptensor(tensor)
+            for is_training in (False, True):
 
+                # sample input data, weight, and bias:
+                tensor = get_random_test_tensor(size=size, is_float=True)
+                encrypted_input = crypten.cryptensor(tensor)
                 C = size[1]
                 weight = get_random_test_tensor(size=[C], max_value=1, is_float=True)
                 bias = get_random_test_tensor(size=[C], max_value=1, is_float=True)
                 weight.requires_grad = True
                 bias.requires_grad = True
 
-                # dimensions for mean and variance
+                # dimensions over which means and variances are computed:
                 stats_dimensions = list(range(tensor.dim()))
-                # perform on C dimension for tensor of shape (N, C, +)
                 stats_dimensions.pop(1)
 
+                # dummy running mean and variance:
                 running_mean = tensor.mean(stats_dimensions).detach()
                 running_var = tensor.var(stats_dimensions).detach()
-                enc_running_mean = encrypted_input.mean(stats_dimensions)
-                enc_running_var = encrypted_input.var(stats_dimensions)
+                enc_running_mean = crypten.cryptensor(running_mean)
+                enc_running_var = crypten.cryptensor(running_var)
 
+                # compute reference output:
+                tensor.requires_grad = True
                 reference = torch.nn.functional.batch_norm(
-                    tensor, running_mean, running_var, weight=weight, bias=bias
+                    tensor,
+                    running_mean,
+                    running_var,
+                    weight=weight,
+                    bias=bias,
+                    training=is_training,
                 )
 
+                # compute CrypTen output:
                 encrypted_input.requires_grad = True
                 ctx = AutogradContext()
-                batch_norm_fn = crypten.gradients.get_grad_fn("batchnorm")
-                encrypted_out = batch_norm_fn.forward(
-                    ctx,
-                    encrypted_input,
-                    weight,
-                    bias,
-                    training=is_trainning,
-                    running_mean=enc_running_mean,
-                    running_var=enc_running_var,
-                )
+                batch_norm_fn, _ = crypten.gradients.get_grad_fn("batchnorm")
+                with crypten.no_grad():
+                    encrypted_out = batch_norm_fn.forward(
+                        ctx,
+                        encrypted_input,
+                        weight,
+                        bias,
+                        training=is_training,
+                        running_mean=enc_running_mean,
+                        running_var=enc_running_var,
+                    )
 
                 # check forward
                 self._check(
                     encrypted_out,
                     reference,
-                    "batchnorm forward failed with trainning "
-                    f"{is_trainning} on {tensor.dim()}-D",
+                    "batchnorm forward failed with training "
+                    f"{is_training} on {tensor.dim()}-D",
                     tolerance=tolerance,
                 )
 
-                # check backward (input, weight, and bias gradients)
+                # check backward (input, weight, and bias gradients):
                 reference.backward(reference)
-                encrypted_grad = batch_norm_fn.backward(ctx, encrypted_out)
+                with crypten.no_grad():
+                    encrypted_grad = batch_norm_fn.backward(ctx, encrypted_out)
                 TorchGrad = namedtuple("TorchGrad", ["name", "value"])
                 torch_gradients = [
                     TorchGrad("input gradient", tensor.grad),
                     TorchGrad("weight gradient", weight.grad),
                     TorchGrad("bias gradient", bias.grad),
                 ]
-
                 for i, torch_gradient in enumerate(torch_gradients):
                     self._check(
                         encrypted_grad[i],
                         torch_gradient.value,
-                        f"batchnorm backward {torch_gradient.name} failed"
-                        f"with training {is_trainning} on {tensor.dim()}-D",
+                        f"batchnorm backward {torch_gradient.name} failed "
+                        f"with training {is_training} on {tensor.dim()}-D",
                         tolerance=tolerance,
                     )
 
@@ -792,6 +1009,21 @@ class TestGradients:
                     tensor.grad,
                     f"{func} backward failed with index {index}",
                 )
+
+    def test_index_select(self):
+        """Tests index_select gradients"""
+        sizes = [(2, 2), (3, 5), (3, 5, 10), (4, 8, 2, 5)]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=True)
+            for dim in range(len(size)):
+                for index_size in range(size[dim]):
+                    index = get_random_test_tensor(
+                        max_value=(size[dim] - 1),
+                        min_value=0,
+                        size=(index_size,),
+                        is_float=False,
+                    )
+                    self._check_forward_backward("index_select", tensor, dim, index)
 
     def test_take(self):
         """Tests take gradients"""

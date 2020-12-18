@@ -27,9 +27,13 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
         "conv_transpose1d",
         "conv_transpose2d",
     }
+    if x.device != y.device:
+        raise ValueError(f"x lives on device {x.device} but y on device {y.device}")
 
     provider = crypten.mpc.get_default_provider()
-    a, b, c = provider.generate_additive_triple(x.size(), y.size(), op, *args, **kwargs)
+    a, b, c = provider.generate_additive_triple(
+        x.size(), y.size(), op, device=x.device, *args, **kwargs
+    )
 
     # Vectorized reveal to reduce rounds of communication
     from .arithmetic import ArithmeticSharedTensor
@@ -40,7 +44,7 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
 
     # z = c + (a * delta) + (epsilon * b) + epsilon * delta
     c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
-    c += getattr(a, op)(delta, *args, **kwargs)
+    c._tensor += getattr(torch, op)(a._tensor, delta, *args, **kwargs)
     c += getattr(torch, op)(epsilon, delta, *args, **kwargs)
 
     return c
@@ -79,7 +83,7 @@ def square(x):
     4. Return z = [r2] + 2 * epsilon * [r] + epsilon ** 2
     """
     provider = crypten.mpc.get_default_provider()
-    r, r2 = provider.square(x.size())
+    r, r2 = provider.square(x.size(), device=x.device)
 
     epsilon = (x - r).reveal()
     return r2 + 2 * r * epsilon + epsilon * epsilon
@@ -99,7 +103,7 @@ def wraps(x):
     can make the assumption that [eta_xr] = 0 with high probability.
     """
     provider = crypten.mpc.get_default_provider()
-    r, theta_r = provider.wrap_rng(x.size())
+    r, theta_r = provider.wrap_rng(x.size(), device=x.device)
     beta_xr = theta_r.clone()
     beta_xr._tensor = count_wraps([x._tensor, r._tensor])
 
@@ -126,7 +130,7 @@ def AND(x, y):
     from .binary import BinarySharedTensor
 
     provider = crypten.mpc.get_default_provider()
-    a, b, c = provider.generate_binary_triple(x.size(), y.size())
+    a, b, c = provider.generate_binary_triple(x.size(), y.size(), device=x.device)
 
     # Stack to vectorize reveal
     eps_del = BinarySharedTensor.reveal_batch([x ^ a, y ^ b])
@@ -152,7 +156,7 @@ def B2A_single_bit(xB):
         return ArithmeticSharedTensor(xB._tensor, precision=0, src=0)
 
     provider = crypten.mpc.get_default_provider()
-    rA, rB = provider.B2A_rng(xB.size())
+    rA, rB = provider.B2A_rng(xB.size(), device=xB.device)
 
     z = (xB ^ rB).reveal()
     rA = rA * (1 - 2 * z) + z

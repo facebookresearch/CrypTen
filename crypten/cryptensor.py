@@ -9,7 +9,13 @@ from contextlib import contextmanager
 
 import torch
 
+from .common import approximations
 from .gradients import AutogradContext, get_grad_fn
+
+
+# list of all static functions that CrypTensors support:
+STATIC_FUNCTIONS = ["cat", "stack"]
+STATIC_FUNCTION_MAPPING = {getattr(torch, name): name for name in STATIC_FUNCTIONS}
 
 
 def _find_all_cryptensors(inputs):
@@ -35,8 +41,8 @@ class CrypTensorMetaclass(type):
     """
 
     def __getattribute__(cls, name):
-        if name in ["cat", "stack"]:
-            dummy = cls(None)
+        if name in STATIC_FUNCTIONS:
+            dummy = cls([])  # this creates an empty CrypTensor
             dummy.__IS_DUMMY__ = True
             return cls.__getattribute__(dummy, name)
         return type.__getattribute__(cls, name)
@@ -56,8 +62,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         "requires_grad",
         "grad",
         "grad_fn",
-        "grad_computed",
-        "parents",
+        "grad_expected",
+        "grad_received",
         "children",
         "ctx",
         "backward",
@@ -147,10 +153,17 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """Resets gradient information in tensor."""
         self.grad = None  # gradient itself
         self.grad_fn = None  # functions to call for gradient
-        self.grad_computed = False  # whether gradient already computed
-        self.parents = []  # parents of node in graph
+        self.grad_expected = 0  # number of gradients expected from parents
+        self.grad_received = 0  # number of gradients received from parents
         self.children = []  # children of node in graph
         self.ctx = AutogradContext()  # contexts for AutogradFunctions
+
+    def _identify_required_grads(self):
+        """Flag all nodes for which gradient needs to be evaluated."""
+        self.grad_expected += 1
+        if self.grad_expected == 1:  # only backpropagate once from each node
+            for child in self.children:
+                child._identify_required_grads()
 
     def backward(self, grad_input=None, top_node=True):
         """
@@ -160,29 +173,36 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         if self.requires_grad:
             with CrypTensor.no_grad():  # disable autograd for backward pass
 
-                # if we are in a leaf or if not all parents have backpropagated:
-                parents_done = all(parent.grad_computed for parent in self.parents)
-                if len(self.children) == 0 or (not top_node and not parents_done):
+                # in initial backward call, identify all required nodes:
+                if top_node:
+                    self._identify_required_grads()
 
-                    # when you are done, store or accumulate gradient:
-                    if self.grad is None:
-                        self.grad = grad_input  # store gradient...
-                    else:
-                        self.grad.add_(grad_input)  # ... or accumulate gradient...
-                    return  # ... and do not proceed.
-
-                # TODO: Remove the default grad_input value currently set to all_ones
-                # if undefined, set gradient input to all ones:
+                # if undefined, set gradient input to one:
                 if grad_input is None:
-                    grad_input = self.new(torch.ones(self.size()))
+                    if self.nelement() == 1:
+                        grad_input = self.new(torch.ones_like(self.share))
+                    else:
+                        raise RuntimeError(
+                            "grad can be implicitly created only for scalar outputs"
+                        )
+
+                # process gradient input:
+                self.grad_received += 1
+                if self.grad is None:
+                    self.grad = grad_input  # store gradient...
+                else:
+                    self.grad.add_(grad_input)  # ... or accumulate gradient
+
+                # if we are in a leaf or if not all parents have backpropagated:
+                if len(self.children) == 0 or self.grad_received < self.grad_expected:
+                    return  # ... do not proceed.
 
                 # check that we can actually backpropagate:
                 if self.grad_fn is None:
                     raise ValueError("Cannot call backward() before forward().")
 
                 # perform backpropagation:
-                grad = self.grad_fn.backward(self.ctx, grad_input)
-                self.grad_computed = True  # mark gradient as computed
+                grad = self.grad_fn.backward(self.ctx, self.grad)
                 differentiable_children = [
                     x for x in self.children if self.ctx.is_differentiable(x)
                 ]
@@ -196,15 +216,15 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 ), "number of gradients does not match number of children"
                 for idx, child in enumerate(differentiable_children):
                     child.backward(grad_input=grad[idx], top_node=False)
-                    # TODO: Confirm that indexing over grad is okay.
 
                 # clean up gradients except in leaf nodes:
                 if len(differentiable_children) > 0:
                     self.grad = None
 
                 # remove node from graph:
-                self.parents = []
                 self.children = []
+                self.grad_expected = 0
+                self.grad_received = 0
 
     def detach_(self):
         """Detaches tensor from the autograd graph (in-place), making it a leaf."""
@@ -216,6 +236,20 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         clone = self.clone()
         clone.requires_grad = False
         return clone
+
+    def __torch_function__(self, func, types, args=(), kwargs=None):
+        """Allows torch static functions to work on CrypTensors."""
+        if kwargs is None:
+            kwargs = {}
+        if func in STATIC_FUNCTION_MAPPING:
+            import crypten
+
+            # dispatch torch.{cat,stack} call on CrypTensor to CrypTen:
+            return getattr(crypten, STATIC_FUNCTION_MAPPING[func])(*args, **kwargs)
+        else:
+            raise NotImplementedError(
+                f"CrypTen does not support torch function {func}."
+            )
 
     def __getattribute__(self, name):
         """
@@ -229,7 +263,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             name = CrypTensor.PYTHON_BUILTIN.get(name, name)
 
             # identify the AutogradFunction corresponding to the function name:
-            grad_fn = get_grad_fn(name)
+            grad_fn, in_place = get_grad_fn(name)
 
             # dispatch calls to size(), etc. without going through AutoGradFunction:
             if grad_fn is None:
@@ -241,15 +275,19 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 # determine if self is a dummy object (the case for staticmethods):
                 is_dummy = getattr(self, "__IS_DUMMY__", False)
 
-                # mark gradient as not computed:
-                self.grad_computed = False
-
                 # only CrypTensors can be children:
                 tensor_args = _find_all_cryptensors(args)
                 children = tensor_args if is_dummy else [self, *tensor_args]
 
                 # identify whether result requires gradient:
                 requires_grad = any(child.requires_grad for child in children)
+
+                # in-place functions require special treatment:
+                if in_place:
+                    if requires_grad:  # they are not supported in autograd
+                        raise RuntimeError("Cannot use in-place functions in autograd.")
+                    else:  # and need to be called directly outside autograd
+                        return object.__getattribute__(self, name)(*args, **kwargs)
 
                 # prepare inputs and context for forward call:
                 ctx = AutogradContext()
@@ -265,14 +303,15 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 else:
                     remove_tuple = False
 
-                # wrap results and maintain references to children and context:
-                for res in result:
-                    res.requires_grad = requires_grad and ctx.is_differentiable(res)
-                    if res.requires_grad:
-                        res.children = children
-                        res.grad_fn = grad_fn
-                        res.ctx = ctx
-                    self.parents.append(res)
+                if requires_grad:
+
+                    # maintain references to children and context in result:
+                    for res in result:
+                        res.requires_grad = ctx.is_differentiable(res)
+                        if res.requires_grad:
+                            res.children = children
+                            res.grad_fn = grad_fn
+                            res.ctx = ctx
 
                 # return result:
                 if remove_tuple:
@@ -308,6 +347,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """Creates a shallow copy of the CrypTensor."""
         # TODO: Rename this to __copy__()?
         raise NotImplementedError("shallow_copy is not implemented")
+
+    def copy_(self, other):
+        """Copies value of other CrypTensor into this CrypTensor."""
+        raise NotImplementedError("copy_ is not implemented")
 
     def add_(self, tensor):
         """Adds :attr:`tensor` to :attr:`self` (in-place) see :meth:`add`."""
@@ -487,17 +530,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         # Note: Matching PyTorch convention, which is not in-place here.
         return self.matmul(tensor)
 
-    def sqrt(self):
-        """
-        Computes the square root of :attr:`self`
-        """
-        raise NotImplementedError("sqrt is not implemented")
-
     def square(self):
         """
         Computes the square of :attr:`self`
         """
-        raise NotImplementedError("square is not implemented")
+        return self * self
 
     def norm(self, p="fro", dim=None, keepdim=False):
         """
@@ -608,9 +645,34 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """Batch normalization."""
         raise NotImplementedError("batchnorm is not implemented")
 
+    def conv1d(self, *args, **kwargs):
+        """1D convolution."""
+        raise NotImplementedError("conv1d is not implemented")
+
     def conv2d(self, *args, **kwargs):
         """2D convolution."""
         raise NotImplementedError("conv2d is not implemented")
+
+    def avg_pool2d(self, kernel_size, stride=None, padding=0):
+        """Perform an average pooling on each 2D matrix of the given tensor
+
+        Args:
+            kernel_size (int or tuple): pooling kernel size.
+        """
+        raise NotImplementedError("avg_pool2d is not implemented")
+
+    def adaptive_avg_pool2d(self, output_size):
+        r"""
+        Applies a 2D adaptive average pooling over an input signal composed of
+        several input planes.
+
+        See :class:`~torch.nn.AdaptiveAvgPool2d` for details and output shape.
+
+        Args:
+            output_size: the target output size (single integer or
+                double-integer tuple)
+        """
+        raise NotImplementedError("adaptive_avg_pool2d is not implemented")
 
     def max_pool2d(self, kernel_size, padding=None, stride=None, return_indices=False):
         """Applies a 2D max pooling over an input signal composed of several
@@ -660,6 +722,19 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         the correct mapping.
         """
         raise NotImplementedError("_max_pool2d_backward is not implemented")
+
+    def adaptive_max_pool2d(self, output_size, return_indices=False):
+        r"""Applies a 2D adaptive max pooling over an input signal composed of
+        several input planes.
+
+        See :class:`~torch.nn.AdaptiveMaxPool2d` for details and output shape.
+
+        Args:
+            output_size: the target output size (single integer or
+                double-integer tuple)
+            return_indices: whether to return pooling indices. Default: ``False``
+        """
+        raise NotImplementedError("adaptive_max_pool2d is not implemented")
 
     def dropout(self, p=0.5, training=True, inplace=False):
         r"""
@@ -716,28 +791,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         raise NotImplementedError("where is not implemented")
 
-    def sigmoid(self, reciprocal_method="log"):
-        """Computes the sigmoid function on the input value
-                sigmoid(x) = (1 + exp(-x))^{-1}
-        """
-        raise NotImplementedError("sigmoid is not implemented")
-
     def tanh(self, reciprocal_method="log"):
         """Computes tanh from the sigmoid function:
-            tanh(x) = 2 * sigmoid(2 * x) - 1
+        tanh(x) = 2 * sigmoid(2 * x) - 1
         """
         raise NotImplementedError("tanh is not implemented")
-
-    def softmax(self, dim, **kwargs):
-        """Compute the softmax of a tensor's elements along a given dimension
-        """
-        raise NotImplementedError("softmax is not implemented")
-
-    def log_softmax(self, dim, **kwargs):
-        """Applies a softmax of a tensor's elements along a given dimension,
-           followed by a logarithm.
-        """
-        raise NotImplementedError("log_softmax is not implemented")
 
     def cos(self):
         """Computes the cosine of the input."""
@@ -759,6 +817,35 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
     def reciprocal(self):
         """Computes the reciprocal of the tensor."""
         raise NotImplementedError("reciprocal is not implemented")
+
+    def hardtanh(self, min_val=-1, max_val=1):
+        r"""Applies the HardTanh function element-wise
+
+        HardTanh is defined as:
+
+        .. math::
+            \text{HardTanh}(x) = \begin{cases}
+                1 & \text{ if } x > 1 \\
+                -1 & \text{ if } x < -1 \\
+                x & \text{ otherwise } \\
+            \end{cases}
+
+        The range of the linear region :math:`[-1, 1]` can be adjusted using
+        :attr:`min_val` and :attr:`max_val`.
+
+        Args:
+            min_val: minimum value of the linear region range. Default: -1
+            max_val: maximum value of the linear region range. Default: 1
+        """
+        raise NotImplementedError("hardtanh is not implemented")
+
+    def relu6(self):
+        r"""Applies the element-wise function:
+
+        .. math::
+            \text{ReLU6}(x) = \min(\max(0,x), 6)
+        """
+        raise NotImplementedError("relu6 is not implemented")
 
     def eq(self, tensor):
         """Element-wise equality
@@ -1258,3 +1345,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
     def set(self, enc_tensor):
         """Sets self encrypted to enc_tensor in place"""
         raise NotImplementedError("set is not implemented")
+
+
+# Register function approximations
+for func in approximations.__all__:
+    setattr(CrypTensor, func, getattr(approximations, func))

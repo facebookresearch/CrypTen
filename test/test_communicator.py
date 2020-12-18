@@ -10,24 +10,57 @@ from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_te
 
 import crypten
 import crypten.communicator as comm
+import numpy
 import torch
+import torch.distributed as dist
+import torch.nn as nn
+import torch.nn.functional as F
+from crypten.common import serial
 
 
 # TODO: Commenting this out until we figure out why `thread.join() hangs
 #       Perhaps the thread to be joined has somehow exited
 # from test.multithread_test_case import MultiThreadTestCase
 
+INVALID_SERIALIZED_OBJECTS = [
+    b"cos\nsystem\n(S'echo hello world'\ntR.",
+    b'\x80\x03cbuiltins\neval\n(Vprint("I should not print")\ntRctorch._utils\n_rebuild_tensor_v2\n(ctorch.storage\n_load_from_bytes\nB\x01\x01\x00\x00\x80\x02\x8a\nl\xfc\x9cF\xf9 j\xa8P\x19.\x80\x02M\xe9\x03.\x80\x02}q\x00(X\x10\x00\x00\x00protocol_versionq\x01M\xe9\x03X\r\x00\x00\x00little_endianq\x02\x88X\n\x00\x00\x00type_sizesq\x03}q\x04(X\x05\x00\x00\x00shortq\x05K\x02X\x03\x00\x00\x00intq\x06K\x04X\x04\x00\x00\x00longq\x07K\x04uu.\x80\x02(X\x07\x00\x00\x00storageq\x00ctorch\nFloatStorage\nq\x01X\x0f\x00\x00\x00140436995850160q\x02X\x03\x00\x00\x00cpuq\x03K\x01Ntq\x04Q.\x80\x02]q\x00X\x0f\x00\x00\x00140436995850160q\x01a.\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x80?\x85RK\x00K\x01\x85K\x01\x85\x89ccollections\nOrderedDict\n)RtR.',
+    b'\x80\x04\x8c\x12torch.__builtins__\x94\x8c\x03get\x94\x93\x8c\x04eval\x94\x85\x94R\x8c\x1bprint("I should not print")\x94\x85\x94R.',
+    b"\x80\x04\x8c$torch.nn.modules._functions.torch.os\x94\x8c\x05execl\x94\x93\x8c\x0c/usr/bin/vim\x94\x8c\x0c/usr/bin/vim\x94\x86\x94R.",
+    b"\x80\x04\x8c\rtorch.storage\x94\x8c\x10_load_from_bytes\x94\x93C2\x80\x04\x8c\x02os\x94\x8c\x05execl\x94\x93\x8c\x0c/usr/bin/vim\x94\x8c\x0c/usr/bin/vim\x94\x86\x94R.\x94\x85\x94R.",
+]
+
 
 class TestCommunicator:
     """
-        This class tests all member functions of crypten package
+    This class tests all member functions of crypten package
     """
 
     def test_przs_generators(self):
         """Tests that przs generators are initialized independently"""
-        t0 = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,), generator=comm.get().g0)
-        t1 = torch.randint(-2 ** 63, 2 ** 63 - 1, (1,), generator=comm.get().g1)
+        # Check that each party has two unique generators for g0 and g1
+        t0 = torch.randint(-(2 ** 63), 2 ** 63 - 1, (1,), generator=comm.get().g0)
+        t1 = torch.randint(-(2 ** 63), 2 ** 63 - 1, (1,), generator=comm.get().g1)
         self.assertNotEqual(t0.item(), t1.item())
+
+        # Check that generators are sync'd as expected
+        for rank in range(self.world_size):
+            receiver = rank
+            sender = (rank + 1) % self.world_size
+            if self.rank == receiver:
+                sender_value = comm.get().recv_obj(sender)
+                receiver_value = comm.get().g1.initial_seed()
+                self.assertEqual(sender_value, receiver_value)
+            elif self.rank == sender:
+                sender_value = comm.get().g0.initial_seed()
+                comm.get().send_obj(sender_value, receiver)
+
+    def test_global_generator(self):
+        """Tests that global generator is generated properly"""
+        # Check that all seeds are the same
+        this_generator = comm.get().global_generator.initial_seed()
+        generator0 = comm.get().broadcast_obj(this_generator, src=0)
+        self.assertEqual(this_generator, generator0)
 
     def test_send_recv(self):
         tensor = torch.LongTensor([self.rank])
@@ -179,21 +212,121 @@ class TestCommunicator:
                 self.assertTrue(tensor.eq(1).all())
 
     def test_send_recv_obj(self):
-        reference = {"a": 1, "b": 2, "c": 3}
-        for src in range(self.world_size):
-            if self.rank == src:
-                test_obj = reference
-                comm.get().send_obj(test_obj, 1 - self.rank)
-            else:
-                test_obj = comm.get().recv_obj(1 - self.rank)
-            self.assertEqual(test_obj, reference, "send/recv_obj failed")
+        TEST_OBJECTS = [
+            {"a": 1, "b": 2, "c": 3},
+            torch.tensor(1),
+            torch.nn.Linear(10, 5),
+            CNN(),
+        ]
+        for param in TEST_OBJECTS[2].parameters():
+            param.data.fill_(1.0)
+        for param in TEST_OBJECTS[3].parameters():
+            param.data.fill_(1.0)
+        serial.register_safe_class(CNN)
+
+        for reference in TEST_OBJECTS:
+            for src in range(self.world_size):
+                if self.rank == src:
+                    test_obj = reference
+                    comm.get().send_obj(test_obj, 1 - self.rank)
+                else:
+                    test_obj = comm.get().recv_obj(1 - self.rank)
+
+                if isinstance(reference, torch.nn.Module):
+                    test_obj_params = list(test_obj.parameters())
+                    reference_params = list(reference.parameters())
+                    for i, param in enumerate(reference_params):
+                        self.assertTrue(
+                            test_obj_params[i].eq(param).all(), "broadcast_obj failed"
+                        )
+                else:
+                    self.assertEqual(test_obj, reference, "broadcast_obj failed")
+
+        # Test that the restricted loader will raise an error for code injection
+        for invalid_obj in INVALID_SERIALIZED_OBJECTS:
+            for src in range(self.world_size):
+                if self.rank == src:
+                    # Mimic send_obj without pickling invalid bytestream
+                    size = torch.tensor(len(invalid_obj), dtype=torch.int32)
+                    arr = torch.from_numpy(
+                        numpy.frombuffer(invalid_obj, dtype=numpy.int8)
+                    )
+
+                    r0 = dist.isend(
+                        size, dst=(1 - self.rank), group=comm.get().main_group
+                    )
+                    r1 = dist.isend(
+                        arr, dst=(1 - self.rank), group=comm.get().main_group
+                    )
+
+                    r0.wait()
+                    r1.wait()
+                else:
+                    with self.assertRaises(ValueError):
+                        comm.get().recv_obj(1 - self.rank)
 
     def test_broadcast_obj(self):
-        reference = {"a": 1, "b": 2, "c": 3}
-        for src in range(self.world_size):
-            test_obj = reference if self.rank == src else None
-            test_obj = comm.get().broadcast_obj(test_obj, src)
-            self.assertEqual(test_obj, reference, "broadcast_obj failed")
+        TEST_OBJECTS = [
+            {"a": 1, "b": 2, "c": 3},
+            torch.tensor(1),
+            torch.nn.Linear(10, 5),
+            CNN(),
+        ]
+        for param in TEST_OBJECTS[2].parameters():
+            param.data.fill_(1.0)
+        for param in TEST_OBJECTS[3].parameters():
+            param.data.fill_(1.0)
+        serial.register_safe_class(CNN)
+
+        for reference in TEST_OBJECTS:
+            for src in range(self.world_size):
+                test_obj = reference if self.rank == src else None
+                test_obj = comm.get().broadcast_obj(test_obj, src)
+                if isinstance(reference, torch.nn.Module):
+                    test_obj_params = list(test_obj.parameters())
+                    reference_params = list(reference.parameters())
+                    for i, param in enumerate(reference_params):
+                        self.assertTrue(
+                            test_obj_params[i].eq(param).all(), "broadcast_obj failed"
+                        )
+                else:
+                    self.assertEqual(test_obj, reference, "broadcast_obj failed")
+
+        # Test that the restricted loader will raise an error for code injection
+        for invalid_obj in INVALID_SERIALIZED_OBJECTS:
+            for src in range(self.world_size):
+                if self.rank == src:
+                    # Mimic broadcast_obj without pickling invalid bytestream
+                    size = torch.tensor(len(invalid_obj), dtype=torch.int32)
+                    arr = torch.from_numpy(
+                        numpy.frombuffer(invalid_obj, dtype=numpy.int8)
+                    )
+
+                    dist.broadcast(size, src, group=comm.get().main_group)
+                    dist.broadcast(arr, src, group=comm.get().main_group)
+                else:
+                    with self.assertRaises(ValueError):
+                        test_obj = None
+                        comm.get().broadcast_obj(test_obj, src)
+
+    def test_name(self):
+        # Test default name is correct
+        self.assertEqual(comm.get().get_name(), f"rank{comm.get().get_rank()}")
+
+        # Test name set / get
+        comm.get().set_name(f"{comm.get().get_rank()}")
+        self.assertEqual(comm.get().get_name(), f"{comm.get().get_rank()}")
+
+        # Test initialization using crypten.init()
+        name = f"init_{comm.get().get_rank()}"
+        crypten.uninit()
+        crypten.init(party_name=name)
+        self.assertEqual(comm.get().get_name(), f"init_{comm.get().get_rank()}")
+
+        # Test failure on bad input
+        for improper_input in [0, None, ["name"], ("name",)]:
+            with self.assertRaises(AssertionError):
+                comm.get().set_name(improper_input)
 
 
 # TODO: Commenting this out until we figure out why `thread.join() hangs
@@ -263,6 +396,25 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
         tensor = comm.get().broadcast(tensor, src=0)
         self.assertEqual(comm.get().comm_rounds, 0)
         self.assertEqual(comm.get().comm_bytes, 0)
+
+
+class CNN(nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.conv1 = nn.Conv2d(1, 16, kernel_size=5, padding=1)
+        self.fc1 = nn.Linear(16 * 13 * 13, 100)
+        self.fc2 = nn.Linear(100, 2)
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = F.relu(out)
+        out = F.max_pool2d(out, 2)
+        out = out.view(out.size(0), -1)
+        out = self.fc1(out)
+        out = F.relu(out)
+        out = self.fc2(out)
+        out = F.softmax(out, dim=1)
+        return out
 
 
 # This code only runs when executing the file outside the test harness

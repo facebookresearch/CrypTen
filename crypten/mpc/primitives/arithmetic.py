@@ -12,8 +12,11 @@ import crypten.communicator as comm
 # dependencies:
 import torch
 from crypten.common.rng import generate_random_ring_element
-from crypten.common.tensor_types import is_float_tensor, is_int_tensor
+from crypten.common.tensor_types import is_float_tensor, is_int_tensor, is_tensor
+from crypten.common.util import torch_cat, torch_stack
 from crypten.cryptensor import CrypTensor
+from crypten.cuda import CUDALongTensor
+from crypten.debug import debug_mode
 from crypten.encoder import FixedPointEncoder
 
 from . import beaver
@@ -25,37 +28,106 @@ SENTINEL = -1
 # MPC tensor where shares additive-sharings.
 class ArithmeticSharedTensor(object):
     """
-        Encrypted tensor object that uses additive sharing to perform computations.
+    Encrypted tensor object that uses additive sharing to perform computations.
 
-        Additive shares are computed by splitting each value of the input tensor
-        into n separate random values that add to the input tensor, where n is
-        the number of parties present in the protocol (world_size).
+    Additive shares are computed by splitting each value of the input tensor
+    into n separate random values that add to the input tensor, where n is
+    the number of parties present in the protocol (world_size).
     """
 
     # constructors:
-    def __init__(self, tensor=None, size=None, precision=None, src=0):
+    def __init__(
+        self,
+        tensor=None,
+        size=None,
+        broadcast_size=False,
+        precision=None,
+        src=0,
+        device=None,
+    ):
+        """
+        Creates the shared tensor from the input `tensor` provided by party `src`.
+
+        The other parties can specify a `tensor` or `size` to determine the size
+        of the shared tensor object to create. In this case, all parties must
+        specify the same (tensor) size to prevent the party's shares from varying
+        in size, which leads to undefined behavior.
+
+        Alternatively, the parties can set `broadcast_size` to `True` to have the
+        `src` party broadcast the correct size. The parties who do not know the
+        tensor size beforehand can provide an empty tensor as input. This is
+        guaranteed to produce correct behavior but requires an additional
+        communication round.
+
+        The parties can also set the `precision` and `device` for their share of
+        the tensor. If `device` is unspecified, it is set to `tensor.device`.
+        """
+
+        # do nothing if source is sentinel:
         if src == SENTINEL:
             return
+
+        # assertions on inputs:
         assert (
             isinstance(src, int) and src >= 0 and src < comm.get().get_world_size()
-        ), "invalid tensor source"
+        ), "specified source party does not exist"
+        if self.rank == src:
+            assert tensor is not None, "source must provide a data tensor"
+            if hasattr(tensor, "src"):
+                assert (
+                    tensor.src == src
+                ), "source of data tensor must match source of encryption"
+        if not broadcast_size:
+            assert (
+                tensor is not None or size is not None
+            ), "must specify tensor or size, or set broadcast_size"
 
+        # if device is unspecified, try and get it from tensor:
+        if device is None and tensor is not None and hasattr(tensor, "device"):
+            device = tensor.device
+
+        # encode the input tensor:
         self.encoder = FixedPointEncoder(precision_bits=precision)
         if tensor is not None:
             if is_int_tensor(tensor) and precision != 0:
                 tensor = tensor.float()
             tensor = self.encoder.encode(tensor)
+            tensor = tensor.to(device=device)
             size = tensor.size()
 
-        # Generate psuedo-random sharing of zero (PRZS) and add source's tensor
-        self.share = ArithmeticSharedTensor.PRZS(size).share
+        # if other parties do not know tensor's size, broadcast the size:
+        if broadcast_size:
+            size = comm.get().broadcast_obj(size, src)
+
+        # generate pseudo-random zero sharing (PRZS) and add source's tensor:
+        self.share = ArithmeticSharedTensor.PRZS(size, device=device).share
         if self.rank == src:
-            assert tensor is not None, "Source must provide a data tensor"
-            if hasattr(tensor, "src"):
-                assert (
-                    tensor.src == src
-                ), "Source of data tensor must match source of encryption"
             self.share += tensor
+
+    @property
+    def device(self):
+        """Return the `torch.device` of the underlying _tensor"""
+        return self._tensor.device
+
+    @property
+    def is_cuda(self):
+        """Return True if the underlying _tensor is stored on GPU, False otherwise"""
+        return self._tensor.is_cuda
+
+    def to(self, *args, **kwargs):
+        """Call `torch.Tensor.to` on the underlying _tensor"""
+        self._tensor = self._tensor.to(*args, **kwargs)
+        return self
+
+    def cuda(self, *args, **kwargs):
+        """Call `torch.Tensor.cuda` on the underlying _tensor"""
+        self._tensor = CUDALongTensor(self._tensor.cuda(*args, **kwargs))
+        return self
+
+    def cpu(self, *args, **kwargs):
+        """Call `torch.Tensor.cpu` on the underlying _tensor"""
+        self._tensor = self._tensor.cpu(*args, **kwargs)
+        return self
 
     @property
     def share(self):
@@ -68,15 +140,16 @@ class ArithmeticSharedTensor(object):
         self._tensor = value
 
     @staticmethod
-    def from_shares(share, precision=None, src=0):
+    def from_shares(share, precision=None, src=0, device=None):
         """Generate an ArithmeticSharedTensor from a share from each party"""
         result = ArithmeticSharedTensor(src=SENTINEL)
-        result.share = share
+        share = share.to(device) if device is not None else share
+        result.share = CUDALongTensor(share) if share.is_cuda else share
         result.encoder = FixedPointEncoder(precision_bits=precision)
         return result
 
     @staticmethod
-    def PRZS(*size):
+    def PRZS(*size, device=None):
         """
         Generate a Pseudo-random Sharing of Zero (using arithmetic shares)
 
@@ -85,8 +158,12 @@ class ArithmeticSharedTensor(object):
         this number while the other subtracts this number.
         """
         tensor = ArithmeticSharedTensor(src=SENTINEL)
-        current_share = generate_random_ring_element(*size, generator=comm.get().g0)
-        next_share = generate_random_ring_element(*size, generator=comm.get().g1)
+        current_share = generate_random_ring_element(
+            *size, generator=comm.get().get_generator(0, device=device), device=device
+        )
+        next_share = generate_random_ring_element(
+            *size, generator=comm.get().get_generator(1, device=device), device=device
+        )
         tensor.share = current_share - next_share
         return tensor
 
@@ -101,6 +178,11 @@ class ArithmeticSharedTensor(object):
         result.share = self.share
         return result
 
+    def copy_(self, other):
+        """Copies other tensor into this tensor."""
+        self.share.copy_(other.share)
+        self.encoder = other.encoder
+
     def __repr__(self):
         return f"ArithmeticSharedTensor({self.share})"
 
@@ -114,7 +196,7 @@ class ArithmeticSharedTensor(object):
 
     def __setitem__(self, index, value):
         """Set tensor values by index"""
-        if isinstance(value, (int, float)) or torch.is_tensor(value):
+        if isinstance(value, (int, float)) or is_tensor(value):
             value = ArithmeticSharedTensor(value)
         assert isinstance(
             value, ArithmeticSharedTensor
@@ -123,7 +205,7 @@ class ArithmeticSharedTensor(object):
 
     def pad(self, pad, mode="constant", value=0):
         """
-            Pads the input tensor with values provided in `value`.
+        Pads the input tensor with values provided in `value`.
         """
         assert mode == "constant", (
             "Padding with mode %s is currently unsupported" % mode
@@ -159,14 +241,14 @@ class ArithmeticSharedTensor(object):
     def stack(tensors, *args, **kwargs):
         """Perform tensor stacking"""
         for i, tensor in enumerate(tensors):
-            if torch.is_tensor(tensor):
+            if is_tensor(tensor):
                 tensors[i] = ArithmeticSharedTensor(tensor)
             assert isinstance(
                 tensors[i], ArithmeticSharedTensor
             ), "Can't stack %s with ArithmeticSharedTensor" % type(tensor)
 
         result = tensors[0].shallow_copy()
-        result.share = torch.stack(
+        result.share = torch_stack(
             [tensor.share for tensor in tensors], *args, **kwargs
         )
         return result
@@ -204,7 +286,7 @@ class ArithmeticSharedTensor(object):
     def _arithmetic_function_(self, y, op, *args, **kwargs):
         return self._arithmetic_function(y, op, inplace=True, *args, **kwargs)
 
-    def _arithmetic_function(self, y, op, inplace=False, *args, **kwargs):
+    def _arithmetic_function(self, y, op, inplace=False, *args, **kwargs):  # noqa:C901
         assert op in [
             "add",
             "sub",
@@ -217,7 +299,7 @@ class ArithmeticSharedTensor(object):
         ], f"Provided op `{op}` is not a supported arithmetic function"
 
         additive_func = op in ["add", "sub"]
-        public = isinstance(y, (int, float)) or torch.is_tensor(y)
+        public = isinstance(y, (int, float)) or is_tensor(y)
         private = isinstance(y, ArithmeticSharedTensor)
 
         if inplace:
@@ -228,7 +310,7 @@ class ArithmeticSharedTensor(object):
             result = self.clone()
 
         if public:
-            y = result.encoder.encode(y)
+            y = result.encoder.encode(y, device=self.device)
 
             if additive_func:  # ['add', 'sub']
                 if result.rank == 0:
@@ -245,9 +327,9 @@ class ArithmeticSharedTensor(object):
             else:  # ['mul', 'matmul', 'convNd', 'conv_transposeNd']
                 # NOTE: 'mul_' calls 'mul' here
                 # Must copy share.data here to support 'mul_' being inplace
-                result.share.data = getattr(beaver, op)(
-                    result, y, *args, **kwargs
-                ).share.data
+                result.share.set_(
+                    getattr(beaver, op)(result, y, *args, **kwargs).share.data
+                )
         else:
             raise TypeError("Cannot %s %s with %s" % (op, type(y), type(self)))
 
@@ -286,7 +368,7 @@ class ArithmeticSharedTensor(object):
 
     def mul(self, y):
         """Perform element-wise multiplication"""
-        if isinstance(y, int) or is_int_tensor(y):
+        if isinstance(y, int):
             result = self.clone()
             result.share = self.share * y
             return result
@@ -304,7 +386,7 @@ class ArithmeticSharedTensor(object):
         result = self.clone()
         if isinstance(y, CrypTensor):
             result.share = torch.broadcast_tensors(result.share, y.share)[0].clone()
-        elif torch.is_tensor(y):
+        elif is_tensor(y):
             result.share = torch.broadcast_tensors(result.share, y)[0].clone()
         return result.div_(y)
 
@@ -317,21 +399,32 @@ class ArithmeticSharedTensor(object):
             y = y.long()
 
         if isinstance(y, int) or is_int_tensor(y):
+            if debug_mode():
+                tolerance = 1.0
+                tensor = self.get_plain_text()
+
             # Truncate protocol for dividing by public integers:
             if comm.get().get_world_size() > 2:
                 wraps = self.wraps()
-                self.share /= y
+                self.share //= y
                 # NOTE: The multiplication here must be split into two parts
                 # to avoid long out-of-bounds when y <= 2 since (2 ** 63) is
                 # larger than the largest long integer.
                 self -= wraps * 4 * (int(2 ** 62) // y)
             else:
-                self.share /= y
+                self.share //= y
+
+            if debug_mode():
+                if not torch.lt(
+                    torch.abs(self.get_plain_text() * y - tensor), tolerance
+                ).all():
+                    raise ValueError("Final result of division is incorrect.")
+
             return self
 
         # Otherwise multiply by reciprocal
         if isinstance(y, float):
-            y = torch.FloatTensor([y])
+            y = torch.tensor([y], dtype=torch.float, device=self.device)
 
         assert is_float_tensor(y), "Unsupported type for div_: %s" % type(y)
         return self.mul_(y.reciprocal())
@@ -362,7 +455,7 @@ class ArithmeticSharedTensor(object):
             size = result.size(dim)
             x, y, remainder = result.split([size // 2, size // 2, size % 2], dim=dim)
             result = x.mul_(y)
-            result.share = torch.cat([result.share, remainder.share], dim=dim)
+            result.share = torch_cat([result.share, remainder.share], dim=dim)
 
         # Squeeze result if necessary
         if not keepdim:
@@ -420,14 +513,14 @@ class ArithmeticSharedTensor(object):
 
     def index_add(self, dim, index, tensor):
         """Perform out-of-place index_add: Accumulate the elements of tensor into the
-        self tensor by adding to the indices in the order given in index. """
+        self tensor by adding to the indices in the order given in index."""
         result = self.clone()
         return result.index_add_(dim, index, tensor)
 
     def index_add_(self, dim, index, tensor):
         """Perform in-place index_add: Accumulate the elements of tensor into the
-        self tensor by adding to the indices in the order given in index. """
-        public = isinstance(tensor, (int, float)) or torch.is_tensor(tensor)
+        self tensor by adding to the indices in the order given in index."""
+        public = isinstance(tensor, (int, float)) or is_tensor(tensor)
         private = isinstance(tensor, ArithmeticSharedTensor)
         if public:
             enc_tensor = self.encoder.encode(tensor)
@@ -455,7 +548,7 @@ class ArithmeticSharedTensor(object):
         by its index in other for dimension != dim and by the corresponding
         value in index for dimension = dim.
         """
-        public = isinstance(other, (int, float)) or torch.is_tensor(other)
+        public = isinstance(other, (int, float)) or is_tensor(other)
         private = isinstance(other, ArithmeticSharedTensor)
         if public:
             if self.rank == 0:
@@ -466,31 +559,45 @@ class ArithmeticSharedTensor(object):
             raise TypeError("scatter_add second tensor of unsupported type")
         return self
 
-    def avg_pool2d(self, kernel_size, *args, **kwargs):
+    def avg_pool2d(self, kernel_size, stride=None, padding=0, ceil_mode=False):
         """Perform an average pooling on each 2D matrix of the given tensor
 
         Args:
             kernel_size (int or tuple): pooling kernel size.
         """
-        z = self.sum_pool2d(kernel_size, *args, **kwargs)
+        # TODO: Add check for whether ceil_mode would change size of output and allow ceil_mode when it wouldn't
+        if ceil_mode:
+            raise NotImplementedError(
+                "CrypTen does not support `ceil_mode` for `avg_pool2d`"
+            )
+
+        z = self._sum_pool2d(
+            kernel_size, stride=stride, padding=padding, ceil_mode=ceil_mode
+        )
         if isinstance(kernel_size, (int, float)):
             pool_size = kernel_size ** 2
         else:
             pool_size = kernel_size[0] * kernel_size[1]
         return z / pool_size
 
-    def sum_pool2d(self, *args, **kwargs):
+    def _sum_pool2d(self, kernel_size, stride=None, padding=0, ceil_mode=False):
         """Perform a sum pooling on each 2D matrix of the given tensor"""
         result = self.shallow_copy()
+
         result.share = torch.nn.functional.avg_pool2d(
-            self.share, *args, **kwargs, divisor_override=1
+            self.share,
+            kernel_size,
+            stride=stride,
+            padding=padding,
+            ceil_mode=ceil_mode,
+            divisor_override=1,
         )
         return result
 
     def take(self, index, dimension=None):
         """Take entries of tensor along a dimension according to the index.
-            This function is identical to torch.take() when dimension=None,
-            otherwise, it is identical to ONNX gather() function.
+        This function is identical to torch.take() when dimension=None,
+        otherwise, it is identical to ONNX gather() function.
         """
         result = self.shallow_copy()
         index = index.long()
@@ -516,13 +623,6 @@ class ArithmeticSharedTensor(object):
         result = self.clone()
         result.share = beaver.square(self).div_(self.encoder.scale).share
         return result
-
-    # copy between CPU and GPU:
-    def cuda(self):
-        raise NotImplementedError("CUDA is not supported for ArithmeticSharedTensors")
-
-    def cpu(self):
-        raise NotImplementedError("CUDA is not supported for ArithmeticSharedTensors")
 
     def dot(self, y, weights=None):
         """Compute a dot product between two tensors"""
@@ -551,7 +651,7 @@ class ArithmeticSharedTensor(object):
 
         Returns: ArithmeticSharedTensor or torch.tensor
         """
-        if torch.is_tensor(condition):
+        if is_tensor(condition):
             condition = condition.float()
             y_masked = y * (1 - condition)
         else:
@@ -566,7 +666,7 @@ class ArithmeticSharedTensor(object):
         is specified by its index in `src` for `dimension != dim` and by the
         corresponding value in `index` for `dimension = dim`.
         """
-        if torch.is_tensor(src):
+        if is_tensor(src):
             src = ArithmeticSharedTensor(src)
         assert isinstance(
             src, ArithmeticSharedTensor
@@ -625,6 +725,7 @@ REGULAR_FUNCTIONS = [
     "gather",
     "unbind",
     "split",
+    "permute",
 ]
 
 

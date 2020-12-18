@@ -18,7 +18,7 @@ from crypten.mpc.primitives import BinarySharedTensor
 
 class TestBinary(MultiProcessTestCase):
     """
-        This class tests all functions of BinarySharedTensor.
+    This class tests all functions of BinarySharedTensor.
     """
 
     def setUp(self):
@@ -48,8 +48,8 @@ class TestBinary(MultiProcessTestCase):
 
     def test_encrypt_decrypt(self):
         """
-            Tests tensor encryption and decryption for both positive
-            and negative values.
+        Tests tensor encryption and decryption for both positive
+        and negative values.
         """
         sizes = [
             (),
@@ -67,14 +67,29 @@ class TestBinary(MultiProcessTestCase):
             (5, 3, 32, 32),
         ]
         for size in sizes:
+
+            # encryption and decryption without source:
             reference = get_random_test_tensor(size=size, is_float=False)
             encrypted_tensor = BinarySharedTensor(reference)
             self._check(encrypted_tensor, reference, "en/decryption failed")
-
             for dst in range(self.world_size):
                 self._check(
                     encrypted_tensor, reference, "en/decryption failed", dst=dst
                 )
+
+            # encryption and decryption with source:
+            for src in range(self.world_size):
+                input_tensor = reference if src == self.rank else []
+                encrypted_tensor = BinarySharedTensor(
+                    input_tensor, src=src, broadcast_size=True
+                )
+                for dst in range(self.world_size):
+                    self._check(
+                        encrypted_tensor,
+                        reference,
+                        "en/decryption with broadcast_size failed",
+                        dst=dst,
+                    )
 
     def test_transpose(self):
         sizes = [
@@ -105,6 +120,35 @@ class TestBinary(MultiProcessTestCase):
                     reference = tensor.transpose(dim0, dim1)
                     encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
+
+    def test_permute(self):
+        """Test the permute operations"""
+        sizes = [
+            (1,),
+            (5,),
+            (1, 5),
+            (1, 5, 7),
+            (7, 1, 5),
+            (5, 7, 1),
+            (1, 3, 5, 7),
+            (5, 3, 32, 32),
+        ]
+        for size in sizes:
+            tensor = get_random_test_tensor(size=size, is_float=False)
+            encrypted_tensor = BinarySharedTensor(tensor)
+
+            # test reversing the dimensions
+            dim_arr = [x - 1 for x in range(tensor.dim(), 0, -1)]
+            reference = tensor.permute(dim_arr)
+            encrypted_out = encrypted_tensor.permute(dim_arr)
+            self._check(encrypted_out, reference, "permute failed")
+
+            # test one particular non-reversed permutation
+            if tensor.dim() == 4:
+                dim_arr = [1, 3, 0, 2]
+                reference = tensor.permute(dim_arr)
+                encrypted_out = encrypted_tensor.permute(dim_arr)
+                self._check(encrypted_out, reference, "permute failed")
 
     def test_XOR(self):
         """Test bitwise-XOR function on BinarySharedTensor"""
@@ -200,7 +244,24 @@ class TestBinary(MultiProcessTestCase):
             encrypted_tensor = BinarySharedTensor(tensor)
             encrypted_tensor2 = tensor_type(tensor2)
             encrypted_out = encrypted_tensor + encrypted_tensor2
-            self._check(encrypted_out, reference, "%s AND failed" % tensor_type)
+            self._check(encrypted_out, reference, "%s add failed" % tensor_type)
+
+    @unittest.skip("omitting since disabled in fbcode")
+    def test_comparators(self):
+        """Test comparators (>, >=, <, <=, ==, !=)"""
+        for _scale in [False, True]:
+            for comp in ["gt", "ge", "lt", "le", "eq", "ne"]:
+                for tensor_type in [lambda x: x, BinarySharedTensor]:
+                    tensor = get_random_test_tensor(is_float=False)
+                    tensor2 = get_random_test_tensor(is_float=False)
+
+                    encrypted_tensor = BinarySharedTensor(tensor)
+                    encrypted_tensor2 = tensor_type(tensor2)
+
+                    reference = getattr(tensor, comp)(tensor2).long()
+                    encrypted_out = getattr(encrypted_tensor, comp)(encrypted_tensor2)
+
+                    self._check(encrypted_out, reference, "%s comparator failed" % comp)
 
     def test_sum(self):
         """Tests sum using binary shares"""
@@ -392,14 +453,88 @@ class TestBinary(MultiProcessTestCase):
                 "where failed with private condition",
             )
 
-    # TODO: Write the following unit tests
-    @unittest.skip("Test not implemented")
-    def test_gather_scatter(self):
-        pass
+    def test_gather(self):
+        """Test gather function of encrypted tensor"""
+        sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
+        for size in sizes:
+            for dim in range(len(size)):
+                tensor = get_random_test_tensor(size=size, is_float=False)
+                index = get_random_test_tensor(size=size, is_float=False)
+                index = index.abs().clamp(0, 4)
+                encrypted = BinarySharedTensor(tensor)
+                reference = tensor.gather(dim, index)
+                encrypted_out = encrypted.gather(dim, index)
+                self._check(encrypted_out, reference, f"gather failed with size {size}")
 
-    @unittest.skip("Test not implemented")
+    def test_scatter(self):
+        """Test scatter function of encrypted tensor"""
+        funcs = ["scatter", "scatter_"]
+        sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
+        for func in funcs:
+            for size in sizes:
+                for tensor_type in [lambda x: x, BinarySharedTensor]:
+                    for dim in range(len(size)):
+                        tensor1 = get_random_test_tensor(size=size, is_float=False)
+                        tensor2 = get_random_test_tensor(size=size, is_float=False)
+                        index = get_random_test_tensor(size=size, is_float=False)
+                        index = index.abs().clamp(0, 4)
+                        encrypted = BinarySharedTensor(tensor1)
+                        encrypted2 = tensor_type(tensor2)
+                        reference = getattr(tensor1, func)(dim, index, tensor2)
+                        encrypted_out = getattr(encrypted, func)(dim, index, encrypted2)
+                        private = tensor_type == BinarySharedTensor
+                        self._check(
+                            encrypted_out,
+                            reference,
+                            "%s %s failed" % ("private" if private else "public", func),
+                        )
+                        if func.endswith("_"):
+                            # Check in-place scatter modified input
+                            self._check(
+                                encrypted,
+                                reference,
+                                "%s %s failed to modify input"
+                                % ("private" if private else "public", func),
+                            )
+                        else:
+                            # Check original is not modified
+                            self._check(
+                                encrypted,
+                                tensor1,
+                                "%s %s unintendedly modified input"
+                                % ("private" if private else "public", func),
+                            )
+
     def test_split(self):
-        pass
+        """Test gather function of encrypted tensor"""
+        sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
+
+        for size in sizes:
+            for dim in range(len(size)):
+                tensor = get_random_test_tensor(size=size, is_float=False)
+                encrypted = BinarySharedTensor(tensor)
+
+                for idx in range(6):
+                    split = (idx, 5 - idx)
+                    reference0, reference1 = tensor.split(split, dim=dim)
+                    encrypted_out0, encrypted_out1 = encrypted.split(split, dim=dim)
+
+                    self._check(
+                        encrypted_out0, reference0, f"split failed with input {split}"
+                    )
+                    self._check(
+                        encrypted_out1, reference1, f"split failed with input {split}"
+                    )
+
+                split = (5,)
+                (reference,) = tensor.split(split, dim=dim)
+                (encrypted_out,) = encrypted.split(split, dim=dim)
+                self._check(
+                    encrypted_out, reference, f"split failed with input {split}"
+                )
+
+                with self.assertRaises(RuntimeError):
+                    encrypted_out.split((5, 1))
 
 
 # This code only runs when executing the file outside the test harness

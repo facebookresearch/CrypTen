@@ -106,6 +106,33 @@ class TestCommon(unittest.TestCase):
             self.assertTrue(result[0] < 1e-4)
             self.assertTrue(torch.isclose(result[-1], torch.tensor(3.5e-2), atol=1e-1))
 
+    def test_config_managers(self):
+        """Checks setting configuartion with config manager works"""
+        # Set the config directly
+        cfgs = [
+            (crypten.common.approximations, "exp_iterations", "ApproxConfig"),
+            (crypten.mpc, "max_method", "MPCConfig"),
+        ]
+
+        for cfg in cfgs:
+            base = cfg[0]
+            arg_name = cfg[1]
+            cfg_name = cfg[2]
+
+            setattr(base.config, arg_name, 8)
+            self.assertTrue(getattr(base.config, arg_name) == 8)
+
+            # Set with a context manager
+            with base.ConfigManager(arg_name, 3):
+                self.assertTrue(getattr(base.config, arg_name) == 3)
+            self.assertTrue(getattr(base.config, arg_name) == 8)
+
+            kwargs = {arg_name: 5}
+            new_config = getattr(base, cfg_name)(**kwargs)
+
+            base.set_config(new_config)
+            self.assertTrue(getattr(base.config, arg_name) == 5)
+
 
 if __name__ == "__main__":
     unittest.main(argv=sys.argv[0])
