@@ -54,7 +54,7 @@ class Module:
         self.training = mode
 
         # Recursively set train mode
-        for module in self.modules():
+        for module in self.children():
             module.train(mode=mode)
         return self
 
@@ -62,21 +62,57 @@ class Module:
         """Sets the module in evaluation mode."""
         return self.train(False)
 
+    def children(self):
+        """Returns an iterator over immediate children modules.
+        Yields:
+            Module: a child module
+        """
+        for _, module in self.named_children():
+            yield module
+
+    def named_children(self):
+        """Returns an iterator over immediate children modules, yielding both
+        the name of the module as well as the module itself.
+        Yields:
+            (string, Module): Tuple containing a name and child module
+        Example::
+            >>> for name, module in model.named_children():
+            >>>     if name in ['conv4', 'conv5']:
+            >>>         print(module)
+        """
+        memo = set()
+        for name, module in self._modules.items():
+            if module is not None and module not in memo:
+                memo.add(module)
+                yield name, module
+
     def register_module(self, name, module):
         """Registers child module in the module."""
         self._modules[name] = module
 
     def modules(self):
-        """Returns iterator over modules (non-recursively)."""
-        # TODO: Add option to do this recursively, akin to PyTorch.
+        """Returns an iterator over all modules in the network.
+        Yields:
+            Module: a module in the network
+        Note:
+            Duplicate modules are returned only once.
+        """
         for _, module in self.named_modules():
             yield module
 
-    def named_modules(self):
+    def named_modules(self, memo=None, prefix=""):
         """Returns iterator over named modules (non-recursively)."""
-        # TODO: Add option to do this recursively, akin to PyTorch.
-        for name, module in self._modules.items():
-            yield name, module
+        if memo is None:
+            memo = set()
+        if self not in memo:
+            memo.add(self)
+            yield prefix, self
+            for name, module in self.named_children():
+                if module is None:
+                    continue
+                submodule_prefix = prefix + ("." if prefix else "") + name
+                for m in module.named_modules(memo, submodule_prefix):
+                    yield m
 
     def register_parameter(self, name, param, requires_grad=True):
         """
@@ -130,17 +166,35 @@ class Module:
         setattr(self, name, self._parameters[name])
 
     def parameters(self, recurse=True):
-        """Iterator over parameters."""
+        """Returns an iterator over module parameters.
+        This is typically passed to an optimizer.
+        Args:
+            recurse (bool): if True, then yields parameters of this module
+                and all submodules. Otherwise, yields only parameters that
+                are direct members of this module.
+        Yields:
+            CrypTensor or torch.Tensor: module parameter
+        """
         for _, param in self.named_parameters(recurse=recurse):
             yield param
 
     def named_parameters(self, recurse=True, prefix=None):
-        """Iterator over named parameters."""
+        """
+        Returns an iterator over module parameters, yielding both the
+        name of the parameter as well as the parameter itself.
+        Args:
+            prefix (str): prefix to prepend to all parameter names.
+            recurse (bool): if True, then yields parameters of this module
+                and all submodules. Otherwise, yields only parameters that
+                are direct members of this module.
+        Yields:
+            (string, CrypTensor or torch.Tensor): Tuple containing the name and parameter
+        """
         for name, param in self._parameters.items():
             param_name = name if prefix is None else prefix + "." + name
             yield param_name, param
         if recurse:
-            for module_name, module in self.named_modules():
+            for module_name, module in self.named_children():
                 pre = module_name if prefix is None else prefix + "." + module_name
                 yield from module.named_parameters(recurse=recurse, prefix=pre)
 
@@ -172,12 +226,12 @@ class Module:
         self._save_to_state_dict(destination, prefix, keep_vars)
 
         # recurse over modules:
-        for name, module in self.named_modules():
+        for name, module in self.named_children():
             if module is not None:
                 module.state_dict(destination, prefix + name + ".", keep_vars=keep_vars)
         return destination
 
-    def _load_from_state_dict(self, state_dict, prefix, strict):
+    def _load_from_state_dict_crypten(self, state_dict, prefix, strict):
         """
         Copies parameters and buffers from `state_dict` into only this module
         but not its children. This is called on every submodule in the
@@ -185,10 +239,9 @@ class Module:
         """
 
         # get state dict for just the current module (without children)
-        local_named_params = itertools.chain(
-            self.named_parameters(), self.named_buffers()
-        )
-        local_state = {key: val for key, val in local_named_params if val is not None}
+        local_state = {
+            key: val for key, val in self.named_parameters() if val is not None
+        }
 
         # in strict mode, check for missing keys in the state_dict:
         if strict:
@@ -232,7 +285,6 @@ class Module:
         children. If `strict` is `True`, then the keys of `state_dict` must
         exactly match the keys returned by this module's `state_dict` function.
         """
-
         # check version of state_dict:
         if strict:
             metadata = getattr(state_dict, "_metadata", None)
@@ -251,8 +303,8 @@ class Module:
             """
             Closure that performs the loading of a module recursively.
             """
-            module._load_from_state_dict(state_dict, prefix, strict)
-            for name, child in module.named_modules():
+            module._load_from_state_dict_crypten(state_dict, prefix, strict)
+            for name, child in module.named_children():
                 if child is not None:
                     load(child, prefix + name + ".")
 
@@ -319,17 +371,37 @@ class Module:
         setattr(self, name, buffer)
 
     def buffers(self, recurse=True):
-        """Iterator over buffers."""
+        """Returns an iterator over module buffers.
+        Args:
+            recurse (bool): if True, then yields buffers of this module
+                and all submodules. Otherwise, yields only buffers that
+                are direct members of this module.
+        Yields:
+            CrypTensor or torch.Tensor: module buffer
+        """
         for _, buffer in self.named_buffers(recurse=recurse):
             yield buffer
 
     def named_buffers(self, recurse=True, prefix=None):
-        """Iterator over named buffers."""
+        """Returns an iterator over module buffers, yielding both the
+        name of the buffer as well as the buffer itself.
+        Args:
+            prefix (str): prefix to prepend to all buffer names.
+            recurse (bool): if True, then yields buffers of this module
+                and all submodules. Otherwise, yields only buffers that
+                are direct members of this module.
+        Yields:
+            (string, CrypTensor or torch.Tensor): Tuple containing the name and buffer
+        Example::
+            >>> for name, buf in self.named_buffers():
+            >>>    if name in ['running_var']:
+            >>>        print(buf.size())
+        """
         for name, buffer in self._buffers.items():
             buffer_name = name if prefix is None else prefix + "." + name
             yield buffer_name, buffer
         if recurse:
-            for module_name, module in self.named_modules():
+            for module_name, module in self.named_children():
                 pre = module_name if prefix is None else prefix + "." + module_name
                 yield from module.named_buffers(recurse=recurse, prefix=pre)
 
@@ -360,7 +432,7 @@ class Module:
         for name, buffer in self._buffers.items():
             self.set_buffer(name, buffer.to(*args, **kwargs))
 
-        for module in self.modules():
+        for module in self.children():
             module.to(*args, **kwargs)
         return self
 
@@ -377,7 +449,7 @@ class Module:
         for name, buffer in self._buffers.items():
             self.set_buffer(name, buffer.cuda(device=device))
 
-        for module in self.modules():
+        for module in self.children():
             module.cuda(device=device)
         return self
 
@@ -388,13 +460,13 @@ class Module:
         for name, buffer in self._buffers.items():
             self.set_buffer(name, buffer.cpu())
 
-        for module in self.modules():
+        for module in self.children():
             module.cpu()
         return self
 
     def _apply(self, fn):
         """Applies a function recursively on all modules."""
-        for module in self.modules():
+        for module in self.children():
             module._apply(fn)
         fn(self)
         return self
@@ -615,11 +687,19 @@ class Sequential(Graph):
                 "pass unpacked arguments (e.g. Sequential(*my_modules))."
             )
             module_list = module_list[0]
-        num_modules = len(module_list)
+
+        input_name = "input"
         for idx, module in enumerate(module_list):
-            module_name = "output" if idx + 1 == num_modules else "module_%d" % idx
-            input_name = "input" if idx == 0 else "module_%d" % (idx - 1)
-            self.add_module(module_name, module, [input_name])
+            if isinstance(module, OrderedDict):
+                for key, val in module.items():
+                    self.add_module(key, val, [input_name])
+                    input_name = key
+                self.output_name = key
+            else:
+                module_name = str(idx)
+                input_name = "input" if idx == 0 else str(idx - 1)
+                self.add_module(module_name, module, [input_name])
+                self.output_name = module_name
 
 
 class ModuleDict(Module):
@@ -1625,15 +1705,6 @@ class Conv2d(Module):
     ):
         # check inputs:
         super().__init__()
-        if isinstance(kernel_size, (list, tuple)):
-            assert _all_the_same(kernel_size), "only square kernels are supported"
-            kernel_size = kernel_size[0]
-        if isinstance(stride, (list, tuple)):
-            assert _all_the_same(stride), "stride must be the same in each dimension"
-            stride = stride[0]
-        if isinstance(padding, (list, tuple)):
-            assert _all_the_same(padding), "padding must be the same in each dimension"
-            padding = padding[0]
 
         # initialize model parameters:
         pytorch_module = torch.nn.Conv2d(
@@ -1649,6 +1720,8 @@ class Conv2d(Module):
         self.register_parameter("weight", pytorch_module.weight)
         if bias:
             self.register_parameter("bias", pytorch_module.bias)
+        else:
+            self.bias = pytorch_module.bias
 
         # set other instance fields:
         self.stride = stride
@@ -1664,7 +1737,7 @@ class Conv2d(Module):
             dilation=self.dilation,
             groups=self.groups,
         )
-        if hasattr(self, "bias"):
+        if hasattr(self, "bias") and self.bias is not None:
             x = x.add(self.bias.unsqueeze(-1).unsqueeze(-1))
         return x
 
@@ -1679,6 +1752,8 @@ class Conv2d(Module):
             attributes["pads"] = [0, 0]
         if "group" not in attributes:
             attributes["group"] = 1
+        if isinstance(attributes["pads"], list) and len(attributes["pads"]) > 2:
+            attributes["pads"] = attributes["pads"][::2]
 
         # initialize module:
         in_channels = parameters["weight"].size(1)

@@ -55,7 +55,7 @@ class TestNN(object):
             reference[local_name] = (
                 param.get_plain_text() - learning_rate * param.grad.get_plain_text()
             )
-        for name, module in model._modules.items():
+        for name, module in model.named_children():
             local_name = init_name + "_" + name
             reference = self._compute_reference_parameters(
                 local_name, reference, module, learning_rate
@@ -66,7 +66,7 @@ class TestNN(object):
         for name, param in model.named_parameters(recurse=False):
             local_name = init_name + "_" + name
             self._check(param, reference[local_name], "parameter update failed")
-        for name, module in model._modules.items():
+        for name, module in model.named_children():
             local_name = init_name + "_" + name
             self._check_reference_parameters(local_name, reference, module)
 
@@ -501,11 +501,12 @@ class TestNN(object):
                 )
             else:
                 self.assertIsNone(encr_input.grad)
-            for name, param in module.named_parameters():
-                encr_param = getattr(encr_module, name)
+            for name, encr_param in encr_module.named_parameters():
+                name = name.split(".")[-1]
+                torch_param = getattr(module, name)
                 self._check(
                     encr_param.grad,
-                    param.grad,
+                    torch_param.grad,
                     f"{module_name} backward on {name} failed {msg}",
                 )
 
@@ -594,31 +595,53 @@ class TestNN(object):
                 input_size = (3, 10)
                 output_size = (input_size[0], input_size[1] - num_layers)
                 layer_idx = range(input_size[1], output_size[1], -1)
-                module_list = [
+
+                # Construct module list
+                torch_module_list = [
+                    torch.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
+                ]
+                crypten_module_list = [
                     crypten.nn.Linear(num_feat, num_feat - 1) for num_feat in layer_idx
                 ]
-                sequential = crypten.nn.Sequential(*module_list)
-                sequential.encrypt()
+
+                # Coordinate parameter values:
+                for i in range(len(torch_module_list)):
+                    torch_module_list[i].weight = torch.nn.Parameter(
+                        get_random_test_tensor(
+                            size=torch_module_list[i].weight.size(), is_float=True
+                        )
+                    )
+                    torch_module_list[i].bias = torch.nn.Parameter(
+                        get_random_test_tensor(
+                            size=torch_module_list[i].bias.size(), is_float=True
+                        )
+                    )
+                    crypten_module_list[i].weight = torch_module_list[i].weight
+                    crypten_module_list[i].bias = torch_module_list[i].bias
+
+                # Construct sequential modules
+                torch_sequential = torch.nn.Sequential(*torch_module_list)
+                crypten_sequential = crypten.nn.Sequential(*crypten_module_list)
+                crypten_sequential.encrypt()
 
                 # check container:
-                self.assertTrue(sequential.encrypted, "nn.Sequential not encrypted")
-                for module in sequential.modules():
+                self.assertTrue(
+                    crypten_sequential.encrypted, "nn.Sequential not encrypted"
+                )
+                for module in crypten_sequential.modules():
                     self.assertTrue(module.encrypted, "module not encrypted")
-                assert sum(1 for _ in sequential.modules()) == len(
-                    module_list
+                assert len(list(crypten_sequential.modules())) == len(
+                    list(torch_sequential.modules())
                 ), "nn.Sequential contains incorrect number of modules"
 
                 # construct test input and run through sequential container:
                 input = get_random_test_tensor(size=input_size, is_float=True)
                 encr_input = crypten.cryptensor(input)
                 encr_input.requires_grad = compute_gradients
-                encr_output = sequential(encr_input)
+                encr_output = crypten_sequential(encr_input)
 
                 # compute reference output:
-                encr_reference = encr_input
-                for module in sequential.modules():
-                    encr_reference = module(encr_reference)
-                reference = encr_reference.get_plain_text()
+                reference = torch_sequential(input)
 
                 # compare output to reference:
                 self._check(encr_output, reference, "nn.Sequential forward failed")
@@ -652,8 +675,10 @@ class TestNN(object):
             self.assertTrue(graph.encrypted, "nn.Graph not encrypted")
             for module in graph.modules():
                 self.assertTrue(module.encrypted, "module not encrypted")
+
+            # Each from_pytorch() module contains 2 modules (a Graph containing a Linear)
             assert (
-                sum(1 for _ in graph.modules()) == 3
+                sum(1 for _ in graph.modules()) == 6
             ), "nn.Graph contains incorrect number of modules"
 
             # compare output to reference:
