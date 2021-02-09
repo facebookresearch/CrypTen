@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import importlib.util
+import logging
 import sys
 
 import crypten.nn as cnn
@@ -27,7 +28,7 @@ __import_list = {
         "InceptionAux",
     ],
     "mnasnet": ["_InvertedResidual"],
-    "mobilenetv2": ["ConvBNReLU", "InvertedResidual"],
+    "mobilenet": ["ConvBNReLU", "InvertedResidual"],
     "resnet": ["BasicBlock", "Bottleneck"],
     "shufflenetv2": ["InvertedResidual"],
     "squeezenet": ["Fire"],
@@ -136,30 +137,41 @@ def __get_module_list(model_name, model_type):
 try:
     models = __import_module_copy("torchvision").models
 
-    for import_name in __import_list.keys():
-        model_type = getattr(models, import_name)
-
-        # If function imported rather than package, replace with package
-        if not hasattr(model_type, "__all__"):
-            model_type = __import_model_package_copy(import_name)
-
-        __update_torch_functions(model_type)
-        module_list = __get_module_list(import_name, model_type)
-        for module_name in module_list:
-            module = getattr(model_type, module_name)
-
-            # Replace class inheritance from torch.nn.Module to crypten.nn.Module
-            if isinstance(module, type):
-                __update_model_class_inheritance(module)
-
-            module.load_state_dict = lambda *args, **kwargs: cnn.Module.load_state_dict(
-                *args, strict=False, **kwargs
-            )
-
-            if module_name in model_type.__all__:
-                globals()[module_name] = module
-                __all__.append(module_name)
-
-
 except ModuleNotFoundError:
-    pass
+    models = None
+
+
+if models is not None:
+    for import_name in __import_list.keys():
+        try:
+            model_type = getattr(models, import_name)
+        except AttributeError:
+            logging.warning(f"Could not load {import_name} from torchvision.modules")
+            continue
+
+        try:
+            # If function imported rather than package, replace with package
+            if not hasattr(model_type, "__all__"):
+                model_type = __import_model_package_copy(import_name)
+
+            __update_torch_functions(model_type)
+            module_list = __get_module_list(import_name, model_type)
+            for module_name in module_list:
+                module = getattr(model_type, module_name)
+
+                # Replace class inheritance from torch.nn.Module to crypten.nn.Module
+                if isinstance(module, type):
+                    __update_model_class_inheritance(module)
+
+                module.load_state_dict = (
+                    lambda *args, **kwargs: cnn.Module.load_state_dict(
+                        *args, strict=False, **kwargs
+                    )
+                )
+
+                if module_name in model_type.__all__:
+                    globals()[module_name] = module
+                    __all__.append(module_name)
+        except (RuntimeError, AttributeError) as e:
+            # Log that module produced an error
+            logging.warning(e)
