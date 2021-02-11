@@ -21,6 +21,7 @@ class Module:
 
     # allow for versioning of modules:
     _version = 1
+    SUPPORTS_PLAINTEXT_INPUTS = False
 
     def __init__(self):
         self._parameters = OrderedDict()
@@ -517,12 +518,12 @@ class Module:
 
         def forward_function(*args, **kwargs):
             """Silently encrypt Torch inputs tensors if needed."""
-            if self.encrypted:
+            if self.encrypted and not self.SUPPORTS_PLAINTEXT_INPUTS:
                 args = list(args)
                 for idx, arg in enumerate(args):
                     if torch.is_tensor(arg):
                         args[idx] = crypten.cryptensor(arg)
-            else:
+            elif not self.encrypted:
                 if any(isinstance(arg, crypten.CrypTensor) for arg in args):
                     raise RuntimeError(
                         "Cannot input CrypTensors into unencrypted model."
@@ -654,11 +655,11 @@ class Graph(Container):
         _mark_as_computed(self.input_name)
         node_to_compute = _find_computable_node()
         while node_to_compute is not None:
-
             # compute and store output of module:
             input = [values[name] for name in self._graph[node_to_compute]]
             if len(input) == 1:
                 input = input[0]  # unpack iterable if possible
+
             output = self._modules[node_to_compute](input)
             values[node_to_compute] = output
             _mark_as_computed(node_to_compute)
@@ -777,6 +778,8 @@ class Constant(Module):
     Modules that returns a constant.
     """
 
+    SUPPORTS_PLAINTEXT_INPUTS = True
+
     def __init__(self, value, trainable=False):
         super().__init__()
         if not torch.is_tensor(value):
@@ -786,6 +789,7 @@ class Constant(Module):
             self.register_parameter("value", value)
         else:
             self.register_buffer("value", value)
+        self.keep_plaintext_value = False
 
     def forward(self, input):
         return self.value
@@ -795,7 +799,26 @@ class Constant(Module):
         if attributes is None:
             attributes = {}
         assert "value" in attributes, "No value for Constant specified."
-        return Constant(attributes["value"])
+        result = Constant(attributes["value"])
+        result.keep_plaintext_value = True
+        return result
+
+    def encrypt(self, mode=True, src=0):
+        if mode == self.encrypted:
+            return self
+        self.encrypted = mode
+
+        # TODO: Figure out a better way to do this.
+        # Do not encrypt constant module values from ONNX inputs
+        if (
+            not self.keep_plaintext_value
+            and mode
+            and not crypten.is_encrypted_tensor(self.value)
+        ):
+            self.value = crypten.cryptensor(self.value)
+        elif not mode and crypten.is_encrypted_tensor(self.value):
+            self.value = self.value.get_plain_text()
+        return self
 
 
 class Add(Module):
@@ -999,6 +1022,8 @@ class Unsqueeze(Module):
         dimension (int): the index at which to insert the singleton dimension
     """
 
+    SUPPORTS_PLAINTEXT_INPUTS = True
+
     def __init__(self, dimension):
         super().__init__()
         if isinstance(dimension, (list, tuple)):
@@ -1058,13 +1083,18 @@ class Shape(Module):
     the output size vector will be encrypted, too.
     """
 
-    def __init__(self):
-        super().__init__()
+    SUPPORTS_PLAINTEXT_INPUTS = True
 
-    def forward(self, x):
-        size = torch.tensor(x.size())
-        if crypten.is_encrypted_tensor(x):
-            size = crypten.cryptensor(size.float())
+    def __init__(self, dim=None):
+        super().__init__()
+        self.dim = dim
+
+    def forward(self, x, dim=None):
+        dim = dim if dim is not None else self.dim
+        if dim is None:
+            size = torch.tensor(x.size())
+        else:
+            size = torch.tensor(x.size(dim))
         return size
 
     @staticmethod
@@ -1116,16 +1146,26 @@ class Reshape(Module):
         input (tuple): contains input tensor and shape (torch.Size)
     """
 
-    def __init__(self, shape):
+    def __init__(self, shape=None):
         super(Reshape, self).__init__()
         self.shape = shape
 
-    def forward(self, tensor):
-        return tensor.reshape(self.shape)
+    def forward(self, tensor, shape=None):
+        if isinstance(tensor, list) and len(tensor) == 2:
+            tensor, shape = tensor
+        shape = shape if shape is not None else self.shape
+        assert (
+            shape is not None
+        ), "Reshape requires a shape in forward if not supplied in initialization"
+        if torch.is_tensor(shape):
+            shape = torch.Size(shape.long())
+        return tensor.reshape(shape)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
-        return Reshape(attributes["shape"])
+        if "shape" in attributes:
+            return Reshape(shape=attributes["shape"])
+        return Reshape()
 
 
 class Dropout(Module):
@@ -1258,26 +1298,52 @@ class Gather(Module):
         dimension (int): the axis along which to index
         index(tensor): the indices to select along the `dimension`
     """
+    SUPPORTS_PLAINTEXT_INPUTS = True
 
-    def __init__(self, dimension):
+    def __init__(self, dimension, indices=None):
         super().__init__()
         self.dimension = dimension
+        self.indices = indices
 
     def forward(self, input):
-        assert isinstance(input, (list, tuple)), "input must be list or tuple"
-        tensor, indices = input
+        if not isinstance(input, (list, tuple)):
+            tensor = input
+            indices = self.indices
+        elif len(input) == 1:
+            tensor = input[0]
+            indices = self.indices
+        else:
+            tensor, indices = input
 
         # indices are not data so we can get plain text:
         if crypten.is_encrypted_tensor(indices):
-            indices = indices.get_plain_text().long()
-        result = tensor.take(indices, self.dimension)
+            indices = indices.get_plain_text()
+        elif isinstance(indices, (int, list, tuple)):
+            indices = torch.tensor(indices)
+        indices = indices.long()
+
+        # CrypTensor input
+        if crypten.is_encrypted_tensor(tensor):
+            result = tensor.take(indices, self.dimension)
+
+        # Torch tensor input
+        elif self.dimension is None or tensor.dim() == 0:
+            result = torch.take(tensor, indices)
+        else:
+            all_indices = [slice(0, x) for x in tensor.size()]
+            all_indices[self.dimension] = indices
+            result = tensor[all_indices]
         return result
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         if attributes is None:
             attributes = {}
-        return Gather(attributes["axis"])
+        if "axis" not in attributes:
+            attributes["axis"] = None
+        if "shape" not in attributes:
+            attributes["shape"] = None
+        return Gather(attributes["axis"], indices=attributes["shape"])
 
 
 class _ConstantPad(Module):
@@ -2151,22 +2217,29 @@ class AdaptiveAvgPool2d(Module):
         >>> output = m(input)
     """
 
-    def __init__(self, output_size):
+    def __init__(self, output_size=None):
         super(AdaptiveAvgPool2d, self).__init__()
         self.output_size = output_size
 
     def extra_repr(self) -> str:
         return "output_size={}".format(self.output_size)
 
-    def forward(self, input_tensor):
+    def forward(self, input_tensor, output_size=None):
+        if output_size is None:
+            output_size = self.output_size
+        assert (
+            output_size is not None
+        ), "AdaptiveAvgPool2d requires an output_size in forward if not supplied in initialization"
         resized_input, args, kwargs = adaptive_pool2d_helper(
-            input_tensor, self.output_size, reduction="mean"
+            input_tensor, output_size, reduction="mean"
         )
         return resized_input.avg_pool2d(*args, **kwargs)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
-        return AdaptiveAvgPool2d(attributes["shape"])
+        if "shape" in attributes:
+            return AdaptiveAvgPool2d(output_size=attributes["shape"])
+        return AdaptiveAvgPool2d()
 
 
 class AdaptiveMaxPool2d(Module):
@@ -2197,22 +2270,29 @@ class AdaptiveMaxPool2d(Module):
 
     """
 
-    def __init__(self, output_size):
+    def __init__(self, output_size=None):
         super(AdaptiveMaxPool2d, self).__init__()
         self.output_size = output_size
 
     def extra_repr(self) -> str:
         return "output_size={}".format(self.output_size)
 
-    def forward(self, input_tensor):
+    def forward(self, input_tensor, output_size=None):
+        if output_size is None:
+            output_size = self.output_size
+        assert (
+            output_size is not None
+        ), "AdaptiveMaxPool2d requires an output_size in forward if not supplied in initialization"
         resized_input, args, kwargs = adaptive_pool2d_helper(
-            input_tensor, self.output_size, reduction="max"
+            input_tensor, output_size, reduction="max"
         )
         return resized_input.max_pool2d(*args, **kwargs)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
-        return AdaptiveMaxPool2d(attributes["shape"])
+        if "shape" in attributes:
+            return AdaptiveMaxPool2d(output_size=attributes["shape"])
+        return AdaptiveMaxPool2d()
 
 
 class GlobalAveragePool(Module):
@@ -2304,8 +2384,10 @@ class _BatchNorm(Module):
         super().train(mode=mode)
         if self.training:
             self.inv_var = None
-        else:
+        elif isinstance(self.running_var, crypten.CrypTensor):
             self.inv_var = self.running_var.add(self.eps).inv_sqrt()
+        else:
+            self.inv_var = self.running_var.add(self.eps).sqrt().reciprocal()
         return self
 
 

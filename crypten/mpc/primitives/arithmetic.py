@@ -601,7 +601,7 @@ class ArithmeticSharedTensor(object):
         """
         result = self.shallow_copy()
         index = index.long()
-        if dimension is None:
+        if dimension is None or self.dim() == 0:
             result.share = torch.take(self.share, index)
         else:
             all_indices = [slice(0, x) for x in self.size()]
