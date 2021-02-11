@@ -27,6 +27,10 @@ class TestModels(MultiProcessTestCase):
         "shufflenet_v2_x2_0",
     ]
 
+    def setUp(self):
+        super().setUp()
+        crypten.init()
+
     def _check_modules(self, crypten_model, torchvision_model, msg):
         msg += " in modules."
 
