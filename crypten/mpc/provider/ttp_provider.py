@@ -173,10 +173,13 @@ class TTPClient:
             dist.barrier(group=self.ttp_group)
 
             self.generator = torch.Generator(device="cpu")
-            self.generator_cuda = torch.Generator(device="cuda")
-
             self.generator.manual_seed(seed.item())
-            self.generator_cuda.manual_seed(seed.item())
+
+            if torch.cuda.is_available():
+                self.generator_cuda = torch.Generator(device="cuda")
+                self.generator_cuda.manual_seed(seed.item())
+            else:
+                self.generator_cuda = None
 
         def get_generator(self, device=None):
             if device is None:
@@ -278,11 +281,15 @@ class TTPServer:
             dist.isend(tensor=seeds[i], dst=i, group=self.ttp_group) for i in range(ws)
         ]
         self.generators = [torch.Generator(device="cpu") for _ in range(ws)]
-        self.generators_cuda = [torch.Generator(device="cuda") for _ in range(ws)]
+        self.generators_cuda = [
+            (torch.Generator(device="cuda") if torch.cuda.is_available() else None)
+            for _ in range(ws)
+        ]
 
         for i in range(ws):
             self.generators[i].manual_seed(seeds[i].item())
-            self.generators_cuda[i].manual_seed(seeds[i].item())
+            if torch.cuda.is_available():
+                self.generators_cuda[i].manual_seed(seeds[i].item())
             reqs[i].wait()
 
         dist.barrier(group=self.ttp_group)

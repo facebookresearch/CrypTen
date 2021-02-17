@@ -1331,7 +1331,12 @@ class AutogradAvgPool2D(AutogradFunction):
 
         # TODO: Eliminate dependency on torch internal function by implementing in util
         grad_input_padding = torch.nn.grad._grad_input_padding(
-            grad_output, input_shape, stride, padding, kernel_size
+            grad_output,
+            input_shape,
+            stride,
+            padding,
+            kernel_size,
+            dilation=([1] * len(stride)),
         )
 
         # set groups=in_channels so input gradient is computed per channel
@@ -1463,7 +1468,7 @@ class AutogradConv1D(AutogradFunction):
             (stride,),
             (padding,),
             (kernel_size,),
-            (dilation,),
+            dilation=(dilation,),
         )
         grad_input = grad_output.conv_transpose1d(
             kernel,
@@ -1543,7 +1548,7 @@ class AutogradConv2D(AutogradFunction):
             stride,
             padding,
             (kernel_size_y, kernel_size_x),
-            dilation,
+            dilation=dilation,
         )
         grad_input = grad_output.conv_transpose2d(
             kernel,

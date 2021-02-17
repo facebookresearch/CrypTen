@@ -8,6 +8,7 @@
 __version__ = "0.1.0"
 
 import copy
+import os
 import warnings
 
 import crypten.common  # noqa: F401
@@ -49,6 +50,7 @@ def init(party_name=None, device=None):
         return
 
     # Initialize communicator
+    os.environ["GLOO_SOCKET_IFNAME"] = "en0"
     comm._init(use_threads=False, init_ttp=crypten.mpc.ttp_required())
 
     # Setup party name for file save / load

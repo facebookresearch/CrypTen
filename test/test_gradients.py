@@ -615,6 +615,9 @@ class TestGradients:
             ceil_mode=ceil_mode,
         )
         if out.isinf().any():
+            # PyTorch can produce improperly sized outputs with Inf values using ceil_mode in some cases
+            if ceil_mode:
+                return
             self.assertTrue(
                 out.size() == out_enc.size(), "max_pool2d forward incorrect"
             )

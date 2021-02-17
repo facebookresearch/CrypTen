@@ -389,8 +389,8 @@ class TestNN(object):
 
         # input arguments for modules and input sizes:
         module_args = {
-            "AdaptiveAvgPool2d": ((7, 7),),
-            "AdaptiveMaxPool2d": ((3, 3),),
+            "AdaptiveAvgPool2d": ((8, 8),),
+            "AdaptiveMaxPool2d": ((2, 2),),
             "AvgPool2d": (2,),
             # "BatchNorm1d": (400,),  # FIXME: Unit tests claim gradients are incorrect.
             # "BatchNorm2d": (3,),
@@ -684,11 +684,6 @@ class TestNN(object):
             self.assertTrue(graph.encrypted, "nn.Graph not encrypted")
             for module in graph.modules():
                 self.assertTrue(module.encrypted, "module not encrypted")
-
-            # Each from_pytorch() module contains 2 modules (a Graph containing a Linear)
-            assert (
-                sum(1 for _ in graph.modules()) == 6
-            ), "nn.Graph contains incorrect number of modules"
 
             # compare output to reference:
             encr_output = graph(encr_input)
