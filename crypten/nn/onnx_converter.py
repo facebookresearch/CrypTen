@@ -170,11 +170,9 @@ class FromOnnx:
                 module.AdaptiveAvgPool2d,
                 module.AdaptiveMaxPool2d,
                 module.Reshape,
+                module.Gather,
             ]
-            if crypten_class in reshape_classes:
-                assert (
-                    constant_module is not None
-                ), f"Pattern not supported: expected Constant shape before {crypten_class} node."
+            if crypten_class in reshape_classes and constant_module is not None:
                 node_input_names.remove(constant_module[0])
                 attributes["shape"] = constant_module[1].value.long().tolist()
                 constant_module = None
@@ -239,10 +237,15 @@ class FromOnnx:
         parameters = OrderedDict()
         orig_parameter_names = []
 
+        linear_parameter_names = ["weight", "bias"]
+
         # add in all the parameters for the current module
         for i, name in enumerate(node_input_names):
             if name in self.all_parameters and name not in input_names:
-                key = FromOnnx._get_parameter_name(name)
+                if node.op_type in ["Conv", "Gemm"]:
+                    key = linear_parameter_names.pop(0)
+                else:
+                    key = FromOnnx._get_parameter_name(name)
                 # the following is necessary because tf2onnx names multiple parameters
                 # identically if they have the same value
                 # only modify if we already have the key in parameters
