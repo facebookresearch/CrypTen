@@ -18,6 +18,7 @@ from test.multiprocess_test_case import (
 import crypten
 import crypten.communicator as comm
 import torch
+import torch.nn.functional as F
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
 from crypten.encoder import FixedPointEncoder
@@ -344,6 +345,9 @@ class TestNN(object):
             # compare model outputs:
             reference = module_lambdas[module_name](inputs)
             encr_output = encr_module(encr_inputs)
+            if torch.is_tensor(encr_output):
+                self.assertTrue(encr_module.SUPPORTS_PLAINTEXT_INPUTS)
+                encr_output = crypten.cryptensor(encr_output)
             self._check(encr_output, reference, "%s failed" % module_name)
 
             # create attributes for static from_onnx function
@@ -370,6 +374,11 @@ class TestNN(object):
             module = getattr(crypten.nn, module_name).from_onnx(attributes=local_attr)
             encr_module_onnx = module.encrypt()
             encr_output = encr_module_onnx(encr_inputs)
+            if torch.is_tensor(encr_output):
+                if not encr_module.SUPPORTS_PLAINTEXT_INPUTS:
+                    crypten.debug.pdb.set_trace()
+                self.assertTrue(encr_module_onnx.SUPPORTS_PLAINTEXT_INPUTS)
+                encr_output = crypten.cryptensor(encr_output)
             self._check(encr_output, reference, "%s failed" % module_name)
 
     def test_pytorch_modules(self):
@@ -475,7 +484,7 @@ class TestNN(object):
                         reference = getattr(module, key)
                         src_reference = comm.get().broadcast(reference, src=0)
                         msg = "parameter %s in %s incorrect" % (key, module_name)
-                        if not encrypted:
+                        if not crypten.is_encrypted_tensor(encr_param):
                             encr_param = crypten.cryptensor(encr_param, src=0)
                         self._check(encr_param, src_reference, msg)
 
@@ -1341,6 +1350,79 @@ class TestNN(object):
                     encrypted_out.eq(reference).all(),
                     f"public crypten.nn.init.{init} failed.",
                 )
+
+    def test_tutorial_modules(self):
+        """Tests that all modules from tutorial 5 properly convert to crypten modules using from_pytorch"""
+        input_sizes = {
+            AliceNet: (1, 50),
+            AliceNet2: (1, 1, 28, 28),
+        }
+        for torch_class, input_size in input_sizes.items():
+            # Create torch model
+            torch_model = torch_class()
+            torch_model.eval()
+
+            # Coordinate model weights across parties
+            with torch.no_grad():
+                for p in torch_model.parameters():
+                    p.set_(get_random_test_tensor(size=p.size(), is_float=True))
+
+            # Create CrypTen model
+            dummy_input = torch.empty(input_size)
+            crypten_model = crypten.nn.from_pytorch(torch_model, dummy_input)
+            crypten_model.encrypt()
+
+            # Create test inputs
+            test_input = get_random_test_tensor(size=input_size, is_float=True)
+            test_input_encr = crypten.cryptensor(test_input)
+
+            # Test model forward function
+            torch_output = torch_model(test_input)
+            crypten_output = crypten_model(test_input_encr)
+            self._check(
+                crypten_output, torch_output, f"from_pytorch failed for {torch_class}"
+            )
+
+
+class AliceNet(torch.nn.Module):
+    def __init__(self):
+        super(AliceNet, self).__init__()
+        self.fc1 = torch.nn.Linear(50, 20)
+        self.fc2 = torch.nn.Linear(20, 2)
+
+    def forward(self, x):
+        out = self.fc1(x)
+        out = F.relu(out)
+        out = self.fc2(out)
+        return out
+
+
+class AliceNet2(torch.nn.Module):
+    def __init__(self):
+        super(AliceNet2, self).__init__()
+        self.conv1 = torch.nn.Conv2d(1, 16, kernel_size=5, padding=0)
+        self.conv2 = torch.nn.Conv2d(16, 16, kernel_size=5, padding=0)
+        self.fc1 = torch.nn.Linear(16 * 4 * 4, 100)
+        self.fc2 = torch.nn.Linear(100, 10)
+        self.batchnorm1 = torch.nn.BatchNorm2d(16)
+        self.batchnorm2 = torch.nn.BatchNorm2d(16)
+        self.batchnorm3 = torch.nn.BatchNorm1d(100)
+
+    def forward(self, x):
+        out = self.conv1(x)
+        out = self.batchnorm1(out)
+        out = F.relu(out)
+        out = F.avg_pool2d(out, 2)
+        out = self.conv2(out)
+        out = self.batchnorm2(out)
+        out = F.relu(out)
+        out = F.avg_pool2d(out, 2)
+        out = out.view(out.size(0), -1)
+        out = self.fc1(out)
+        out = self.batchnorm3(out)
+        out = F.relu(out)
+        out = self.fc2(out)
+        return out
 
 
 # Run all unit tests with both TFP and TTP providers

@@ -400,6 +400,9 @@ def cat(tensors, dim=0):
     Concatenates the specified CrypTen `tensors` along dimension `dim`.
     """
     assert isinstance(tensors, list), "input to cat must be a list"
+    if all(torch.is_tensor(t) for t in tensors):
+        return torch.cat(tensors)
+
     assert all(isinstance(t, CrypTensor) for t in tensors), "inputs must be CrypTensors"
     tensor_types = [get_cryptensor_type(t) for t in tensors]
     assert all(
