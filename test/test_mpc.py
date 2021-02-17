@@ -678,7 +678,6 @@ class TestMPC(object):
 
         for in_size in range(1, 11):
             for out_size in list(range(1, in_size + 1)) + [None]:
-                print((in_size, out_size))
                 input_size = (1, in_size, in_size)
                 output_size = (out_size, out_size)
 
@@ -1999,8 +1998,10 @@ class TestMPC(object):
             # All non-zero values should be identical in both tensors, so
             # compare any one of them
             dropout_decrypt_tensor = dropout_encr_tensor.get_plain_text()
-            dropout_decrypt_nonzero_index = dropout_decrypt_tensor.nonzero()[0].tolist()
-            dropout_plaintext_nonzero_index = dropout_plaintext_tensor.nonzero()[
+            dropout_decrypt_nonzero_index = torch.nonzero(dropout_decrypt_tensor)[
+                0
+            ].tolist()
+            dropout_plaintext_nonzero_index = torch.nonzero(dropout_plaintext_tensor)[
                 0
             ].tolist()
             decr_nonzero_value = dropout_decrypt_tensor[

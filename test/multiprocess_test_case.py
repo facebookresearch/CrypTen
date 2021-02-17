@@ -9,7 +9,9 @@ import multiprocessing
 import os
 import sys
 import tempfile
+import traceback
 import unittest
+import warnings
 from functools import wraps
 
 import crypten.communicator as comm
@@ -123,6 +125,7 @@ class MultiProcessTestCase(unittest.TestCase):
         crypten.debug.configure_logging()
 
         self.default_tolerance = 0.5
+        self.queue = self.mp_context.Queue()
 
         # This gets called in the children process as well to give subclasses a
         # chance to initialize themselves in the new process
@@ -159,16 +162,18 @@ class MultiProcessTestCase(unittest.TestCase):
         return process
 
     def _spawn_process(self, rank):
-        name = "process " + str(rank)
+        name = "Process " + str(rank)
         test_name = self._current_test_name()
         process = self.mp_context.Process(
-            target=self.__class__._run, name=name, args=(test_name, rank, self.file)
+            target=self.__class__._run,
+            name=name,
+            args=(test_name, rank, self.file, self.queue),
         )
         process.start()
         return process
 
     @classmethod
-    def _run(cls, test_name, rank, file):
+    def _run(cls, test_name, rank, file, exception_queue):
         self = cls(test_name)
 
         self.file = file
@@ -184,18 +189,36 @@ class MultiProcessTestCase(unittest.TestCase):
         for key, val in communicator_args.items():
             os.environ[key] = str(val)
 
-        crypten.init()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            crypten.init()
         self.setUp()
 
         # We're retrieving a corresponding test and executing it.
-        getattr(self, test_name)()
+        try:
+            getattr(self, test_name)()
+            exception_queue.put(None)
+        except BaseException:
+            tb_string = traceback.format_exc()
+            exception_queue.put(tb_string)
         crypten.uninit()
         sys.exit(0)
 
     def _join_processes(self, fn):
+        exceptions = {}
         for p in self.processes:
             p.join()
-            self._check_return_codes(p)
+            if not self.queue.empty():
+                tb = self.queue.get()
+                if tb is not None:
+                    exceptions[p.name] = tb
 
-    def _check_return_codes(self, process):
-        self.assertEqual(process.exitcode, 0)
+        test_name = str(self.__class__).split("'")[1]
+        test_name += f".{self._current_test_name()}"
+
+        msg = f"\n\n\n~ Test {test_name} failed ~"
+        msg += "\n===========\nExceptions:\n===========\n"
+        for name, tb in exceptions.items():
+            msg += f"** {name} ** :\n{tb}\n"
+
+        self.assertEqual(len(exceptions), 0, msg)

@@ -1,6 +1,8 @@
 torch>=1.7.0
 torchvision>=0.8.1
 onnx>=1.7.0
+pandas>=1.2.2
 tensorboard
 future
 scipy>=1.6.0
+sklearn>=0.24.1
