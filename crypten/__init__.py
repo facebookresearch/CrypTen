@@ -241,7 +241,7 @@ def load_from_party(
     f=None,
     preloaded=None,
     encrypted=False,
-    dummy_model=None,
+    model_class=None,
     src=0,
     load_closure=torch.load,
     **kwargs
@@ -255,12 +255,10 @@ def load_from_party(
         preloaded: Use the preloaded value instead of loading a tensor/model from f.
         encrypted: Determines whether crypten should load an encrypted tensor
                       or a plaintext torch tensor.
-        dummy_model: Takes a model architecture to fill with the loaded model
-                    (on the `src` party only). Non-source parties will return the
-                    `dummy_model` input (with data unchanged). Loading a model will
-                    assert the correctness of the model architecture provided against
-                    the model loaded. This argument is ignored if the file loaded is
-                    a tensor. (deprecated)
+        model_class: Takes a model architecture class that is being communicated. This
+                    class will be considered safe for deserialization so non-source
+                    parties will be able to receive a model of this type from the
+                    source party.
         src: Determines the source of the tensor. If `src` is None, each
             party will attempt to read in the specified file. If `src` is
             specified, the source party will read the tensor from `f` and it
@@ -269,10 +267,7 @@ def load_from_party(
         to be used when the tensor is saved with a custom save function in
         `crypten.save_from_party`. Additional kwargs are passed on to the closure.
     """
-    if dummy_model is not None:
-        warnings.warn(
-            "dummy_model is deprecated and no longer required", DeprecationWarning
-        )
+
     if encrypted:
         raise NotImplementedError("Loading encrypted tensors is not yet supported")
     else:
@@ -297,7 +292,8 @@ def load_from_party(
                 result_zeros = result.new_zeros(result.size())
             elif isinstance(result, torch.nn.Module):
                 result_zeros = copy.deepcopy(result)
-                result_zeros.set_all_parameters(0)
+                for p in result_zeros.parameters():
+                    p.data.fill_(0)
             else:
                 result = comm.get().broadcast_obj(-1, src)
                 raise TypeError("Unrecognized load type %s" % type(result))
@@ -306,15 +302,19 @@ def load_from_party(
 
         # Non-source party
         else:
+            if model_class is not None:
+                crypten.common.serial.register_safe_class(model_class)
             result = comm.get().broadcast_obj(None, src)
             if isinstance(result, int) and result == -1:
                 raise TypeError("Unrecognized load type from src party")
 
         if torch.is_tensor(result):
             result = crypten.cryptensor(result, src=src)
+
         # TODO: Encrypt modules before returning them
-        # elif isinstance(result, torch.nn.Module):
+        # if isinstance(result, torch.nn.Module):
         #     result = crypten.nn.from_pytorch(result, src=src)
+
         result.src = src
         return result
 
@@ -456,6 +456,11 @@ def bernoulli(tensor, cryptensor_type=None):
     return rand(tensor.size(), cryptensor_type=cryptensor_type) < tensor
 
 
+globals()["log"] = debug.crypten_log
+globals()["print"] = debug.crypten_print
+globals()["print_in_order"] = debug.crypten_print_in_order
+
+
 # expose classes and functions in package:
 __all__ = [
     "CrypTensor",
@@ -465,7 +470,10 @@ __all__ = [
     "debug",
     "init",
     "init_thread",
+    "log",
     "mpc",
     "nn",
+    "print",
+    "print_in_order",
     "uninit",
 ]

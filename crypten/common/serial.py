@@ -9,6 +9,7 @@ import builtins
 import collections
 import difflib
 import io
+import logging
 import os
 import pickle
 import shutil
@@ -66,6 +67,25 @@ class RestrictedUnpickler(pickle.Unpickler):
         "torch._utils._rebuild_tensor_v2": torch._utils._rebuild_tensor_v2,
         "torch.storage._load_from_bytes": _safe_load_from_bytes,
         "torch.Size": torch.Size,
+        "torch.BFloat16Storage": torch.BFloat16Storage,
+        "torch.BoolStorage": torch.BoolStorage,
+        "torch.CharStorage": torch.CharStorage,
+        "torch.ComplexDoubleStorage": torch.ComplexDoubleStorage,
+        "torch.ComplexFloatStorage": torch.ComplexFloatStorage,
+        "torch.HalfStorage": torch.HalfStorage,
+        "torch._C.HalfStorageBase": torch._C.HalfStorageBase,
+        "torch.IntStorage": torch.HalfStorage,
+        "torch.LongStorage": torch.LongStorage,
+        "torch.QInt32Storage": torch.QInt32Storage,
+        "torch._C.QInt32StorageBase": torch._C.QInt32StorageBase,
+        "torch.QInt8Storage": torch.QInt8Storage,
+        "torch._C.QInt8StorageBase": torch._C.QInt8StorageBase,
+        "torch.QUInt8Storage": torch.QUInt8Storage,
+        "torch.ShortStorage": torch.ShortStorage,
+        "torch.storage._StorageBase": torch.storage._StorageBase,
+        "torch.ByteStorage": torch.ByteStorage,
+        "torch.DoubleStorage": torch.DoubleStorage,
+        "torch.FloatStorage": torch.FloatStorage,
     }
 
     @classmethod
@@ -74,6 +94,7 @@ class RestrictedUnpickler(pickle.Unpickler):
             input_class
         )
         classname = str(input_class).split("'")[1]
+        logging.info(f"Registering {classname} class as safe for deserialization.")
         cls.__SAFE_CLASSES[classname] = input_class
 
     def find_class(self, module, name):
@@ -87,11 +108,6 @@ class RestrictedUnpickler(pickle.Unpickler):
 
 def register_safe_class(input_class):
     RestrictedUnpickler.register_safe_class(input_class)
-
-
-# Register all tensor storage types (e.g. torch.LongStorage):
-for storage_class in [getattr(torch, x) for x in dir(torch) if "Storage" in x]:
-    register_safe_class(storage_class)
 
 
 def _assert_empty_ordered_dict(x):

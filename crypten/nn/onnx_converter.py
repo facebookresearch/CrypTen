@@ -7,6 +7,7 @@
 
 
 import io
+import warnings
 from collections import OrderedDict
 
 import onnx
@@ -122,6 +123,8 @@ def from_onnx(onnx_string_or_file):
     """Converts an onnx model to a CrypTen model"""
     converter = FromOnnx(onnx_string_or_file)
     crypten_model = converter.to_crypten()
+    if len(crypten_model._modules) == 1:
+        crypten_model = crypten_model._modules.popitem()[1]
     return crypten_model
 
 
@@ -147,16 +150,20 @@ class FromOnnx:
         onnx_model = FromOnnx._load_onnx_model(onnx_string_or_file)
         self.onnx_model = onnx_model
 
-        self.all_parameters = {
-            t.name: torch.from_numpy(numpy_helper.to_array(t))
-            for t in onnx_model.graph.initializer
-        }
+        # Suppress data not writable warning when casting numpy to pytorch
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.all_parameters = {
+                t.name: torch.from_numpy(numpy_helper.to_array(t))
+                for t in onnx_model.graph.initializer
+            }
 
     def to_crypten(self):
         """Constructs a CrypTen model from the onnx graph"""
         input_names, output_names = self._get_input_output_names()
 
         crypten_model = module.Graph(input_names[0], output_names[0])
+        import crypten
 
         constant_module = None
         for node in self.onnx_model.graph.node:

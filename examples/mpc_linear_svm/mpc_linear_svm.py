@@ -34,7 +34,7 @@ def train_linear_svm(features, labels, epochs=50, lr=0.5, print_time=False):
 
         # Print Accuracy once
         if crypten.communicator.get().get_rank() == 0:
-            logging.info(
+            print(
                 f"Epoch {epoch} --- Training Accuracy %.2f%%" % (accuracy.item() * 100)
             )
 
