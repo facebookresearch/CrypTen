@@ -1360,7 +1360,11 @@ class TestNN(object):
             # Coordinate model weights across parties
             with torch.no_grad():
                 for p in torch_model.parameters():
-                    p.set_(get_random_test_tensor(size=p.size(), is_float=True))
+                    p.set_(
+                        get_random_test_tensor(
+                            max_value=1.0, size=p.size(), is_float=True
+                        )
+                    )
 
             # Create CrypTen model
             dummy_input = torch.empty(input_size)
@@ -1368,12 +1372,27 @@ class TestNN(object):
             crypten_model.encrypt()
 
             # Create test inputs
-            test_input = get_random_test_tensor(size=input_size, is_float=True)
+            test_input = get_random_test_tensor(
+                max_value=2.0, size=input_size, is_float=True
+            )
             test_input_encr = crypten.cryptensor(test_input)
 
             # Test model forward function
             torch_output = torch_model(test_input)
             crypten_output = crypten_model(test_input_encr)
+
+            tolerance = 0.05
+            tensor = crypten_output.get_plain_text()
+            reference = torch_output
+
+            diff = (tensor - reference).abs_()
+            norm_diff = diff.div(tensor.abs() + reference.abs()).abs_()
+            test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.2)
+            test_passed = test_passed.gt(0).all().item() == 1
+
+            if not test_passed:
+                crypten.debug.pdb.set_trace()
+
             self._check(
                 crypten_output, torch_output, f"from_pytorch failed for {torch_class}"
             )
