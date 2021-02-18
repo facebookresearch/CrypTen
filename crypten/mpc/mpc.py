@@ -146,6 +146,8 @@ class MPCTensor(CrypTensor):
             self._tensor = tensor_type(tensor=tensor, device=device, *args, **kwargs)
         self.ptype = ptype
 
+        self._mac = 0
+
     @staticmethod
     def new(*args, **kwargs):
         """
@@ -167,6 +169,7 @@ class MPCTensor(CrypTensor):
         result = MPCTensor([])
         result._tensor = self._tensor.clone()
         result.ptype = self.ptype
+        result._mac = self._mac
         return result
 
     def shallow_copy(self):
@@ -175,6 +178,7 @@ class MPCTensor(CrypTensor):
         result = MPCTensor([])
         result._tensor = self._tensor
         result.ptype = self.ptype
+        result._mac = self._mac
         return result
 
     def copy_(self, other):
@@ -182,6 +186,7 @@ class MPCTensor(CrypTensor):
         assert isinstance(other, MPCTensor), "other must be MPCTensor"
         self._tensor.copy_(other._tensor)
         self.ptype = other.ptype
+        self._mac = other._mac
 
     def to(self, *args, **kwargs):
         r"""
