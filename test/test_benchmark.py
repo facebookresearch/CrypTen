@@ -19,15 +19,16 @@ except ValueError:
 
 
 class TestBenchmark(unittest.TestCase):
-    def __init__(self, methodName):
-        super().__init__(methodName)
+    def setUp(self):
         crypten.init()
 
+    @unittest.skip("Skipping to resolve timeout issues in unittest framework")
     def test_func_benchmarks_run(self):
         """Ensure function benchmarks run without an exception"""
         func_benchmarks = benchmark.FuncBenchmarks()
         func_benchmarks.run()
 
+    @unittest.skip("Skipping to resolve timeout issues in unittest framework")
     def test_model_benchmarks_run(self):
         """Ensure model benchmarks run without an exception"""
         model_benchmarks = benchmark.ModelBenchmarks()
@@ -35,6 +36,7 @@ class TestBenchmark(unittest.TestCase):
             model.epochs = 2
         model_benchmarks.run()
 
+    @unittest.skip("Skipping to resolve timeout issues in unittest framework")
     def test_func_benchmarks_data(self):
         """Sanity check length and columns of function benchmarks"""
         func_benchmarks = benchmark.FuncBenchmarks()
@@ -62,6 +64,7 @@ class TestBenchmark(unittest.TestCase):
             msg="crypten runtime is less than or equal to zero",
         )
 
+    @unittest.skip("Skipping to resolve timeout issues in unittest framework")
     def test_model_benchmarks_data(self):
         """Sanity check length and columns of model benchmarks"""
         model_benchmarks = benchmark.ModelBenchmarks()
@@ -89,6 +92,7 @@ class TestBenchmark(unittest.TestCase):
             msg="accuracy should be between 0 and 1.0",
         )
 
+    @unittest.skip("Skipping to resolve timeout issues in unittest framework")
     def test_advanced_model_benchmarks(self):
         """Tests advanced models are added with flag"""
         model_benchmarks = benchmark.ModelBenchmarks(advanced_models=False)
