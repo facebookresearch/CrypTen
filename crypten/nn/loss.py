@@ -5,8 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import warnings
-
 import crypten
 import torch
 
@@ -107,14 +105,6 @@ class BCELoss(_Loss):
     an auto-encoder. Note that the targets :math:`y` should be numbers
     between 0 and 1.
     """  # noqa: W605
-
-    def __init__(self, reduction="mean", skip_forward=False):
-        warnings.warn(
-            "BCELoss gradients are numerically unstable."
-            + "Consider using BCEWithLogitsLoss for better training performance.",
-            RuntimeWarning,
-        )
-        super(BCELoss, self).__init__()
 
     def forward(self, x, y):
         assert x.size() == y.size(), "input and target must have the same size"

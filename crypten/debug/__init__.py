@@ -5,12 +5,24 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from .debug import MultiprocessingPdb, configure_logging
+from .debug import (
+    MultiprocessingPdb,
+    configure_logging,
+    crypten_log,
+    crypten_print,
+    crypten_print_in_order,
+)
 
 
 pdb = MultiprocessingPdb()
 
-__all__ = ["pdb", "configure_logging"]
+__all__ = [
+    "pdb",
+    "configure_logging",
+    "crypten_log",
+    "crypten_print",
+    "crypten_print_in_order",
+]
 
 
 # debug mode handling

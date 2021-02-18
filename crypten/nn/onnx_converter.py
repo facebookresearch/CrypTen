@@ -7,6 +7,7 @@
 
 
 import io
+import warnings
 from collections import OrderedDict
 
 import onnx
@@ -122,6 +123,8 @@ def from_onnx(onnx_string_or_file):
     """Converts an onnx model to a CrypTen model"""
     converter = FromOnnx(onnx_string_or_file)
     crypten_model = converter.to_crypten()
+    if len(crypten_model._modules) == 1:
+        crypten_model = crypten_model._modules.popitem()[1]
     return crypten_model
 
 
@@ -147,16 +150,20 @@ class FromOnnx:
         onnx_model = FromOnnx._load_onnx_model(onnx_string_or_file)
         self.onnx_model = onnx_model
 
-        self.all_parameters = {
-            t.name: torch.from_numpy(numpy_helper.to_array(t))
-            for t in onnx_model.graph.initializer
-        }
+        # Suppress data not writable warning when casting numpy to pytorch
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.all_parameters = {
+                t.name: torch.from_numpy(numpy_helper.to_array(t))
+                for t in onnx_model.graph.initializer
+            }
 
     def to_crypten(self):
         """Constructs a CrypTen model from the onnx graph"""
         input_names, output_names = self._get_input_output_names()
 
         crypten_model = module.Graph(input_names[0], output_names[0])
+        import crypten
 
         constant_module = None
         for node in self.onnx_model.graph.node:
@@ -170,11 +177,9 @@ class FromOnnx:
                 module.AdaptiveAvgPool2d,
                 module.AdaptiveMaxPool2d,
                 module.Reshape,
+                module.Gather,
             ]
-            if crypten_class in reshape_classes:
-                assert (
-                    constant_module is not None
-                ), f"Pattern not supported: expected Constant shape before {crypten_class} node."
+            if crypten_class in reshape_classes and constant_module is not None:
                 node_input_names.remove(constant_module[0])
                 attributes["shape"] = constant_module[1].value.long().tolist()
                 constant_module = None
@@ -239,10 +244,15 @@ class FromOnnx:
         parameters = OrderedDict()
         orig_parameter_names = []
 
+        linear_parameter_names = ["weight", "bias"]
+
         # add in all the parameters for the current module
         for i, name in enumerate(node_input_names):
             if name in self.all_parameters and name not in input_names:
-                key = FromOnnx._get_parameter_name(name)
+                if node.op_type in ["Conv", "Gemm"]:
+                    key = linear_parameter_names.pop(0)
+                else:
+                    key = FromOnnx._get_parameter_name(name)
                 # the following is necessary because tf2onnx names multiple parameters
                 # identically if they have the same value
                 # only modify if we already have the key in parameters

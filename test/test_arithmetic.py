@@ -599,9 +599,6 @@ class TestArithmetic(MultiProcessTestCase):
                         k_size = (in_channels * groups, out_channels, *kernel_size)
                     kernel = get_random_test_tensor(size=k_size, is_float=True)
 
-                    if crypten.communicator.get().get_rank() and groups == 2:
-                        print(k_size)
-
                     # perform filtering:
                     encr_matrix = ArithmeticSharedTensor(input)
                     encr_kernel = kernel_type(kernel)
