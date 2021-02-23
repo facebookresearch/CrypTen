@@ -145,6 +145,7 @@ class MPCTensor(CrypTensor):
         else:
             self._tensor = tensor_type(tensor=tensor, device=device, *args, **kwargs)
         self.ptype = ptype
+        self._mac = 0
 
         self._mac = 0
 

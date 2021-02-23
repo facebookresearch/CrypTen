@@ -375,8 +375,6 @@ class TestNN(object):
             encr_module_onnx = module.encrypt()
             encr_output = encr_module_onnx(encr_inputs)
             if torch.is_tensor(encr_output):
-                if not encr_module.SUPPORTS_PLAINTEXT_INPUTS:
-                    crypten.debug.pdb.set_trace()
                 self.assertTrue(encr_module_onnx.SUPPORTS_PLAINTEXT_INPUTS)
                 encr_output = crypten.cryptensor(encr_output)
             self._check(encr_output, reference, "%s failed" % module_name)
@@ -1360,7 +1358,11 @@ class TestNN(object):
             # Coordinate model weights across parties
             with torch.no_grad():
                 for p in torch_model.parameters():
-                    p.set_(get_random_test_tensor(size=p.size(), is_float=True))
+                    p.set_(
+                        get_random_test_tensor(
+                            max_value=1.0, size=p.size(), is_float=True
+                        )
+                    )
 
             # Create CrypTen model
             dummy_input = torch.empty(input_size)
@@ -1368,12 +1370,15 @@ class TestNN(object):
             crypten_model.encrypt()
 
             # Create test inputs
-            test_input = get_random_test_tensor(size=input_size, is_float=True)
+            test_input = get_random_test_tensor(
+                max_value=2.0, size=input_size, is_float=True
+            )
             test_input_encr = crypten.cryptensor(test_input)
 
             # Test model forward function
             torch_output = torch_model(test_input)
             crypten_output = crypten_model(test_input_encr)
+
             self._check(
                 crypten_output, torch_output, f"from_pytorch failed for {torch_class}"
             )
