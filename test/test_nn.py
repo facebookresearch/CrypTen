@@ -465,7 +465,7 @@ class TestNN(object):
                 for key in ["weight", "bias"]:
                     if hasattr(module, key):  # if PyTorch model has key
                         # find that key in the crypten.nn.Graph:
-                        if isinstance(encr_module, crypten.nn.Graph):
+                        if from_pytorch:
                             for encr_node in encr_module.modules():
                                 if hasattr(encr_node, key):
                                     encr_param = getattr(encr_node, key)
@@ -486,7 +486,7 @@ class TestNN(object):
                             encr_param = crypten.cryptensor(encr_param, src=0)
                         self._check(encr_param, src_reference, msg)
 
-            # compare model outputs:
+            # Forward Pass
             self.assertTrue(encr_module.training, "training value incorrect")
             reference = module(input)
             encr_output = encr_module(encr_input)
@@ -494,9 +494,11 @@ class TestNN(object):
             msg = "from_pytorch" if from_pytorch else ""
             self._check(encr_output, reference, f"{module_name} forward failed {msg}")
 
-            # test backward pass:
+            # Backward Pass
             reference.sum().backward()
             encr_output.sum().backward()
+
+            # Check input gradients
             if compute_gradients:
                 self.assertIsNotNone(
                     encr_input.grad, f"{module_name} grad failed to populate {msg}."
@@ -508,13 +510,15 @@ class TestNN(object):
                 )
             else:
                 self.assertIsNone(encr_input.grad)
+
+            # Check parameter gradients
             for name, encr_param in encr_module.named_parameters():
                 name = name.split(".")[-1]
                 torch_param = getattr(module, name)
                 self._check(
                     encr_param.grad,
                     torch_param.grad,
-                    f"{module_name} backward on {name} failed {msg}",
+                    f"{module_name} backward on parameter {name} failed {msg}",
                 )
 
     def test_linear(self):

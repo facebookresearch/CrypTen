@@ -424,6 +424,14 @@ class TestGradients:
                 for dim1 in range(tensor.dim()):
                     self._check_forward_backward("transpose", tensor, dim0, dim1)
 
+    def test_permute(self):
+        for ndims in range(5):
+            size = tuple([3] * ndims)
+            tensor = get_random_test_tensor(size=size, is_float=True)
+
+            for perm in itertools.permutations(list(range(ndims))):
+                self._check_forward_backward("permute", tensor, perm)
+
     def test_conv1d_smaller_signal_one_channel(self):
         self._conv1d(5, 1)
 

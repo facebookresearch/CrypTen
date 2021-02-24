@@ -151,6 +151,20 @@ class AutogradTranspose(AutogradFunction):
         return grad_output.transpose(dim2, dim1)
 
 
+@register_function("permute")
+class AutogradPermute(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input, dims):
+        ctx.save_for_backward(dims)
+        return input.permute(dims)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (dims,) = ctx.saved_tensors
+        inds = [dims.index(x) for x in range(len(dims))]
+        return grad_output.permute(inds)
+
+
 @register_function("flip")
 class AutogradFlip(AutogradFunction):
     @staticmethod
