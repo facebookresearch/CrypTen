@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import itertools
 import logging
 from collections import OrderedDict
 
@@ -952,6 +951,10 @@ class Transpose(Module):
         self.perm = perm
 
     def forward(self, input):
+        # New Linear jit tracer causes Transpose module to have a weight
+        if hasattr(self, "weight"):
+            input = self.weight
+
         assert input.dim() == len(self.perm)
         return input.permute(self.perm)
 
@@ -959,12 +962,20 @@ class Transpose(Module):
     def from_onnx(parameters=None, attributes=None):
         if attributes is None:
             attributes = {}
+        if parameters is None:
+            parameters = {}
         # TODO: ONNX specification says the permutation should be
         # reversed if not provided in the attributes.  Because we
         # don't have the input size here, we need figure out a
         # different way of supporting this, if we want to do that.
         perm = attributes["perm"]
-        return Transpose(perm)
+        module = Transpose(perm)
+
+        # New Linear onnx export causes "weight" to be input into Tranpose
+        # as a parameter
+        if "weight" in parameters.keys():
+            module.register_parameter("weight", parameters["weight"])
+        return module
 
 
 class Squeeze(Module):

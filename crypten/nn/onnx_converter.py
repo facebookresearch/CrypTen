@@ -161,9 +161,7 @@ class FromOnnx:
     def to_crypten(self):
         """Constructs a CrypTen model from the onnx graph"""
         input_names, output_names = self._get_input_output_names()
-
         crypten_model = module.Graph(input_names[0], output_names[0])
-        import crypten
 
         constant_module = None
         for node in self.onnx_model.graph.node:
