@@ -84,13 +84,26 @@ def __P_circuit(P):
     """
     shift = __BITS // 2
     for _ in range(__LOG_BITS):
-        P &= P >> shift
+        P &= P << shift  # using lshift since rshift was modified to arithmetic
         shift //= 2
     return P
 
 
 def __flip_sign_bit(x):
     return x ^ -(2 ** 63)
+
+
+def __get_sign_bit(x):
+    from .binary import BinarySharedTensor
+
+    y = x >> 63
+
+    # NOTE: __rshift__ was changed to arithmetic shift
+    if isinstance(y, BinarySharedTensor):
+        y.share = y.share.eq(-1).long()
+    else:
+        y = y.eq(-1).long()
+    return y
 
 
 def add(x, y):
@@ -104,7 +117,8 @@ def add(x, y):
 def eq(x, y):
     """Returns x == y from BinarySharedTensors `x` and `y`"""
     bitwise_equal = ~(x ^ y)
-    return __P_circuit(bitwise_equal)
+    P = __P_circuit(bitwise_equal)
+    return __get_sign_bit(P)
 
 
 def lt(x, y):
@@ -113,7 +127,8 @@ def lt(x, y):
 
     S = y & ~x
     P = ~(x ^ y)
-    return __SPK_circuit(S, P)[0] >> (__BITS - 1)
+    S, _ = __SPK_circuit(S, P)
+    return __get_sign_bit(S)
 
 
 def le(x, y):
@@ -123,7 +138,7 @@ def le(x, y):
     S = y & ~x
     P = ~(x ^ y)
     S, P = __SPK_circuit(S, P)
-    return (S ^ P) >> (__BITS - 1)
+    return __get_sign_bit(S ^ P)
 
 
 def gt(x, y):
@@ -132,7 +147,8 @@ def gt(x, y):
 
     S = x & ~y
     P = ~(x ^ y)
-    return __SPK_circuit(S, P)[0] >> (__BITS - 1)
+    S, _ = __SPK_circuit(S, P)
+    return __get_sign_bit(S)
 
 
 def ge(x, y):
@@ -142,4 +158,4 @@ def ge(x, y):
     S = x & ~y
     P = ~(x ^ y)
     S, P = __SPK_circuit(S, P)
-    return (S ^ P) >> (__BITS - 1)
+    return __get_sign_bit(S ^ P)
