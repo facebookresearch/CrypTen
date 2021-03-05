@@ -25,6 +25,7 @@ from crypten.cuda import CUDALongTensor
 from ..cryptensor import CrypTensor
 from ..encoder import FixedPointEncoder
 from .max_helper import _argmax_helper, _max_helper_all_tree_reductions
+from .primitives.arithmetic import generate_random_ring_element
 from .primitives.binary import BinarySharedTensor
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
@@ -107,6 +108,7 @@ class ConfigManager(ConfigBase):
 
 
 class MPCTensor(CrypTensor):
+    alpha = None
     def __init__(self, tensor, ptype=Ptype.arithmetic, device=None, *args, **kwargs):
         """
         Creates the shared tensor from the input `tensor` provided by party `src`.
@@ -146,6 +148,13 @@ class MPCTensor(CrypTensor):
             self._tensor = tensor_type(tensor=tensor, device=device, *args, **kwargs)
         self.ptype = ptype
 
+        if MPCTensor.alpha is None:
+            share = generate_random_ring_element(size=(), device=device)
+            MPCTensor.alpha = tensor_type.from_shares(share, precision=0, device=device)
+
+        self._mac = self._tensor * MPCTensor.alpha
+        self._mac.encoder = FixedPointEncoder(precision_bits=0)
+
     @staticmethod
     def new(*args, **kwargs):
         """
@@ -167,6 +176,7 @@ class MPCTensor(CrypTensor):
         result = MPCTensor([])
         result._tensor = self._tensor.clone()
         result.ptype = self.ptype
+        result._mac = self._mac
         return result
 
     def shallow_copy(self):
@@ -175,6 +185,7 @@ class MPCTensor(CrypTensor):
         result = MPCTensor([])
         result._tensor = self._tensor
         result.ptype = self.ptype
+        result._mac = self._mac
         return result
 
     def copy_(self, other):
@@ -182,6 +193,7 @@ class MPCTensor(CrypTensor):
         assert isinstance(other, MPCTensor), "other must be MPCTensor"
         self._tensor.copy_(other._tensor)
         self.ptype = other.ptype
+        self._mac = other._mac
 
     def to(self, *args, **kwargs):
         r"""
