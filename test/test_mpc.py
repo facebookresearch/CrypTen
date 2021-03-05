@@ -59,10 +59,8 @@ class TestMPC(object):
             logging.info("Result - Reference = %s" % (tensor - reference))
         self.assertTrue(test_passed, msg=msg)
         self.assertTrue(hasattr(encrypted_tensor, "_mac"), "_mac attribute failed to propagate")
-        self.assertEqual(encrypted_tensor._mac, 0, "_mac attribute has incorrect value")
-
-        self.assertTrue(hasattr(encrypted_tensor, "_mac"), "_mac attribute failed to propagate")
-        self.assertEqual(encrypted_tensor._mac, 0, "_mac attribute has incorrect value")
+        if dst is None:
+           self.assertTrue(encrypted_tensor._tensor.reveal().mul(MPCTensor.alpha.reveal()).eq(encrypted_tensor._mac.reveal()).all(), msg="Mac Arithmetic Mismatch")
 
     def _check_tuple(self, encrypted_tuple, reference, msg, tolerance=None):
         self.assertTrue(isinstance(encrypted_tuple, tuple))
