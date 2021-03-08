@@ -1339,7 +1339,7 @@ class AutogradAvgPool2D(AutogradFunction):
 
         in_channels = input_shape[-3]
         # compute as d conv2d / d input with kernel as average filter
-        kernel = torch.ones(in_channels, 1, kernel_size[0], kernel_size[1]) / (
+        kernel = torch.ones((in_channels, 1, kernel_size[0], kernel_size[1]), device=grad_output.device) / (
             kernel_size[0] * kernel_size[1]
         )
 

@@ -197,13 +197,20 @@ class CUDALongTensor(object):
 
         x_enc_span = x_enc_span.transpose_(0, 1).reshape(bs, nb2 * c, *img)
         y_enc_span = y_enc_span.reshape(nb2 * c_out, c_in, *ks)
-
+        
         c_z = c_out if op in ["conv1d", "conv2d"] else c_in
 
+        if "groups" in kwargs:
+            kwargs["groups"] *= nb2
+        else:
+            kwargs["groups"] = nb2
+
         z_encoded = getattr(torch, op)(
-            x_enc_span, y_enc_span, *args, **kwargs, groups=nb2
+            x_enc_span, y_enc_span, *args, **kwargs
         )
-        z_encoded = z_encoded.reshape(bs, nb2, c_z, *z_encoded.size()[2:]).transpose_(
+
+        groups = kwargs["groups"] // nb2 if op in ["conv_transpose1d", "conv_transpose2d"] else 1
+        z_encoded = z_encoded.reshape(bs, nb2, c_z*groups, *z_encoded.size()[2:]).transpose_(
             0, 1
         )
 
