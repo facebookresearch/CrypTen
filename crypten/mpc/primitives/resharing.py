@@ -102,12 +102,14 @@ def conv_transpose2d(x, y, **kwargs):
 
 def square(x):
     from .arithmetic import ArithmeticSharedTensor
-
+    
     x1 = x.share
     x2 = replicate_shares(x.share)
     x_square = x1 ** 2 + 2 * x1 * x2
-
-    return ArithmeticSharedTensor.from_shares(x_square, src=comm.get().get_rank())
+    
+    x_square = ArithmeticSharedTensor.from_shares(x_square, src=comm.get().get_rank())
+    x_square += ArithmeticSharedTensor.PRZS(x_square.size(), device=x_square.device)
+    return x_square
 
 
 def truncation(x, scale):
@@ -136,4 +138,7 @@ def AND(x, y):
     x1, x2 = x.share, replicate_shares(x.share)
     y1, y2 = y.share, replicate_shares(y.share)
 
-    return BinarySharedTensor.from_shares((x1 & y1) ^ (x2 & y1) ^ (x1 & y2), src=comm.get().get_rank())
+    z = BinarySharedTensor.from_shares((x1 & y1) ^ (x2 & y1) ^ (x1 & y2), src=comm.get().get_rank())
+    z += BinarySharedTensor.PRZS(z.size(), device=z.device)
+
+    return z

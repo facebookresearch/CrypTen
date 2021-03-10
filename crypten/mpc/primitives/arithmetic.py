@@ -416,12 +416,7 @@ class ArithmeticSharedTensor(object):
 
             # Truncate protocol for dividing by public integers:
             if comm.get().get_world_size() > 2:
-                wraps = self.wraps()
-                self.share //= y
-                # NOTE: The multiplication here must be split into two parts
-                # to avoid long out-of-bounds when y <= 2 since (2 ** 63) is
-                # larger than the largest long integer.
-                self -= wraps * 4 * (int(2 ** 62) // y)
+                self.mul_(1/y)
             else:
                 self.share //= y
 
