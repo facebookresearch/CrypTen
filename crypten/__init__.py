@@ -8,7 +8,7 @@
 __version__ = "0.1.0"
 
 import copy
-import os
+import logging
 import warnings
 
 import crypten.common  # noqa: F401
@@ -458,9 +458,69 @@ def bernoulli(tensor, cryptensor_type=None):
     return rand(tensor.size(), cryptensor_type=cryptensor_type) < tensor
 
 
-globals()["log"] = debug.crypten_log
-globals()["print"] = debug.crypten_print
-globals()["print_in_order"] = debug.crypten_print_in_order
+def __multiprocess_print_helper(print_func, *args, in_order=False, dst=0, **kwargs):
+    """
+    Helper for print / log functions to reduce copy-pasted code
+    """
+    # in_order : True
+    if in_order:
+        for i in range(comm.get().get_world_size()):
+            if comm.get().get_rank() == i:
+                print_func(*args, **kwargs)
+            comm.get().barrier()
+        return
+
+    # in_order : False
+    if isinstance(dst, int):
+        dst = [dst]
+    assert isinstance(
+        dst, (list, tuple)
+    ), "print destination must be a list or tuple of party ranks"
+
+    if comm.get().get_rank() in dst:
+        print_func(*args, **kwargs)
+
+
+def print(*args, in_order=False, dst=0, **kwargs):
+    """
+    Prints with formatting options that account for multiprocessing. This
+    function prints with the output of:
+
+        print(*args, **kwargs)
+
+    Args:
+        in_order: A boolean that determines whether to print from one-party only
+            or all parties, in order. If True, this function will output from
+            party 0 first, then print in order through party N. If False, this
+            function will only output from a single party, given by `dst`.
+        dst: The destination party rank(s) to output from if `in_order` is False.
+            This can be an integer or list of integers denoting a single rank or
+            multiple ranks to print from.
+    """
+    __multiprocess_print_helper(
+        __builtins__.print, *args, in_order=in_order, dst=dst, **kwargs
+    )
+
+
+def log(*args, in_order=False, dst=0, **kwargs):
+    """
+    Logs with formatting options that account for multiprocessing. This
+    function logs with the output of:
+
+        logging.log(*args, **kwargs)
+
+    Args:
+        in_order: A boolean that determines whether to log from one-party only
+            or all parties, in order. If True, this function will output from
+            party 0 first, then log in order through party N. If False, this
+            function will only output from a single party, given by `dst`.
+        dst: The destination party rank(s) to output from if `in_order` is False.
+            This can be an integer or list of integers denoting a single rank or
+            multiple ranks to log from.
+    """
+    __multiprocess_print_helper(
+        logging.log, *args, in_order=in_order, dst=dst, **kwargs
+    )
 
 
 # expose classes and functions in package:
@@ -476,6 +536,5 @@ __all__ = [
     "mpc",
     "nn",
     "print",
-    "print_in_order",
     "uninit",
 ]
