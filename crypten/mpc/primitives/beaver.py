@@ -9,6 +9,7 @@ import crypten
 import crypten.communicator as comm
 import torch
 from crypten.common.util import count_wraps
+from crypten.common.rng import generate_random_ring_element
 
 
 def __beaver_protocol(op, x, y, *args, **kwargs):
@@ -35,12 +36,33 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
         x.size(), y.size(), op, device=x.device, *args, **kwargs
     )
 
-    # Vectorized reveal to reduce rounds of communication
     from .arithmetic import ArithmeticSharedTensor
 
-    eps_del = ArithmeticSharedTensor.reveal_batch([x - a, y - b])
-    epsilon = eps_del[0]
-    delta = eps_del[1]
+    if crypten.mpc.config.security == "active":
+        f, g, h = provider.generate_additive_triple(
+            x.size(), y.size(), op, device=x.device, *args, **kwargs
+        )
+
+        # Generate an MPCTensor from random shares and when reconstructing it
+        # it would be a random value
+        t_share = generate_random_ring_element(
+            a.size(),
+            generator=comm.get().get_generator(0, device=x.device),
+            device=x.device
+        )
+        t_mpc = ArithmeticSharedTensor.from_shares(share=t_share, precision=0)
+        t_plain_text = t_mpc.get_plain_text()
+
+        rho = (t_plain_text * a - f).get_plain_text()
+        sigma = (b - g).get_plain_text()
+        triples_check = t_plain_text * c - h - sigma * f - rho * g - rho * sigma
+        triples_check = triples_check.get_plain_text()
+
+        if torch.any(triples_check != 0):
+            raise ValueError("Beaver Triples verification failed!")
+
+    # Vectorized reveal to reduce rounds of communication
+    epsilon, delta = ArithmeticSharedTensor.reveal_batch([x - a, y - b])
 
     # z = c + (a * delta) + (epsilon * b) + epsilon * delta
     c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)

@@ -86,6 +86,9 @@ class MPCConfig:
     # Used by max / argmax / min / argmin
     max_method: str = "log_reduction"
 
+    # Used (for the moment) when generating the Beaver Triples
+    security: str = "pasive"
+
 
 # Global config
 config = MPCConfig()
