@@ -39,6 +39,10 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
     from .arithmetic import ArithmeticSharedTensor
 
     if crypten.mpc.config.security == "active":
+        """
+        Reference: "Multiparty Computation from Somewhat Homomorphic Encryption"
+        Link: https://eprint.iacr.org/2011/535.pdf
+        """
         f, g, h = provider.generate_additive_triple(
             x.size(), y.size(), op, device=x.device, *args, **kwargs
         )
