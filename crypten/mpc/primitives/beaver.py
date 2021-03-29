@@ -47,15 +47,8 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
             x.size(), y.size(), op, device=x.device, *args, **kwargs
         )
 
-        # Generate an MPCTensor from random shares and when reconstructing it
-        # it would be a random value
-        t_share = generate_random_ring_element(
-            a.size(),
-            generator=comm.get().get_generator(0, device=x.device),
-            device=x.device
-        )
-        t_mpc = ArithmeticSharedTensor.from_shares(share=t_share, precision=0)
-        t_plain_text = t_mpc.get_plain_text()
+        t = ArithmeticSharedTensor.PRSS(a.size(), device=x.device)
+        t_plain_text = t.get_plain_text()
 
         rho = (t_plain_text * a - f).get_plain_text()
         sigma = (b - g).get_plain_text()
