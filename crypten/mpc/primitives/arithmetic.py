@@ -176,7 +176,6 @@ class ArithmeticSharedTensor(object):
         tensor = ArithmeticSharedTensor.from_shares(share=share)
         return tensor
 
-
     @property
     def rank(self):
         return comm.get().get_rank()

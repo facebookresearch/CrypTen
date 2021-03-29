@@ -9,7 +9,6 @@ import crypten
 import crypten.communicator as comm
 import torch
 from crypten.common.util import count_wraps
-from crypten.common.rng import generate_random_ring_element
 
 
 def __beaver_protocol(op, x, y, *args, **kwargs):
