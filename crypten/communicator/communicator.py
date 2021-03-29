@@ -169,7 +169,7 @@ class Communicator:
         generator = getattr(self, generator_name, None)
 
         if generator is None:
-            raise ValueError(f"Generator generator_name is not initialized, call crypten.init() first")
+            raise ValueError(f"Generator {generator_name} is not initialized, call crypten.init() first")
 
         return generator
 
