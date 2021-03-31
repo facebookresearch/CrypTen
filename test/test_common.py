@@ -16,7 +16,7 @@ from crypten.encoder import FixedPointEncoder, nearest_integer_division
 
 def get_test_tensor(max_value=10, float=False):
     """Create simple test tensor."""
-    tensor = torch.LongTensor(list(range(max_value)))
+    tensor = torch.tensor(list(range(max_value)), dtype=torch.long)
     if float:
         tensor = tensor.float()
     return tensor
@@ -70,11 +70,11 @@ class TestCommon(unittest.TestCase):
         # test without scaling:
         scale = 1
         reference = [[-26, -25, -7, -5, -4, -1, 0, 1, 3, 4, 5, 7, 25, 26]]
-        tensor = torch.LongTensor(reference)
+        tensor = torch.tensor(reference, dtype=torch.long)
         result = nearest_integer_division(tensor, scale)
         self._check(
-            torch.LongTensor(result.tolist()),
-            torch.LongTensor(reference),
+            torch.tensor(result.tolist(), dtype=torch.long),
+            torch.tensor(reference, dtype=torch.long),
             "Nearest integer division failed.",
         )
 
@@ -83,8 +83,8 @@ class TestCommon(unittest.TestCase):
         reference = [[-6, -6, -2, -1, -1, 0, 0, 0, 1, 1, 1, 2, 6, 6]]
         result = nearest_integer_division(tensor, scale)
         self._check(
-            torch.LongTensor(result.tolist()),
-            torch.LongTensor(reference),
+            torch.tensor(result.tolist(), dtype=torch.long),
+            torch.tensor(reference, dtype=torch.long),
             "Nearest integer division failed.",
         )
 

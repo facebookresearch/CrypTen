@@ -15,7 +15,7 @@ import torch
 # [1] -> 001000100010....0010  =                     0010 x 16
 # [2] -> 000010000000....0010  =                 00001000 x  8
 # [n] -> [2^n 0s, 1, (2^n -1) 0s] x (32 / (2^n))
-__MASKS = torch.LongTensor(
+__MASKS = torch.tensor(
     [
         6148914691236517205,
         2459565876494606882,
@@ -23,7 +23,8 @@ __MASKS = torch.LongTensor(
         36029346783166592,
         140737488388096,
         2147483648,
-    ]
+    ],
+    dtype=torch.long,
 )
 
 # Cache other masks and constants to skip computation during each call

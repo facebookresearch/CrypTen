@@ -82,7 +82,7 @@ def run_experiment(
         image, target = sample
         image = transform(image)
         image.unsqueeze_(0)
-        target = torch.LongTensor([target])
+        target = torch.tensor([target], dtype=torch.long)
 
         # perform inference using encrypted model on encrypted sample:
         encrypted_image = crypten.cryptensor(image)

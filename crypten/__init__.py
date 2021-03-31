@@ -212,7 +212,7 @@ def _setup_przs(device=None):
 
     numpy.random.seed(seed=None)
     next_seed = torch.tensor(numpy.random.randint(-(2 ** 63), 2 ** 63 - 1, (1,)))
-    prev_seed = torch.LongTensor([0])  # placeholder
+    prev_seed = torch.tensor([0], dtype=torch.long)  # placeholder
 
     # Send random seed to next party, receive random seed from prev party
     world_size = comm.get().get_world_size()

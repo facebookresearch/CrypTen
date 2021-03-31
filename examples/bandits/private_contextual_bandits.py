@@ -152,7 +152,7 @@ def epsilon_greedy(
 
     # define scoring function
     def score_func(scores, A_inv, b, context):
-        explore = crypten.bernoulli(torch.Tensor([epsilon]))
+        explore = crypten.bernoulli(torch.tensor([epsilon]))
         rand_scores = crypten.rand(*scores.size())
         scores.mul_(1 - explore).add_(rand_scores.mul(explore))
 

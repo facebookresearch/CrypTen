@@ -63,7 +63,7 @@ class TestCommunicator:
         self.assertEqual(this_generator, generator0)
 
     def test_send_recv(self):
-        tensor = torch.LongTensor([self.rank])
+        tensor = torch.tensor([self.rank], dtype=torch.long)
 
         # Send forward, receive backward
         dst = (self.rank + 1) % self.world_size
@@ -160,7 +160,7 @@ class TestCommunicator:
 
     def test_broadcast(self):
         for rank in range(self.world_size):
-            tensor = torch.LongTensor([0])
+            tensor = torch.tenosr([0], dtype=torch.long)
             if self.rank == rank:
                 tensor += 1
 
