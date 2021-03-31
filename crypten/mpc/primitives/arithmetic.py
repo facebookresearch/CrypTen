@@ -406,13 +406,13 @@ class ArithmeticSharedTensor(object):
             # Truncate protocol for dividing by public integers:
             if comm.get().get_world_size() > 2:
                 wraps = self.wraps()
-                self.share //= y
+                self.share = self.share.div_(y, rounding_mode="trunc")
                 # NOTE: The multiplication here must be split into two parts
                 # to avoid long out-of-bounds when y <= 2 since (2 ** 63) is
                 # larger than the largest long integer.
                 self -= wraps * 4 * (int(2 ** 62) // y)
             else:
-                self.share //= y
+                self.share = self.share.div_(y, rounding_mode="trunc")
 
             if debug_mode():
                 if not torch.lt(
@@ -619,10 +619,12 @@ class ArithmeticSharedTensor(object):
         """Negate the tensor's values"""
         return self.clone().neg_()
 
+    def square_(self):
+        self.share = beaver.square(self).div_(self.encoder.scale).share
+        return self
+
     def square(self):
-        result = self.clone()
-        result.share = beaver.square(self).div_(self.encoder.scale).share
-        return result
+        return self.clone().square_()
 
     def dot(self, y, weights=None):
         """Compute a dot product between two tensors"""

@@ -7,6 +7,7 @@
 
 __version__ = "0.1.0"
 
+import builtins
 import copy
 import logging
 import warnings
@@ -498,7 +499,7 @@ def print(*args, in_order=False, dst=0, **kwargs):
             multiple ranks to print from.
     """
     __multiprocess_print_helper(
-        __builtins__.print, *args, in_order=in_order, dst=dst, **kwargs
+        builtins.print, *args, in_order=in_order, dst=dst, **kwargs
     )
 
 
