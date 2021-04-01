@@ -13,7 +13,7 @@ import crypten.nn.tensorboard as tensorboard
 
 
 class TestTensorboard(MultiProcessTestCase):
-    """This class tests the crypten.nn.tensorboad package."""
+    """This class tests the crypten.nn.tensorboard package."""
 
     def setUp(self):
         super().setUp()
