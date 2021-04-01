@@ -1331,16 +1331,29 @@ class Gather(Module):
         index(tensor): the indices to select along the `dimension`
     """
 
-    def __init__(self, dimension, indices=None):
+    def __init__(self, dimension, indices=None, weight=None):
         super().__init__()
         self.dimension = dimension
         self.indices = indices
+        self.weight = weight
 
     def forward(self, input):
-        if not isinstance(input, (list, tuple)):
+
+        # input may come from input or weights:
+        if self.weight is not None:
+            assert not isinstance(
+                input, (list, tuple)
+            ), "expected only indices as input"
+            indices = input
+            tensor = self.weight
+
+        # indices may come from input or may be fixed attributes:
+        elif not isinstance(input, (list, tuple)):
+            assert self.indices is not None, "expected indices attribute"
             tensor = input
             indices = self.indices
         elif len(input) == 1:
+            assert self.indices is not None, "expected indices attribute"
             tensor = input[0]
             indices = self.indices
         else:
@@ -1368,13 +1381,23 @@ class Gather(Module):
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
+        if parameters is None:
+            parameters = {}
         if attributes is None:
             attributes = {}
+
+        # input can be parameters (when we are dealing with an embedding):
+        if "weight" in parameters:
+            weight = parameters["weight"]
+        else:
+            weight = None
+
+        # process attributes:
         if "axis" not in attributes:
-            attributes["axis"] = None
+            attributes["axis"] = 0  # default value per ONNX specification v11
         if "shape" not in attributes:
             attributes["shape"] = None
-        return Gather(attributes["axis"], indices=attributes["shape"])
+        return Gather(attributes["axis"], indices=attributes["shape"], weight=weight)
 
 
 class _ConstantPad(Module):
@@ -1382,24 +1405,27 @@ class _ConstantPad(Module):
     Module that pads a tensor.
     """
 
-    def __init__(self, padding, value, ndims, mode="constant"):
-        super().__init__()
-        if isinstance(padding, (int)):
-            padding = [padding, padding] * ndims
-        self.padding = padding
-        self.value = value
-        self.mode = mode
-
     def forward(self, input):
-        return input.pad(self.padding, value=self.value, mode="constant")
+        if len(input) == 2:
+            input, padding = tuple(input)
+            value = torch.tensor(0.0, dtype=torch.float)
+            if self.encrypted:
+                value = crypten.cryptensor(value)
+        elif len(input) == 3:
+            input, padding, value = tuple(input)
+        if torch.is_tensor(padding):
+            padding = tuple(padding.long().tolist())
+        return input.pad(padding, value=value, mode="constant")
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         if attributes is None:
             attributes = {}
-        return _ConstantPad(
-            attributes["pads"], attributes["value"], None, mode=attributes["mode"]
-        )
+        mode = attributes.get("mode", "constant")
+        assert (
+            mode == b"constant"
+        ), f"ConstantPadkd only supports constant mode, not {mode} mode."
+        return _ConstantPad()
 
 
 class ConstantPad1d(_ConstantPad):

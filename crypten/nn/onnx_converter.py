@@ -15,6 +15,7 @@ import torch.onnx.symbolic_helper as sym_help
 import torch.onnx.symbolic_registry as sym_registry
 import torch.onnx.utils
 from onnx import numpy_helper
+from torch.onnx import OperatorExportTypes
 
 from . import module
 
@@ -60,12 +61,14 @@ def _from_pytorch_to_bytes(pytorch_model, dummy_input):
 
 
 def _export_pytorch_model(f, pytorch_model, dummy_input):
-    """Returns a Binary I/O stream containing exported model"""
+    """Returns a Binary I/O stream containing exported model."""
     kwargs = {
         "do_constant_folding": False,
         "export_params": True,
-        "enable_onnx_checker": False,
+        "enable_onnx_checker": True,
         "input_names": ["input"],
+        "operator_export_type": OperatorExportTypes.ONNX,
+        "opset_version": 11,
         "output_names": ["output"],
     }
     try:
