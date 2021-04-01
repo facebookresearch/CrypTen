@@ -7,7 +7,6 @@
 
 
 import io
-import warnings
 from collections import OrderedDict
 
 import onnx
@@ -149,19 +148,16 @@ class FromOnnx:
     def __init__(self, onnx_string_or_file):
         onnx_model = FromOnnx._load_onnx_model(onnx_string_or_file)
         self.onnx_model = onnx_model
-
-        # Suppress data not writable warning when casting numpy to pytorch
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            self.all_parameters = {
-                t.name: torch.from_numpy(numpy_helper.to_array(t))
-                for t in onnx_model.graph.initializer
-            }
+        self.all_parameters = {
+            t.name: torch.from_numpy(numpy_helper.to_array(t))
+            for t in onnx_model.graph.initializer
+        }
 
     def to_crypten(self):
-        """Constructs a CrypTen model from the onnx graph"""
+        """Constructs a CrypTen model from the ONNX graph."""
         input_names, output_names = self._get_input_output_names()
-        crypten_model = module.Graph(input_names[0], output_names[0])
+        assert len(output_names) == 1, "Only one output per model supported."
+        crypten_model = module.Graph(input_names, output_names[0])
 
         constant_module = None
         for node in self.onnx_model.graph.node:
@@ -227,7 +223,7 @@ class FromOnnx:
 
         output_names = [output.name for output in self.onnx_model.graph.output]
 
-        assert len(input_names) == 1, "number of inputs should be 1"
+        assert len(input_names) >= 1, "number of inputs should be at least 1"
         assert len(output_names) == 1, "number of outputs should be 1"
 
         return input_names, output_names

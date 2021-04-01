@@ -668,35 +668,38 @@ class TestNN(object):
         Tests crypten.nn.Graph module.
         """
         for compute_gradients in [True, False]:
+            for num_inputs in [1, 2]:
 
-            # define test case:
-            input_size = (3, 10)
-            input = get_random_test_tensor(size=input_size, is_float=True)
-            encr_input = crypten.cryptensor(input)
-            encr_input.requires_grad = compute_gradients
+                # define test case:
+                input_size = (3, 10)
+                input = get_random_test_tensor(size=input_size, is_float=True)
+                encr_input = crypten.cryptensor(input)
+                encr_input.requires_grad = compute_gradients
 
-            # test residual block with subsequent linear layer:
-            graph = crypten.nn.Graph("input", "output")
-            linear1 = get_random_linear(input_size[1], input_size[1])
-            linear2 = get_random_linear(input_size[1], input_size[1])
-            graph.add_module(
-                "linear", crypten.nn.from_pytorch(linear1, input), ["input"]
-            )
-            graph.add_module("residual", crypten.nn.Add(), ["input", "linear"])
-            graph.add_module(
-                "output", crypten.nn.from_pytorch(linear2, input), ["residual"]
-            )
-            graph.encrypt()
+                # test residual block with subsequent linear layer:
+                if num_inputs == 1:
+                    graph = crypten.nn.Graph("input", "output")
+                graph = crypten.nn.Graph(["input"] * num_inputs, "output")
+                linear1 = get_random_linear(input_size[1], input_size[1])
+                linear2 = get_random_linear(input_size[1], input_size[1])
+                graph.add_module(
+                    "linear", crypten.nn.from_pytorch(linear1, input), ["input"]
+                )
+                graph.add_module("residual", crypten.nn.Add(), ["input", "linear"])
+                graph.add_module(
+                    "output", crypten.nn.from_pytorch(linear2, input), ["residual"]
+                )
+                graph.encrypt()
 
-            # check container:
-            self.assertTrue(graph.encrypted, "nn.Graph not encrypted")
-            for module in graph.modules():
-                self.assertTrue(module.encrypted, "module not encrypted")
+                # check container:
+                self.assertTrue(graph.encrypted, "nn.Graph not encrypted")
+                for module in graph.modules():
+                    self.assertTrue(module.encrypted, "module not encrypted")
 
-            # compare output to reference:
-            encr_output = graph(encr_input)
-            reference = linear2(linear1(input) + input)
-            self._check(encr_output, reference, "nn.Graph forward failed")
+                # compare output to reference:
+                encr_output = graph(*([encr_input] * num_inputs))
+                reference = linear2(linear1(input) + input)
+                self._check(encr_output, reference, "nn.Graph forward failed")
 
     def test_losses(self):
         """
