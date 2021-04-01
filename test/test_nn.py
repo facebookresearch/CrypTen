@@ -342,6 +342,12 @@ class TestNN(object):
                 else:
                     encr_inputs.append(inputs[-1])
 
+            # gather module cannot work with encrypted indices as input:
+            if module_name in ["Gather"]:
+                with self.assertRaises(ValueError):
+                    encr_output = encr_module(encr_inputs)
+                continue
+
             # compare model outputs:
             reference = module_lambdas[module_name](inputs)
             encr_output = encr_module(encr_inputs)
@@ -1039,6 +1045,12 @@ class TestNN(object):
             linear.zero_grad()
             if not linear.encrypted and not torch.is_tensor(_sample):
                 with self.assertRaises(RuntimeError):
+                    output = linear(_sample)
+                return
+
+            # when model is encrypted, feeding unencrypted input is not supported:
+            if linear.encrypted and torch.is_tensor(_sample):
+                with self.assertRaises(NotImplementedError):
                     output = linear(_sample)
                 return
 
