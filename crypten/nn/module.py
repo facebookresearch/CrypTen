@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import warnings
 from collections import OrderedDict
 
 import crypten
@@ -516,12 +517,17 @@ class Module:
             return object.__getattribute__(self, name)
 
         def forward_function(*args, **kwargs):
-            """Silently encrypt Torch inputs tensors if needed."""
+            """
+            Silently encrypted Torch inputs tensors (deprecated).
+            """
             if self.encrypted and not self.SUPPORTS_PLAINTEXT_INPUTS:
-                args = list(args)
-                for idx, arg in enumerate(args):
-                    if torch.is_tensor(arg):
-                        args[idx] = crypten.cryptensor(arg)
+                if any(torch.is_tensor(arg) for arg in args):
+                    warnings.warn(
+                        "Earlier versions of CrypTen silently encrypted Torch tensors. "
+                        "That behavior is now deprecated because it is dangerous. "
+                        "Please make sure you feed your model CrypTensors when needed.",
+                        DeprecationWarning,
+                    )
             elif not self.encrypted:
                 if any(isinstance(arg, crypten.CrypTensor) for arg in args):
                     raise RuntimeError(
@@ -807,13 +813,18 @@ class Constant(Module):
             return self
         self.encrypted = mode
 
-        # TODO: Figure out a better way to do this.
-        # Do not encrypt constant module values from ONNX inputs
-        if (
-            not self.keep_plaintext_value
-            and mode
-            and not crypten.is_encrypted_tensor(self.value)
-        ):
+        # perform encryptioon or decryption of value:
+        if mode and not crypten.is_encrypted_tensor(self.value):
+
+            # do not encrypt constant module values from ONNX inputs:
+            if self.keep_plaintext_value:
+                warnings.warn(
+                    "CrypTen has determined that constant is a shape value. "
+                    f"It is silently not encrypting constant {self.value} for that reason. "
+                    "Please check carefully that this is the correct behavior.",
+                    RuntimeWarning,
+                )  # TODO: Deprecate silent non-encryption behavior.
+                return self
             self.value = crypten.cryptensor(self.value)
         elif not mode and crypten.is_encrypted_tensor(self.value):
             self.value = self.value.get_plain_text()
@@ -1309,7 +1320,6 @@ class Gather(Module):
         dimension (int): the axis along which to index
         index(tensor): the indices to select along the `dimension`
     """
-    SUPPORTS_PLAINTEXT_INPUTS = True
 
     def __init__(self, dimension, indices=None):
         super().__init__()
@@ -1326,9 +1336,9 @@ class Gather(Module):
         else:
             tensor, indices = input
 
-        # indices are not data so we can get plain text:
+        # indices need to be a PyTorch tensor:
         if crypten.is_encrypted_tensor(indices):
-            indices = indices.get_plain_text()
+            raise ValueError("Cannot perform Gather operation using encrypted indices.")
         elif isinstance(indices, (int, list, tuple)):
             indices = torch.tensor(indices)
         indices = indices.long()
