@@ -126,7 +126,7 @@ class TestNN(object):
         Tests the global average pool module with fixed 4-d test tensors
         """
         # construct basic input
-        base_tensor = torch.Tensor([[2, 1], [3, 0]])
+        base_tensor = torch.tensor([[2, 1], [3, 0]])
         all_init = []
         for i in range(-2, 3):
             all_init.append(torch.add(base_tensor, i))
