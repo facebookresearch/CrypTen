@@ -23,6 +23,8 @@ class ConfigBase(abc.ABC):
 
     def __enter__(self):
         self.old_values = []
+        print(self.params)
+        print(self.values)
         for p, v in zip(self.params, self.values):
             self.old_values.append(getattr(self.config, p))
             setattr(self.config, p, v)
