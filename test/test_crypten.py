@@ -83,9 +83,9 @@ class TestCrypten(MultiProcessTestCase):
         randvec = crypten.rand(int(1e6)).get_plain_text()
         mean = torch.mean(randvec)
         var = torch.var(randvec)
-        self.assertTrue(torch.isclose(mean, torch.Tensor([0.5]), rtol=1e-3, atol=1e-3))
+        self.assertTrue(torch.isclose(mean, torch.tensor([0.5]), rtol=1e-3, atol=1e-3))
         self.assertTrue(
-            torch.isclose(var, torch.Tensor([1.0 / 12]), rtol=1e-3, atol=1e-3)
+            torch.isclose(var, torch.tensor([1.0 / 12]), rtol=1e-3, atol=1e-3)
         )
 
     def test_bernoulli(self):

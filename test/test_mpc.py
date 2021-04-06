@@ -2080,7 +2080,7 @@ class TestMPC(object):
 
         # Check the expected number of zero elements
         # For speed, restrict test to single p = 0.4
-        encr_tensor = MPCTensor(torch.Tensor(int(1e5), 2, 2).fill_(1).to(self.device))
+        encr_tensor = MPCTensor(torch.empty((int(1e5), 2, 2)).fill_(1).to(self.device))
         dropout_encr_tensor = encr_tensor.dropout(0.4)
         dropout_tensor = dropout_encr_tensor.get_plain_text()
         frac_zero = float((dropout_tensor == 0).sum()) / dropout_tensor.nelement()

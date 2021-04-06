@@ -414,7 +414,7 @@ class TestArithmetic(MultiProcessTestCase):
 
             # Check that the encrypted_out and encrypted point to the same
             # thing.
-            encrypted_out[0:2] = torch.FloatTensor([0, 1])
+            encrypted_out[0:2] = torch.tensor([0.0, 1.0], dtype=torch.float)
             ref = encrypted.squeeze().get_plain_text()
             self._check(encrypted_out, ref, "squeeze failed")
 

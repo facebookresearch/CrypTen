@@ -139,6 +139,7 @@ try:
 
 except ModuleNotFoundError:
     models = None
+    logging.warning("Unable to load torchvision models.")
 
 
 if models is not None:

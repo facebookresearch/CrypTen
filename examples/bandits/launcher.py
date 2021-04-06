@@ -283,7 +283,7 @@ def get_monitor_func(args, buffers, visualizer, window, title, progress_iter):
             if args.visualize:
                 window[0] = learning_curve(
                     visualizer,
-                    torch.LongTensor(buffers["idx"]),
+                    torch.tensor(buffers["idx"], dtype=torch.long),
                     torch.DoubleTensor(buffers["cumulative_reward"]),
                     window=window[0],
                     title=title,
