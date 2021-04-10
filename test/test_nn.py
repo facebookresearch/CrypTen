@@ -670,35 +670,53 @@ class TestNN(object):
         Tests crypten.nn.Graph module.
         """
         for compute_gradients in [True, False]:
+            for num_inputs in [1, 2]:
 
-            # define test case:
-            input_size = (3, 10)
-            input = get_random_test_tensor(size=input_size, is_float=True)
-            encr_input = crypten.cryptensor(input)
-            encr_input.requires_grad = compute_gradients
+                # define test case:
+                input_size = (3, 10)
+                input = get_random_test_tensor(size=input_size, is_float=True)
+                input2 = get_random_test_tensor(size=input_size, is_float=True)
+                encr_input = crypten.cryptensor(input)
+                encr_input2 = crypten.cryptensor(input2)
+                encr_input.requires_grad = compute_gradients
+                encr_input2.requires_grad = compute_gradients
 
-            # test residual block with subsequent linear layer:
-            graph = crypten.nn.Graph("input", "output")
-            linear1 = get_random_linear(input_size[1], input_size[1])
-            linear2 = get_random_linear(input_size[1], input_size[1])
-            graph.add_module(
-                "linear", crypten.nn.from_pytorch(linear1, input), ["input"]
-            )
-            graph.add_module("residual", crypten.nn.Add(), ["input", "linear"])
-            graph.add_module(
-                "output", crypten.nn.from_pytorch(linear2, input), ["residual"]
-            )
-            graph.encrypt()
+                # for two inputs, sum the inputs first:
+                if num_inputs == 1:
+                    graph = crypten.nn.Graph("input", "output")
+                elif num_inputs == 2:
+                    graph = crypten.nn.Graph(["input1", "input2"], "output")
+                    graph.add_module("input", crypten.nn.Add(), ["input1", "input2"])
+                else:
+                    raise ValueError(f"Unsupported value of inputs: {num_inputs}")
 
-            # check container:
-            self.assertTrue(graph.encrypted, "nn.Graph not encrypted")
-            for module in graph.modules():
-                self.assertTrue(module.encrypted, "module not encrypted")
+                # test residual block with subsequent linear layer:
+                linear1 = get_random_linear(input_size[1], input_size[1])
+                linear2 = get_random_linear(input_size[1], input_size[1])
+                graph.add_module(
+                    "linear", crypten.nn.from_pytorch(linear1, input), ["input"]
+                )
+                graph.add_module("residual", crypten.nn.Add(), ["input", "linear"])
+                graph.add_module(
+                    "output", crypten.nn.from_pytorch(linear2, input), ["residual"]
+                )
+                graph.encrypt()
 
-            # compare output to reference:
-            encr_output = graph(encr_input)
-            reference = linear2(linear1(input) + input)
-            self._check(encr_output, reference, "nn.Graph forward failed")
+                # check container:
+                self.assertTrue(graph.encrypted, "nn.Graph not encrypted")
+                for module in graph.modules():
+                    self.assertTrue(module.encrypted, "module not encrypted")
+
+                # compare output to reference:
+                if num_inputs == 1:
+                    encr_output = graph(encr_input)
+                    reference = linear2(linear1(input) + input)
+                elif num_inputs == 2:
+                    encr_output = graph(encr_input, encr_input2)
+                    reference = linear2(linear1(input + input2) + input + input2)
+                else:
+                    raise ValueError(f"Unsupported value of inputs: {num_inputs}")
+                self._check(encr_output, reference, "nn.Graph forward failed")
 
     def test_losses(self):
         """

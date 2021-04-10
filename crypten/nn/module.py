@@ -617,9 +617,11 @@ class Graph(Container):
     of module names that provide the input into the module.
     """
 
-    def __init__(self, input_name, output_name, modules=None, graph=None):
+    def __init__(self, input_names, output_name, modules=None, graph=None):
         super().__init__()
-        self.input_name = input_name
+        if not isinstance(input_names, (list, tuple)):
+            input_names = [input_names]
+        self.input_names = input_names
         self.output_name = output_name
         self._graph = {}
         if modules is not None:
@@ -633,9 +635,13 @@ class Graph(Container):
         if input_names is not None:
             self._graph[name] = input_names
 
-    def forward(self, input):
+    def forward(self, *args):
+        assert len(args) == len(
+            self.input_names
+        ), f"Expected {len(self.input_names)} inputs but received {len(args)}."
+
         # keep track of all values that have been computed:
-        values = {self.input_name: input}
+        values = {self.input_names[idx]: args[idx] for idx in range(len(args))}
         computed = {key: False for key in self._graph.keys()}
         inputs_available = {
             key: [False for _ in range(len(value_list))]
@@ -657,9 +663,11 @@ class Graph(Container):
             return None
 
         # perform forward pass:
-        _mark_as_computed(self.input_name)
+        for input_name in self.input_names:
+            _mark_as_computed(input_name)
         node_to_compute = _find_computable_node()
         while node_to_compute is not None:
+
             # compute and store output of module:
             input = [values[name] for name in self._graph[node_to_compute]]
             if len(input) == 1:
@@ -685,8 +693,10 @@ class Sequential(Graph):
     Sequence of modules.
     """
 
-    def __init__(self, *module_list):
-        super().__init__("input", "output")
+    def __init__(self, *module_list, input_names=None):
+        if input_names is None:
+            input_names = ["input"]
+        super().__init__(input_names, "output")
         if len(module_list) == 1 and isinstance(module_list[0], list):
             raise DeprecationWarning(
                 "passing crypten.nn.Sequential a list is deprecated. Please "
@@ -694,17 +704,17 @@ class Sequential(Graph):
             )
             module_list = module_list[0]
 
-        input_name = "input"
         for idx, module in enumerate(module_list):
             if isinstance(module, OrderedDict):
                 for key, val in module.items():
-                    self.add_module(key, val, [input_name])
-                    input_name = key
+                    self.add_module(key, val, input_names)
+                    input_names = key
                 self.output_name = key
             else:
                 module_name = str(idx)
-                input_name = "input" if idx == 0 else str(idx - 1)
-                self.add_module(module_name, module, [input_name])
+                if idx > 0:
+                    input_names = [str(idx - 1)]
+                self.add_module(module_name, module, input_names)
                 self.output_name = module_name
 
 

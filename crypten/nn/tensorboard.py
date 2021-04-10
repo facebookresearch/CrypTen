@@ -24,19 +24,20 @@ def graph(model):
         model = graph
 
     # create mapping to more interpretable node naming:
-    mapping = {model.input_name: model.input_name}
+    mapping = {input_name: input_name for input_name in model.input_names}
     modules = {name: module for name, module in model.named_modules()}
     for name, module in modules.items():
         op = str(type(module))[26:-2]
         mapping[name] = "%s_%s" % (op, name)
 
-    # create input variable:
+    # create input variables:
     nodes = [
         NodeDef(
-            name=mapping[model.input_name].encode(encoding="utf_8"),
+            name=mapping[input_name].encode(encoding="utf_8"),
             op="Variable",
             input=[],
         )
+        for input_name in model.input_names
     ]
 
     # loop all graph connections:
