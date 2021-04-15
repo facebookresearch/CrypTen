@@ -7,11 +7,11 @@
 
 import itertools
 import logging
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
 import torch
 from crypten.common.tensor_types import is_float_tensor
+from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 
 class TestOptim(object):

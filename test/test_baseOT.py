@@ -6,9 +6,9 @@
 # LICENSE file in the root directory of this source tree.
 
 import unittest
-from test.multiprocess_test_case import MultiProcessTestCase
 
 import crypten.mpc.primitives.ot.baseOT as baseOT
+from test.multiprocess_test_case import MultiProcessTestCase
 
 
 class TestObliviousTransfer(MultiProcessTestCase):

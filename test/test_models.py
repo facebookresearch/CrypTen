@@ -7,13 +7,13 @@
 
 
 import unittest
-from test.multiprocess_test_case import MultiProcessTestCase
 
 # from test.multiprocess_test_case import get_random_test_tensor
 
 import crypten
 import torch
 import torchvision
+from test.multiprocess_test_case import MultiProcessTestCase
 
 
 class TestModels(MultiProcessTestCase):

@@ -11,17 +11,17 @@ import itertools
 import logging
 import unittest
 from collections import namedtuple
-from test.multiprocess_test_case import (
-    MultiProcessTestCase,
-    get_random_test_tensor,
-    onehot,
-)
 
 import crypten
 import torch
 import torch.nn.functional as F
 from crypten.common.tensor_types import is_float_tensor
 from crypten.gradients import AutogradContext
+from test.multiprocess_test_case import (
+    MultiProcessTestCase,
+    get_random_test_tensor,
+    onehot,
+)
 
 
 # Sizes for tensor operations

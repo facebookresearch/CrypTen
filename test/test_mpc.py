@@ -10,7 +10,6 @@ import itertools
 import logging
 import math
 import unittest
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
 import crypten.communicator as comm
@@ -21,6 +20,7 @@ from crypten.common.tensor_types import is_float_tensor
 from crypten.common.util import pool2d_reshape
 from crypten.mpc import MPCTensor, ptype as Ptype
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
+from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 
 class TestMPC(object):

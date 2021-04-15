@@ -6,7 +6,6 @@
 # LICENSE file in the root directory of this source tree.
 
 import unittest
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 import crypten
 import crypten.communicator as comm
@@ -16,6 +15,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 from crypten.common import serial
+from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 
 # TODO: Commenting this out until we figure out why `thread.join() hangs

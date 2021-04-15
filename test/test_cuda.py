@@ -9,14 +9,14 @@
 import itertools
 import logging
 import unittest
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
-from test.test_mpc import TestMPC
 
 import crypten
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from crypten.cuda import CUDALongTensor
+from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.test_mpc import TestMPC
 
 
 class MLP(nn.Module):

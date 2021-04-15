@@ -7,10 +7,10 @@
 
 
 import math
-from test.multiprocess_test_case import MultiProcessTestCase
 
 import crypten
 import torch
+from test.multiprocess_test_case import MultiProcessTestCase
 
 
 class TestDistributions(object):

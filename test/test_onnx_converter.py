@@ -10,16 +10,16 @@ import io
 import logging
 import os
 import unittest
-from test.multiprocess_test_case import (
-    MultiProcessTestCase,
-    get_random_test_tensor,
-    onehot,
-)
 
 import crypten
 import torch
 from crypten.common.tensor_types import is_float_tensor
 from crypten.nn import onnx_converter
+from test.multiprocess_test_case import (
+    MultiProcessTestCase,
+    get_random_test_tensor,
+    onehot,
+)
 
 
 class TestOnnxConverter(object):

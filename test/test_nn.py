@@ -8,12 +8,6 @@
 import itertools
 import logging
 import unittest
-from test.multiprocess_test_case import (
-    MultiProcessTestCase,
-    get_random_linear,
-    get_random_test_tensor,
-    onehot,
-)
 
 import crypten
 import crypten.communicator as comm
@@ -22,6 +16,12 @@ import torch.nn.functional as F
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
 from crypten.encoder import FixedPointEncoder
+from test.multiprocess_test_case import (
+    MultiProcessTestCase,
+    get_random_linear,
+    get_random_test_tensor,
+    onehot,
+)
 
 
 class TestNN(object):
