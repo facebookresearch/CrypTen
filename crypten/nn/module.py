@@ -886,6 +886,21 @@ class Sub(Module):
         return Sub()
 
 
+class Mul(Module):
+    """
+    Module that multiplies two values.
+    """
+
+    def forward(self, input):
+        assert isinstance(input, (list, tuple)), "input must be list or tuple"
+        assert len(input) == 2, "input must contain two tensors"
+        return input[0].mul(input[1])
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Mul()
+
+
 class Exp(Module):
     """
     Module that calculates the exponential of the given input tensor, element-wise.
@@ -1073,6 +1088,107 @@ class Unsqueeze(Module):
         dimension = attributes["axes"]
         assert len(dimension) == 1, "can only unsqueeze one dimension at a time"
         return Unsqueeze(dimension[0])
+
+
+class Slice(Module):
+    """
+    Module that slices the input along the specified `axes` (list of `int`s) from
+    the indices in `start`s to the indices in `end`s.
+
+    This module definition matches ONNX opset version 11.
+    """
+
+    def __init__(self, starts, ends, axes=None):
+        super().__init__()
+        self.starts = starts
+        self.ends = ends
+        if axes is None:
+            self.axes = list(range(len(starts)))
+        else:
+            self.axes = axes
+
+    def forward(self, x):
+        output = x
+        for idx, axis in enumerate(self.axes):
+            start, end = int(self.starts[idx]), int(self.ends[idx])
+            length = min(end, output.size(int(axis))) - start
+            output = output.narrow(int(axis), start, length)
+        return output
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Slice(
+            attributes["starts"], attributes["ends"], axes=attributes.get("axes", None)
+        )
+
+
+class Expand(Module):
+    """
+    Module that expands a tensor to the specified size.
+    """
+
+    def forward(self, x):
+        input, shape = tuple(x)
+        if torch.is_tensor(shape):
+            shape = shape.long().tolist()
+        return input.expand(shape)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Expand()
+
+
+class Range(Module):
+    """
+    Module that returns a tensor with the specified range.
+    """
+
+    SUPPORTS_PLAINTEXT_INPUTS = True
+
+    def forward(self, x):
+        if len(x) == 2:
+            start, end = tuple(x)
+            step = 1
+        elif len(x) == 3:
+            start, end, step = tuple(x)
+        else:
+            raise ValueError(f"Expected 2 or 3 inputs, but received {len(x)}.")
+        return torch.arange(start, end, step)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Range()
+
+
+class Equal(Module):
+    """
+    Module that compares two tensors to determine which elements are equal.
+    """
+
+    def forward(self, x):
+        x1, x2 = tuple(x)
+        if x1.size() != x2.size():
+            return False
+        return x1.eq(x2)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Equal()
+
+
+class Where(Module):
+    """
+    Module that returns elements from one tensor or the other depending on the
+    value of the specified condition.
+    """
+
+    def forward(self, x):
+        condition, x1, x2 = tuple(x)
+        return crypten.where(condition, x1, x2)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Where()
 
 
 class Flatten(Module):
@@ -1330,6 +1446,8 @@ class Gather(Module):
         dimension (int): the axis along which to index
         index(tensor): the indices to select along the `dimension`
     """
+
+    SUPPORTS_PLAINTEXT_INPUTS = True
 
     def __init__(self, dimension, indices=None):
         super().__init__()

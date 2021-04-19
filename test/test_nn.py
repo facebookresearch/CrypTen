@@ -227,30 +227,38 @@ class TestNN(object):
         """
 
         # input arguments for modules and input sizes:
-        no_input_modules = ["Constant"]
-        binary_modules = ["Add", "Sub", "Concat", "MatMul"]
+        no_input_modules = ["Constant", "Range"]
+        binary_modules = ["Add", "Concat", "Equal", "MatMul", "Mul", "Sub"]
         ex_zero_modules = []
         module_args = {
             "Add": (),
             "Concat": (0,),
             "Constant": (1.2,),
+            "Equal": (),
             "Exp": (),
+            "Expand": (),
             "Gather": (0,),
             "MatMul": (),
             "Mean": ([0], True),
+            "Mul": (),
+            "Range": (),
             "Reshape": ((2, 2),),
             "Shape": (),
+            "Slice": ([1], [4]),
             "Sub": (),
             "Sum": ([0], True),
             "Squeeze": (0,),
             "Transpose": ([1, 3, 0, 2],),
             "Unsqueeze": (0,),
+            "Where": (),
         }
         module_lambdas = {
             "Add": lambda x: x[0] + x[1],
             "Concat": lambda x: torch.cat((x[0], x[1])),
             "Constant": lambda _: torch.tensor(module_args["Constant"][0]),
+            "Equal": lambda x: x[0].eq(x[1]),
             "Exp": lambda x: torch.exp(x),
+            "Expand": lambda x: x[0].expand(x[1]),
             "Gather": lambda x: torch.from_numpy(
                 x[0].numpy().take(x[1], module_args["Gather"][0])
             ),
@@ -258,8 +266,13 @@ class TestNN(object):
             "Mean": lambda x: torch.mean(
                 x, dim=module_args["Mean"][0], keepdim=(module_args["Mean"][1] == 1)
             ),
+            "Mul": lambda x: x[0].mul(x[1]),
+            "Range": lambda x: torch.arange(x[0], x[1], x[2]),
             "Reshape": lambda x: x[0].reshape(module_args["Reshape"][0]),
             "Shape": lambda x: torch.tensor(x.size()).float(),
+            "Slice": lambda x: x[
+                module_args["Slice"][0][0] : module_args["Slice"][1][0], :
+            ],
             "Sub": lambda x: x[0] - x[1],
             "Sum": lambda x: torch.sum(
                 x, dim=module_args["Sum"][0], keepdim=(module_args["Sum"][1] == 1)
@@ -269,44 +282,51 @@ class TestNN(object):
                 x.numpy().transpose(module_args["Transpose"][0])
             ),
             "Unsqueeze": lambda x: x.unsqueeze(module_args["Unsqueeze"][0]),
+            "Where": lambda x: torch.where(x[0].byte(), x[1], x[2]),
         }
         input_sizes = {
             "Add": (10, 12),
             "Concat": (2, 2),
             "Constant": (1,),
+            "Equal": (2, 5, 3),
             "Exp": (10, 10, 10),
+            "Expand": (1, 1),
             "Gather": (4, 4, 4, 4),
-            "MatMul": (4, 4),
+            "MatMul": (2, 4, 4),
+            "Mul": (4, 3, 2),
             "Mean": (3, 3, 3),
             "Reshape": (1, 4),
             "Shape": (8, 3, 2),
+            "Slice": (5, 2),
             "Sub": (10, 12),
             "Sum": (3, 3, 3),
             "Squeeze": (1, 12, 6),
             "Transpose": (1, 2, 3, 4),
             "Unsqueeze": (8, 3),
+            "Where": (3, 4, 2),
         }
-        additional_inputs = {"Gather": torch.tensor([[1, 2], [0, 3]])}
+        additional_inputs = {
+            "Expand": ([2, 4],),
+            "Gather": (torch.tensor([[1, 2], [0, 3]]),),
+            "Range": (1, 6, 2),
+        }
         module_attributes = {
             # each attribute has two parameters: the name, and a bool indicating
             # whether the value should be wrapped into a list when the module is created
-            "Add": [],
-            "Exp": [],
             "Concat": [("axis", False)],
             "Constant": [("value", False)],
             "Gather": [("axis", False)],
-            "MatMul": [],
             "Mean": [("axes", False), ("keepdims", False)],
-            "Reshape": [],
-            "Shape": [],
-            "Sub": [],
+            "Slice": [("starts", False), ("ends", False)],
             "Sum": [("axes", False), ("keepdims", False)],
             "Squeeze": [("axes", True)],
             "Transpose": [("perm", False)],
             "Unsqueeze": [("axes", True)],
         }
+
         # loop over all modules:
         for module_name in module_args.keys():
+
             # create encrypted CrypTen module:
             encr_module = getattr(crypten.nn, module_name)(*module_args[module_name])
             encr_module.encrypt()
@@ -329,18 +349,28 @@ class TestNN(object):
                 inputs = get_random_test_tensor(
                     size=input_sizes[module_name], is_float=True, ex_zero=ex_zero_values
                 )
+                if module_name == "Where":  # Where condition is binary input
+                    inputs = (inputs > 0.5).float()
                 encr_inputs = crypten.cryptensor(inputs)
 
-            # some modules take additonal indices as input:
+            # some modules take additional inputs:
             if module_name in additional_inputs:
-                if not isinstance(inputs, (list, tuple)):
+
+                # base inputs:
+                if inputs is None:
+                    inputs, encr_inputs = [], []
+                elif not isinstance(inputs, (list, tuple)):
                     inputs, encr_inputs = [inputs], [encr_inputs]
-                inputs.append(additional_inputs[module_name])
-                # encrypt only torch tensor inputs, not shapes
-                if torch.is_tensor(inputs[-1]):
-                    encr_inputs.append(crypten.cryptensor(inputs[-1]))
-                else:
-                    encr_inputs.append(inputs[-1])
+
+                # add additional inputs:
+                for add_inp in additional_inputs[module_name]:
+                    inputs.append(add_inp)
+
+                    # encrypt only torch tensor inputs, not shapes or indices:
+                    if torch.is_tensor(add_inp):
+                        encr_inputs.append(crypten.cryptensor(add_inp))
+                    else:
+                        encr_inputs.append(add_inp)
 
             # gather module cannot work with encrypted indices as input:
             if module_name in ["Gather"]:
@@ -348,19 +378,22 @@ class TestNN(object):
                     encr_output = encr_module(encr_inputs)
 
                 # but it can work using unencrypted indices:
-                encr_inputs[1] = additional_inputs[module_name]
+                encr_inputs[1] = additional_inputs[module_name][0]
 
             # compare model outputs:
             reference = module_lambdas[module_name](inputs)
             encr_output = encr_module(encr_inputs)
             if torch.is_tensor(encr_output):
-                self.assertTrue(encr_module.SUPPORTS_PLAINTEXT_INPUTS)
+                self.assertTrue(
+                    encr_module.SUPPORTS_PLAINTEXT_INPUTS,
+                    msg=f"{module_name} has incorrect SUPPORTS_PLAINTEXT_INPUTS value",
+                )
                 encr_output = crypten.cryptensor(encr_output)
             self._check(encr_output, reference, "%s failed" % module_name)
 
             # create attributes for static from_onnx function
             local_attr = {}
-            for i, attr_tuple in enumerate(module_attributes[module_name]):
+            for i, attr_tuple in enumerate(module_attributes.get(module_name, [])):
                 attr_name, wrap_attr_in_list = attr_tuple
                 if wrap_attr_in_list:
                     local_attr[attr_name] = [module_args[module_name][i]]
@@ -383,7 +416,10 @@ class TestNN(object):
             encr_module_onnx = module.encrypt()
             encr_output = encr_module_onnx(encr_inputs)
             if torch.is_tensor(encr_output):
-                self.assertTrue(encr_module_onnx.SUPPORTS_PLAINTEXT_INPUTS)
+                self.assertTrue(
+                    encr_module_onnx.SUPPORTS_PLAINTEXT_INPUTS,
+                    msg=f"{module_name} has incorrect SUPPORTS_PLAINTEXT_INPUTS value",
+                )
                 encr_output = crypten.cryptensor(encr_output)
             self._check(encr_output, reference, "%s failed" % module_name)
 

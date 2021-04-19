@@ -170,6 +170,7 @@ class FromOnnx:
             reshape_classes = [
                 module.AdaptiveAvgPool2d,
                 module.AdaptiveMaxPool2d,
+                module.Expand,
                 module.Reshape,
                 module.Gather,
             ]
