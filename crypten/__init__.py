@@ -10,6 +10,7 @@ __version__ = "0.1.0"
 import builtins
 import copy
 import logging
+import os
 import warnings
 
 import crypten.common  # noqa: F401
@@ -60,14 +61,14 @@ def init(party_name=None, device=None):
 
     # Setup seeds for Random Number Generation
     if comm.get().get_rank() < comm.get().get_world_size():
-        _setup_przs(device=device)
+        _setup_prng(device=device)
         if crypten.mpc.ttp_required():
             crypten.mpc.provider.ttp_provider.TTPClient._init()
 
 
 def init_thread(rank, world_size):
     comm._init(use_threads=True, rank=rank, world_size=world_size)
-    _setup_przs()
+    _setup_prng()
 
 
 def uninit():
@@ -174,7 +175,7 @@ def is_encrypted_tensor(obj):
     return isinstance(obj, CrypTensor)
 
 
-def _setup_przs(device=None):
+def _setup_prng(device=None):
     """
     Generate shared random seeds to generate pseudo-random sharings of
     zero. The random seeds are shared such that each process shares
@@ -208,10 +209,9 @@ def _setup_przs(device=None):
     # are different in all the parties. We use numpy's random here since
     # setting its seed to None will produce different seeds even from
     # forked processes.
-    import numpy
 
-    numpy.random.seed(seed=None)
-    next_seed = torch.tensor(numpy.random.randint(-(2 ** 63), 2 ** 63 - 1, (1,)))
+    seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
+    next_seed = torch.tensor(seed)
     prev_seed = torch.tensor([0], dtype=torch.long)  # placeholder
 
     # Send random seed to next party, receive random seed from prev party
@@ -229,12 +229,19 @@ def _setup_przs(device=None):
     else:
         prev_seed = next_seed
 
-    # Seed Generators
+    # Pair-wise shared generators - Each party shares one generator (g0)
+    # with previous party and one (g1) with next party
     comm.get().g0.manual_seed(next_seed.item())
     comm.get().g1.manual_seed(prev_seed.item())
 
-    # Create global generator
-    global_seed = torch.tensor(numpy.random.randint(-(2 ** 63), 2 ** 63 - 1, (1,)))
+    # Create local generator - Each party has a separate local generator
+    local_seed = int.from_bytes(os.urandom(8), "big")
+    comm.get().local_generator = torch.Generator()
+    comm.get().local_generator.manual_seed(local_seed)
+
+    # Create global generator - All parties share one global generator for sync'd rng
+    global_seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
+    global_seed = torch.tensor(global_seed)
     global_seed = comm.get().broadcast(global_seed, 0)
     comm.get().global_generator = torch.Generator()
     comm.get().global_generator.manual_seed(global_seed.item())
@@ -441,18 +448,20 @@ def rand(*sizes, cryptensor_type=None):
     """
     Returns a tensor with elements uniformly sampled in [0, 1).
     """
-    if cryptensor_type is None:
-        cryptensor_type = get_default_cryptensor_type()
-    return __CRYPTENSOR_TYPES__[cryptensor_type].rand(*sizes)
+    with no_grad():
+        if cryptensor_type is None:
+            cryptensor_type = get_default_cryptensor_type()
+        return __CRYPTENSOR_TYPES__[cryptensor_type].rand(*sizes)
 
 
 def randn(*sizes, cryptensor_type=None):
     """
     Returns a tensor with normally distributed elements.
     """
-    if cryptensor_type is None:
-        cryptensor_type = get_default_cryptensor_type()
-    return __CRYPTENSOR_TYPES__[cryptensor_type].randn(*sizes)
+    with no_grad():
+        if cryptensor_type is None:
+            cryptensor_type = get_default_cryptensor_type()
+        return __CRYPTENSOR_TYPES__[cryptensor_type].randn(*sizes)
 
 
 def bernoulli(tensor, cryptensor_type=None):

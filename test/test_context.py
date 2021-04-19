@@ -42,6 +42,17 @@ def test_with_args_kwargs_func(first, *args, a=None, **kwargs):
     return args, kwargs
 
 
+@mpc.run_multiprocess(world_size=5)
+def test_rng_seeds_func():
+    """Tests that rng seeds differ and coordinate where desired"""
+    local_seed = comm.get().local_generator.initial_seed()
+    global_seed = comm.get().global_generator.initial_seed()
+    next_seed = comm.get().g0.initial_seed()
+    prev_seed = comm.get().g1.initial_seed()
+
+    return (local_seed, global_seed, next_seed, prev_seed)
+
+
 class TestContext(unittest.TestCase):
     def test_rank(self):
         ranks = test_rank_func()
@@ -94,3 +105,24 @@ class TestContext(unittest.TestCase):
 
         self.assertEqual(ret_args, args[1:])
         self.assertEqual(ret_kwargs, kwargs)
+
+    def test_rng_seeds(self):
+        all_seeds = test_rng_seeds_func()
+
+        local_seeds = [seed[0] for seed in all_seeds]
+        global_seeds = [seed[1] for seed in all_seeds]
+        next_seeds = [seed[2] for seed in all_seeds]
+        prev_seeds = [seed[3] for seed in all_seeds]
+
+        # Test local seeds are all unique
+        self.assertTrue(len(set(local_seeds)) == len(local_seeds))
+
+        # Test global seeds are all the same
+        self.assertTrue(len(set(global_seeds)) == 1)
+
+        # Test that next seeds are equal to next party's prev_seed
+        for i, next_seed in enumerate(next_seeds):
+            next_index = (i + 1) % len(prev_seeds)
+            prev_seed = prev_seeds[next_index]
+
+            self.assertEqual(next_seed, prev_seed)
