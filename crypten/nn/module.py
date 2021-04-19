@@ -903,34 +903,19 @@ class Add(Module):
     """
 
     def forward(self, input):
-        num_parameters = len(list(self.parameters()))
-        if num_parameters == 0:
-            assert isinstance(input, (list, tuple)), "input must be list or tuple"
-            assert len(input) == 2, "input must contain two tensors"
-            return input[0].add(input[1])
-        elif num_parameters == 1:
-            return input.add(list(self.parameters())[0])
-        else:
-            raise ValueError("Add cannot have more than one parameter.")
+        assert isinstance(input, (list, tuple)), "input must be list or tuple"
+        assert len(input) == 2, "input must contain two tensors"
+        return input[0].add(input[1])
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
-        module = Add()
-        if parameters:
-            len_param = len(parameters)
-            assert len_param == 1, "Add module can have maximum one parameter"
-            for key, value in parameters.items():
-                module.register_parameter(key, value)
-        return module
+        return Add()
 
 
 class Sub(Module):
     """
     Module that subtracts two values.
     """
-
-    # TODO: Allow subtract to have a parameter as well, like add.
-    # Note that parameter needs to define ordering for subtraction
 
     def forward(self, input):
         assert isinstance(input, (list, tuple)), "input must be list or tuple"
