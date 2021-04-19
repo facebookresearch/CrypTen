@@ -801,10 +801,11 @@ class TestGradients:
                         encr_tensor = crypten.cryptensor(tensor, requires_grad=True)
                         encr_tensor_out = getattr(encr_tensor, dropout_fn)(p=prob)
                         dropout_tensor = encr_tensor_out.get_plain_text()
+
                         # Check the scaling for non-zero elements
                         scaled_tensor = tensor / (1 - prob)
                         reference = dropout_tensor.where(
-                            dropout_tensor == 0, scaled_tensor
+                            dropout_tensor == 0.0, scaled_tensor
                         )
                         self._check(
                             encr_tensor_out,

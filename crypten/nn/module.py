@@ -1456,10 +1456,7 @@ class Dropout(Module):
         self.p = p
 
     def forward(self, input):
-        if self.training:
-            result = input.dropout(p=self.p)
-            return result
-        return input
+        return input.dropout(p=self.p, training=self.training)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
@@ -1488,9 +1485,7 @@ class DropoutNd(Module):
         self.p = p
 
     def forward(self, input):
-        if self.training:
-            return input._feature_dropout(p=self.p)
-        return input
+        return input._feature_dropout(p=self.p, training=self.training)
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):

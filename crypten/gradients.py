@@ -10,6 +10,7 @@ import math
 from functools import reduce
 
 import crypten
+import crypten.communicator as comm
 import torch
 
 
@@ -484,13 +485,12 @@ class AutogradDropout(AutogradFunction):
                 return input.clone()
 
         # training mode:
-        cryptensor_type = crypten.get_cryptensor_type(input)
-        rand_tensor = crypten.rand(input.size(), cryptensor_type=cryptensor_type)
-        boolean_mask = rand_tensor > p
+        random_tensor = torch.rand(input.size(), generator=comm.get().global_generator)
+        boolean_mask = (random_tensor > p).to(dtype=torch.float)
         if inplace:
-            result = input.mul_(boolean_mask).div_(1 - p)
+            result = input.mul_(boolean_mask.div(1.0 - p))
         else:
-            result = input.mul(boolean_mask).div_(1 - p)
+            result = input.mul(boolean_mask.div(1.0 - p))
         ctx.save_multiple_for_backward([boolean_mask, p])
         return result
 
@@ -499,7 +499,7 @@ class AutogradDropout(AutogradFunction):
         if len(ctx.saved_tensors) == 0:
             return grad_output  # forward pass was run in eval mode
         boolean_mask, p = ctx.saved_tensors
-        return grad_output.mul(boolean_mask.div(1 - p))
+        return grad_output.mul(boolean_mask.div(1.0 - p))
 
 
 @register_function("_feature_dropout")
@@ -521,20 +521,17 @@ class AutogradFeatureDropout(AutogradFunction):
 
         # training mode:
         feature_dropout_size = input.size()[0:2]
-        cryptensor_type = crypten.get_cryptensor_type(input)
-        rand_tensor = crypten.rand(
-            feature_dropout_size, cryptensor_type=cryptensor_type
+        random_tensor = torch.rand(
+            feature_dropout_size, generator=comm.get().global_generator
         )
-        boolean_mask = rand_tensor > p
+        boolean_mask = (random_tensor > p).to(dtype=torch.float)
         for i in range(2, input.dim()):
             boolean_mask = boolean_mask.unsqueeze(i)
-        boolean_mask.share, tensor = torch.broadcast_tensors(
-            boolean_mask.share, input.share
-        )
+        boolean_mask, _ = torch.broadcast_tensors(boolean_mask, input.share)
         if inplace:
-            result = input.mul_(boolean_mask).div_(1 - p)
+            result = input.mul_(boolean_mask.div(1.0 - p))
         else:
-            result = input.mul(boolean_mask).div_(1 - p)
+            result = input.mul(boolean_mask.div(1.0 - p))
         ctx.save_multiple_for_backward([boolean_mask, p])
         return result
 
@@ -543,7 +540,7 @@ class AutogradFeatureDropout(AutogradFunction):
         if len(ctx.saved_tensors) == 0:
             return grad_output  # forward pass was run in eval mode
         boolean_mask, p = ctx.saved_tensors
-        return grad_output.mul(boolean_mask.div(1 - p))
+        return grad_output.mul(boolean_mask.div(1.0 - p))
 
 
 @register_function("dropout2d")
