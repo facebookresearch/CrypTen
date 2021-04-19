@@ -149,76 +149,72 @@ class TestNN(object):
         """Tests the dropout module"""
         input_size = [3, 3, 3]
         prob_list = [0.2 * x for x in range(1, 5)]
-        for module_name in ["Dropout", "Dropout2d", "Dropout3d"]:
-            for prob in prob_list:
-                for compute_gradients in [True, False]:
-                    # generate inputs:
-                    input = get_random_test_tensor(
-                        size=input_size, is_float=True, ex_zero=True
+        module_name = "Dropout"
+        for prob in prob_list:
+            for compute_gradients in [True, False]:
+                # generate inputs:
+                input = get_random_test_tensor(
+                    size=input_size, is_float=True, ex_zero=True
+                )
+                input.requires_grad = True
+                encr_input = crypten.cryptensor(input)
+                encr_input.requires_grad = compute_gradients
+
+                # create PyTorch module:
+                module = getattr(torch.nn, module_name)(prob)
+                module.train()
+
+                # create encrypted CrypTen module:
+                encr_module = crypten.nn.from_pytorch(module, input)
+
+                # check that module properly encrypts / decrypts and
+                # check that encrypting with current mode properly
+                # performs no-op
+                for encrypted in [False, True, True, False, True]:
+                    encr_module.encrypt(mode=encrypted)
+                    if encrypted:
+                        self.assertTrue(encr_module.encrypted, "module not encrypted")
+                    else:
+                        self.assertFalse(encr_module.encrypted, "module encrypted")
+
+                # compare model outputs:
+                # compare the zero and non-zero entries of the encrypted tensor
+                # with a directly constructed plaintext tensor, since we cannot
+                # ensure that the randomization produces the same output
+                # for both encrypted and plaintext tensors
+                self.assertTrue(encr_module.training, "training value incorrect")
+                encr_output = encr_module(encr_input)
+                plaintext_output = encr_output.get_plain_text()
+                scaled_tensor = input / (1 - prob)
+                reference = plaintext_output.where(plaintext_output == 0, scaled_tensor)
+                self._check(encr_output, reference, "Dropout forward failed")
+
+                # check backward
+                # compare the zero and non-zero entries of the grad in
+                # the encrypted tensor with a directly constructed plaintext
+                # tensor: we do this because we cannot ensure that the
+                # randomization produces the same output for the input
+                # encrypted and plaintext tensors and so we cannot ensure
+                # that the grad in the input tensor is populated identically
+                all_ones = torch.ones(reference.size())
+                ref_grad = plaintext_output.where(plaintext_output == 0, all_ones)
+                ref_grad_input = ref_grad / (1 - prob)
+                encr_output.sum().backward()
+                if compute_gradients:
+                    self._check(
+                        encr_input.grad,
+                        ref_grad_input,
+                        "dropout backward on input failed",
                     )
-                    input.requires_grad = True
-                    encr_input = crypten.cryptensor(input)
-                    encr_input.requires_grad = compute_gradients
 
-                    # create PyTorch module:
-                    module = getattr(torch.nn, module_name)(prob)
-                    module.train()
-
-                    # create encrypted CrypTen module:
-                    encr_module = crypten.nn.from_pytorch(module, input)
-
-                    # check that module properly encrypts / decrypts and
-                    # check that encrypting with current mode properly
-                    # performs no-op
-                    for encrypted in [False, True, True, False, True]:
-                        encr_module.encrypt(mode=encrypted)
-                        if encrypted:
-                            self.assertTrue(
-                                encr_module.encrypted, "module not encrypted"
-                            )
-                        else:
-                            self.assertFalse(encr_module.encrypted, "module encrypted")
-
-                    # compare model outputs:
-                    # compare the zero and non-zero entries of the encrypted tensor
-                    # with a directly constructed plaintext tensor, since we cannot
-                    # ensure that the randomization produces the same output
-                    # for both encrypted and plaintext tensors
-                    self.assertTrue(encr_module.training, "training value incorrect")
-                    encr_output = encr_module(encr_input)
-                    plaintext_output = encr_output.get_plain_text()
-                    scaled_tensor = input / (1 - prob)
-                    reference = plaintext_output.where(
-                        plaintext_output == 0, scaled_tensor
-                    )
-                    self._check(encr_output, reference, "Dropout forward failed")
-
-                    # check backward
-                    # compare the zero and non-zero entries of the grad in
-                    # the encrypted tensor with a directly constructed plaintext
-                    # tensor: we do this because we cannot ensure that the
-                    # randomization produces the same output for the input
-                    # encrypted and plaintext tensors and so we cannot ensure
-                    # that the grad in the input tensor is populated identically
-                    all_ones = torch.ones(reference.size())
-                    ref_grad = plaintext_output.where(plaintext_output == 0, all_ones)
-                    ref_grad_input = ref_grad / (1 - prob)
-                    encr_output.sum().backward()
-                    if compute_gradients:
-                        self._check(
-                            encr_input.grad,
-                            ref_grad_input,
-                            "dropout backward on input failed",
-                        )
-
-                    # check testing mode for Dropout module
-                    encr_module.train(mode=False)
-                    encr_output = encr_module(encr_input)
-                    result = encr_input.eq(encr_output)
-                    result_plaintext = result.get_plain_text().bool()
-                    self.assertTrue(
-                        result_plaintext.all(), "dropout failed in test mode"
-                    )
+                # check testing mode for Dropout module
+                encr_module.train(mode=False)
+                encr_output = encr_module(encr_input)
+                result = encr_input.eq(encr_output)
+                result_plaintext = result.get_plain_text().bool()
+                self.assertTrue(
+                    result_plaintext.all(), "dropout failed in test mode"
+                )
 
     def test_non_pytorch_modules(self):
         """
