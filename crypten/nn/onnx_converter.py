@@ -161,49 +161,26 @@ class FromOnnx:
         assert len(output_names) == 1, "Only one output per model supported."
         crypten_model = module.Graph(input_names, output_names[0])
 
-        constant_module = None
+        # loop over all nodes:
         for node in self.onnx_model.graph.node:
+
+            # get attributes, parameters, and node type:
             attributes = FromOnnx.get_attributes(node)
             parameters, node_input_names = self.get_parameters(node, input_names)
-
             crypten_class = self._get_operator_class(node.op_type, attributes)
 
-            # Get shape from Constant graph input for classes that require a shape
-            reshape_classes = [
-                module.AdaptiveAvgPool2d,
-                module.AdaptiveMaxPool2d,
-                module.Expand,
-                module.Reshape,
-                module.Gather,
-            ]
-            if crypten_class in reshape_classes and constant_module is not None:
-                node_input_names.remove(constant_module[0])
-                attributes["shape"] = constant_module[1].value.long().tolist()
-                constant_module = None
-
+            # special logic for Tensorflow imports:
             if TF_AND_TF2ONNX:
                 parameters = _sync_tensorflow_parameters(parameters, node.op_type)
 
-            # add CrypTen module to graph
+            # add CrypTen module to graph:
             crypten_module = crypten_class.from_onnx(
                 parameters=parameters, attributes=attributes
             )
             node_output_name = list(node.output)[0]
+            crypten_model.add_module(node_output_name, crypten_module, node_input_names)
 
-            # Check if Constant is shape used for next node before adding Constant to module list
-            if crypten_class.__name__ == "Constant":
-                constant_module = (node_output_name, crypten_module, node_input_names)
-            else:
-                # Add Constant modules that are not shape inputs to graph
-                if constant_module is not None:
-                    crypten_model.add_module(*constant_module)
-                    constant_module = None
-
-                # Add CrypTen module to graph
-                crypten_model.add_module(
-                    node_output_name, crypten_module, node_input_names
-                )
-
+        # return final model:
         crypten_model = FromOnnx._get_model_or_module(crypten_model)
         return crypten_model
 
