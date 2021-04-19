@@ -333,6 +333,11 @@ def load(f, load_closure=torch.load, **kwargs):
         save function in `crypten.save`. Additional kwargs are passed on
         to the closure.
     """
+    if "src" in kwargs:
+        raise SyntaxError(
+            "crypten.load() should not be used with `src` argument. Use load_from_party() instead."
+        )
+
     # TODO: Add support for loading from correct device (kwarg: map_location=device)
     if load_closure == torch.load:
         obj = load_closure(f)
