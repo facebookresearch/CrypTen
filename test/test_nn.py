@@ -212,9 +212,7 @@ class TestNN(object):
                 encr_output = encr_module(encr_input)
                 result = encr_input.eq(encr_output)
                 result_plaintext = result.get_plain_text().bool()
-                self.assertTrue(
-                    result_plaintext.all(), "dropout failed in test mode"
-                )
+                self.assertTrue(result_plaintext.all(), "dropout failed in test mode")
 
     def test_non_pytorch_modules(self):
         """
@@ -223,13 +221,24 @@ class TestNN(object):
         """
 
         # input arguments for modules and input sizes:
-        no_input_modules = ["Constant", "Range"]
-        binary_modules = ["Add", "Concat", "Equal", "MatMul", "Mul", "Sub"]
+        no_input_modules = ["Constant", "ConstantOfShape", "Range"]
+        binary_modules = [
+            "Add",
+            "Concat",
+            "Div",
+            "Equal",
+            "MatMul",
+            "Mul",
+            "Sub",
+        ]
         ex_zero_modules = []
         module_args = {
             "Add": (),
             "Concat": (0,),
             "Constant": (1.2,),
+            "ConstantOfShape": (1.4,),
+            "Div": (),
+            "Erf": (),
             "Equal": (),
             "Exp": (),
             "Expand": (),
@@ -237,10 +246,12 @@ class TestNN(object):
             "MatMul": (),
             "Mean": ([0], True),
             "Mul": (),
+            "Pow": (),
             "Range": (),
             "Reshape": ((2, 2),),
             "Shape": (),
             "Slice": ([1], [4]),
+            "Sqrt": (),
             "Sub": (),
             "Sum": ([0], True),
             "Squeeze": (0,),
@@ -252,6 +263,11 @@ class TestNN(object):
             "Add": lambda x: x[0] + x[1],
             "Concat": lambda x: torch.cat((x[0], x[1])),
             "Constant": lambda _: torch.tensor(module_args["Constant"][0]),
+            "ConstantOfShape": lambda x: torch.tensor(
+                module_args["ConstantOfShape"][0]
+            ).expand(x[0]),
+            "Div": lambda x: torch.div(x[0], x[1]),
+            "Erf": lambda x: torch.erf(x),
             "Equal": lambda x: x[0].eq(x[1]),
             "Exp": lambda x: torch.exp(x),
             "Expand": lambda x: x[0].expand(x[1]),
@@ -263,12 +279,14 @@ class TestNN(object):
                 x, dim=module_args["Mean"][0], keepdim=(module_args["Mean"][1] == 1)
             ),
             "Mul": lambda x: x[0].mul(x[1]),
+            "Pow": lambda x: x[0].pow(x[1]),
             "Range": lambda x: torch.arange(x[0], x[1], x[2]),
             "Reshape": lambda x: x[0].reshape(module_args["Reshape"][0]),
             "Shape": lambda x: torch.tensor(x.size()).float(),
             "Slice": lambda x: x[
                 module_args["Slice"][0][0] : module_args["Slice"][1][0], :
             ],
+            "Sqrt": lambda x: x.sqrt(),
             "Sub": lambda x: x[0] - x[1],
             "Sum": lambda x: torch.sum(
                 x, dim=module_args["Sum"][0], keepdim=(module_args["Sum"][1] == 1)
@@ -280,10 +298,19 @@ class TestNN(object):
             "Unsqueeze": lambda x: x.unsqueeze(module_args["Unsqueeze"][0]),
             "Where": lambda x: torch.where(x[0].byte(), x[1], x[2]),
         }
+        additional_inputs = {
+            "ConstantOfShape": ([2, 4],),
+            "Expand": ([2, 4],),
+            "Gather": (torch.tensor([[1, 2], [0, 3]]),),
+            "Pow": (2,),
+            "Range": (1, 6, 2),
+        }
         input_sizes = {
             "Add": (10, 12),
             "Concat": (2, 2),
             "Constant": (1,),
+            "Div": (3, 4),
+            "Erf": (1, 2),
             "Equal": (2, 5, 3),
             "Exp": (10, 10, 10),
             "Expand": (1, 1),
@@ -291,9 +318,11 @@ class TestNN(object):
             "MatMul": (2, 4, 4),
             "Mul": (4, 3, 2),
             "Mean": (3, 3, 3),
+            "Pow": (4, 2),
             "Reshape": (1, 4),
             "Shape": (8, 3, 2),
             "Slice": (5, 2),
+            "Sqrt": (2, 3),
             "Sub": (10, 12),
             "Sum": (3, 3, 3),
             "Squeeze": (1, 12, 6),
@@ -301,16 +330,12 @@ class TestNN(object):
             "Unsqueeze": (8, 3),
             "Where": (3, 4, 2),
         }
-        additional_inputs = {
-            "Expand": ([2, 4],),
-            "Gather": (torch.tensor([[1, 2], [0, 3]]),),
-            "Range": (1, 6, 2),
-        }
         module_attributes = {
             # each attribute has two parameters: the name, and a bool indicating
             # whether the value should be wrapped into a list when the module is created
             "Concat": [("axis", False)],
             "Constant": [("value", False)],
+            "ConstantOfShape": [("value", False)],
             "Gather": [("axis", False)],
             "Mean": [("axes", False), ("keepdims", False)],
             "Slice": [("starts", False), ("ends", False)],
@@ -337,16 +362,22 @@ class TestNN(object):
                         size=input_sizes[module_name],
                         is_float=True,
                         ex_zero=ex_zero_values,
+                        max_value=1.0,
                     )
                     for _ in range(2)
                 ]
                 encr_inputs = [crypten.cryptensor(input) for input in inputs]
             elif module_name not in no_input_modules:
                 inputs = get_random_test_tensor(
-                    size=input_sizes[module_name], is_float=True, ex_zero=ex_zero_values
+                    size=input_sizes[module_name],
+                    is_float=True,
+                    ex_zero=ex_zero_values,
+                    max_value=1.0,
                 )
                 if module_name == "Where":  # Where condition is binary input
                     inputs = (inputs > 0.5).float()
+                if module_name == "Sqrt":  # Sqrt requires positive input
+                    inputs = inputs.abs()
                 encr_inputs = crypten.cryptensor(inputs)
 
             # some modules take additional inputs:
@@ -368,12 +399,12 @@ class TestNN(object):
                     else:
                         encr_inputs.append(add_inp)
 
-            # gather module cannot work with encrypted indices as input:
+            # some modules cannot work with encrypted inputs:
             if module_name in ["Gather"]:
                 with self.assertRaises(ValueError):
                     encr_output = encr_module(encr_inputs)
 
-                # but it can work using unencrypted indices:
+                # but they can work using unencrypted indices:
                 encr_inputs[1] = additional_inputs[module_name][0]
 
             # compare model outputs:

@@ -11,6 +11,7 @@ from collections import OrderedDict
 
 import crypten
 import torch
+import torch.onnx.symbolic_helper as sym_help
 from crypten.common.util import adaptive_pool2d_helper
 
 
@@ -841,6 +842,61 @@ class Constant(Module):
         return self
 
 
+class ConstantOfShape(Module):
+    """
+    Modules that returns a matrix of specified size containing a constant.
+    """
+
+    SUPPORTS_PLAINTEXT_INPUTS = True
+
+    def __init__(self, value):
+        super().__init__()
+        if not torch.is_tensor(value):
+            value = torch.tensor(value)
+        value = value.to(dtype=torch.float)
+        self.register_buffer("value", value)
+        self.keep_plaintext_value = False
+
+    def forward(self, size):
+        if torch.is_tensor(size):
+            size = size.tolist()
+        assert isinstance(
+            size, (list, tuple)
+        ), f"size must be list or tuple, not {type(size)}"
+        return self.value.expand(*size)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        if attributes is None:
+            attributes = {}
+        assert "value" in attributes, "No value for ConstantOfShape specified."
+        result = ConstantOfShape(attributes["value"])
+        result.keep_plaintext_value = True
+        return result
+
+    def encrypt(self, mode=True, src=0):
+        if mode == self.encrypted:
+            return self
+        self.encrypted = mode
+
+        # perform encryption or decryption of value:
+        if mode and not crypten.is_encrypted_tensor(self.value):
+
+            # do not encrypt constant module values from ONNX inputs:
+            if self.keep_plaintext_value:
+                warnings.warn(
+                    "CrypTen has determined that constant is a shape value. "
+                    f"It is silently not encrypting constant {self.value} for that reason. "
+                    "Please check carefully that this is the correct behavior.",
+                    RuntimeWarning,
+                )  # TODO: Deprecate silent non-encryption behavior.
+                return self
+            self.value = crypten.cryptensor(self.value)
+        elif not mode and crypten.is_encrypted_tensor(self.value):
+            self.value = self.value.get_plain_text()
+        return self
+
+
 class Add(Module):
     """
     Module that sums two values.
@@ -901,6 +957,48 @@ class Mul(Module):
         return Mul()
 
 
+class Div(Module):
+    """
+    Module that divides two values.
+    """
+
+    def forward(self, input):
+        assert isinstance(input, (list, tuple)), "input must be list or tuple"
+        assert len(input) == 2, "input must contain two tensors"
+        return input[0].div(input[1])
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Div()
+
+
+class Pow(Module):
+    """
+    Module that takes input to some power, where the power is an integer.
+    """
+
+    def forward(self, input):
+        base, power = input
+        return base.pow(power)
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Pow()
+
+
+class Sqrt(Module):
+    """
+    Module that takes square-root of the input.
+    """
+
+    def forward(self, input):
+        return input.sqrt()
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Sqrt()
+
+
 class Exp(Module):
     """
     Module that calculates the exponential of the given input tensor, element-wise.
@@ -912,6 +1010,19 @@ class Exp(Module):
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         return Exp()
+
+
+class Erf(Module):
+    """
+    Module that calculates the error function of the given input tensor, element-wise.
+    """
+
+    def forward(self, input):
+        return input.erf()
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        return Erf()
 
 
 class _Reduce(Module):
@@ -1136,6 +1247,26 @@ class Expand(Module):
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
         return Expand()
+
+
+class Cast(Module):
+    """
+    Module that casts the input tensor to the specified type.
+    """
+
+    def __init__(self, dtype):
+        super().__init__()
+        self.dtype = dtype
+
+    def forward(self, x):
+        if torch.is_tensor(x):
+            return x.to(dtype=self.dtype)
+        return x  # this is a no-op as MPCTensors do not know their dtype
+
+    @staticmethod
+    def from_onnx(parameters=None, attributes=None):
+        dtype = sym_help._get_const(attributes["to"], "i", "dtype")
+        return Cast(dtype=sym_help.scalar_type_to_pytorch_type[dtype])
 
 
 class Range(Module):

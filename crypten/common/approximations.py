@@ -4,6 +4,8 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
+
+import math
 from dataclasses import dataclass
 
 import crypten
@@ -24,6 +26,7 @@ __all__ = [
     "sin",
     "sigmoid",
     "tanh",
+    "erf",
     "softmax",
     "log_softmax",
 ]
@@ -60,6 +63,9 @@ class ApproxConfig:
 
     # trigonometry configuration
     trig_iterations: int = 10
+
+    # error function configuration:
+    erf_iterations: int = 8
 
 
 # Global config
@@ -434,6 +440,18 @@ def _chebyshev_polynomials(self, terms):
         polynomials.append(next_polynomial)
 
     return crypten.stack(polynomials)
+
+
+def erf(tensor):
+    """
+    Approximates the error function of the input tensor using a Taylor approximation.
+    """
+    output = tensor.clone()
+    for n in range(1, config.erf_iterations + 1):
+        multiplier = ((-1) ** n) / (math.factorial(n) * (2 * n + 1))
+        output = output.add(tensor.pos_pow(2 * n + 1).mul(multiplier))
+    return output.mul(2.0 / math.sqrt(math.pi))
+    # NOTE: This approximation is not unstable for large tensor values.
 
 
 def softmax(self, dim, **kwargs):

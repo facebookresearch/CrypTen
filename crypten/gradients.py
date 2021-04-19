@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
+import math
 from functools import reduce
 
 import crypten
@@ -597,6 +598,20 @@ class AutogradHardtanh(AutogradFunction):
     def backward(ctx, grad_output):
         (grad,) = ctx.saved_tensors
         return grad.mul(grad_output)
+
+
+@register_function("erf")
+class AutogradErf(AutogradFunction):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        return input.erf()
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (input,) = ctx.saved_tensors
+        grad = input.pos_pow(2).neg().exp().mul(2.0 / math.sqrt(math.pi))
+        return grad_output.mul(grad)
 
 
 @register_function("relu6")
