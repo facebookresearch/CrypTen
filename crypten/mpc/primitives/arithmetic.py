@@ -140,7 +140,7 @@ class ArithmeticSharedTensor(object):
         self._tensor = value
 
     @staticmethod
-    def from_shares(share, precision=None, src=0, device=None):
+    def from_shares(share, precision=None, device=None):
         """Generate an ArithmeticSharedTensor from a share from each party"""
         result = ArithmeticSharedTensor(src=SENTINEL)
         share = share.to(device) if device is not None else share
@@ -165,6 +165,15 @@ class ArithmeticSharedTensor(object):
             *size, generator=comm.get().get_generator(1, device=device), device=device
         )
         tensor.share = current_share - next_share
+        return tensor
+
+    @staticmethod
+    def PRSS(*size, device=None):
+        """
+        Generates a Pseudo-random Secret Share from a set of random arithmetic shares
+        """
+        share = generate_random_ring_element(*size, device=device)
+        tensor = ArithmeticSharedTensor.from_shares(share=share)
         return tensor
 
     @property

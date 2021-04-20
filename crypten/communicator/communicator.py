@@ -162,30 +162,18 @@ class Communicator:
         else:
             device = torch.device(device)
 
-        if idx == 0:
-            if device.type == "cuda":
-                assert hasattr(
-                    self, "g0_cuda"
-                ), "Generator g0_cuda is not initialized, call crypten.init() first"
-                return self.g0_cuda
-            else:
-                assert hasattr(
-                    self, "g0"
-                ), "Generator g0 is not initialized, call crypten.init() first"
-                return self.g0
-        elif idx == 1:
-            if device.type == "cuda":
-                assert hasattr(
-                    self, "g1_cuda"
-                ), "Generator g1_cuda is not initialized, call crypten.init() first"
-                return self.g1_cuda
-            else:
-                assert hasattr(
-                    self, "g1"
-                ), "Generator g1 is not initialized, call crypten.init() first"
-                return self.g1
-        else:
+        if idx not in {0, 1}:
             raise RuntimeError(f"Generator idx {idx} out of bounds.")
+
+        generator_name = f"g{idx}_cuda" if device.type == "cuda" else f"g{idx}"
+        generator = getattr(self, generator_name, None)
+
+        if generator is None:
+            raise ValueError(
+                f"Generator {generator_name} is not initialized, call crypten.init() first"
+            )
+
+        return generator
 
 
 def _logging(func):

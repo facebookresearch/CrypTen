@@ -86,6 +86,9 @@ class MPCConfig:
     # Used by max / argmax / min / argmin
     max_method: str = "log_reduction"
 
+    # Used (for the moment) when generating the Beaver Triples
+    active_security: bool = False
+
 
 # Global config
 config = MPCConfig()
@@ -154,10 +157,10 @@ class MPCTensor(CrypTensor):
         return MPCTensor(*args, **kwargs)
 
     @staticmethod
-    def from_shares(share, precision=None, src=0, ptype=Ptype.arithmetic):
+    def from_shares(share, precision=None, ptype=Ptype.arithmetic):
         result = MPCTensor([])
         from_shares = ptype.to_tensor().from_shares
-        result._tensor = from_shares(share, precision=precision, src=src)
+        result._tensor = from_shares(share, precision=precision)
         result.ptype = ptype
         return result
 

@@ -35,12 +35,30 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
         x.size(), y.size(), op, device=x.device, *args, **kwargs
     )
 
-    # Vectorized reveal to reduce rounds of communication
     from .arithmetic import ArithmeticSharedTensor
 
-    eps_del = ArithmeticSharedTensor.reveal_batch([x - a, y - b])
-    epsilon = eps_del[0]
-    delta = eps_del[1]
+    if crypten.mpc.config.active_security:
+        """
+        Reference: "Multiparty Computation from Somewhat Homomorphic Encryption"
+        Link: https://eprint.iacr.org/2011/535.pdf
+        """
+        f, g, h = provider.generate_additive_triple(
+            x.size(), y.size(), op, device=x.device, *args, **kwargs
+        )
+
+        t = ArithmeticSharedTensor.PRSS(a.size(), device=x.device)
+        t_plain_text = t.get_plain_text()
+
+        rho = (t_plain_text * a - f).get_plain_text()
+        sigma = (b - g).get_plain_text()
+        triples_check = t_plain_text * c - h - sigma * f - rho * g - rho * sigma
+        triples_check = triples_check.get_plain_text()
+
+        if torch.any(triples_check != 0):
+            raise ValueError("Beaver Triples verification failed!")
+
+    # Vectorized reveal to reduce rounds of communication
+    epsilon, delta = ArithmeticSharedTensor.reveal_batch([x - a, y - b])
 
     # z = c + (a * delta) + (epsilon * b) + epsilon * delta
     c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
