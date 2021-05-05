@@ -19,7 +19,7 @@ def _is_type_tensor(tensor, types):
 
 
 def is_tensor(tensor):
-    """ Checks if the input tensor is a Torch tensor or a CUDALongTensor """
+    """Checks if the input tensor is a Torch tensor or a CUDALongTensor"""
     return torch.is_tensor(tensor) or isinstance(tensor, CUDALongTensor)
 
 

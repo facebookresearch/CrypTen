@@ -119,7 +119,7 @@ def split_features_v_labels(
 def split_train_v_test(
     dir="/tmp", party1="alice", party2="bob", reduced=None, binary=False
 ):
-    """Gives Party 1 training data and Party 2 the test data """
+    """Gives Party 1 training data and Party 2 the test data"""
     mnist_norm, mnist_labels = _get_norm_mnist(dir, reduced, binary)
     mnist_train_norm, mnist_test_norm = mnist_norm
     mnist_train_labels, mnist_test_labels = mnist_labels
