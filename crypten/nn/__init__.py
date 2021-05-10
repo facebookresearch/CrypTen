@@ -23,6 +23,7 @@ from .module import (
     ConstantPad1d,
     ConstantPad2d,
     ConstantPad3d,
+    Conv,
     Conv1d,
     Conv2d,
     Div,
@@ -36,6 +37,7 @@ from .module import (
     Expand,
     Flatten,
     Gather,
+    Gemm,
     GlobalAveragePool,
     Graph,
     GroupNorm,
@@ -48,6 +50,7 @@ from .module import (
     Module,
     ModuleDict,
     Mul,
+    Parameter,
     Pow,
     Range,
     ReLU,
@@ -66,7 +69,7 @@ from .module import (
     Unsqueeze,
     Where,
 )
-from .onnx_converter import TF_AND_TF2ONNX, from_pytorch, from_tensorflow
+from .onnx_converter import TF_AND_TF2ONNX, from_pytorch, from_onnx
 
 
 # expose contents of package
@@ -87,6 +90,7 @@ __all__ = [
     "ConstantPad1d",
     "ConstantPad2d",
     "ConstantPad3d",
+    "Conv",
     "Conv1d",
     "Conv2d",
     "CrossEntropyLoss",
@@ -101,8 +105,9 @@ __all__ = [
     "Expand",
     "Flatten",
     "from_pytorch",
-    "from_tensorflow",
+    "from_onnx",
     "Gather",
+    "Gemm",
     "GlobalAveragePool",
     "Graph",
     "GroupNorm",
@@ -117,6 +122,7 @@ __all__ = [
     "ModuleDict",
     "MSELoss",
     "Mul",
+    "Parameter",
     "Pow",
     "Range",
     "ReLU",

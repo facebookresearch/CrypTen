@@ -1459,6 +1459,12 @@ class AutogradMaxPool2D(AutogradFunction):
 class AutogradConv1D(AutogradFunction):
     @staticmethod
     def forward(ctx, input, kernel, padding=0, stride=1, dilation=1, groups=1):
+        if isinstance(stride, (int, float)):
+            stride = (stride,)
+        if isinstance(padding, (int, float)):
+            padding = (padding,)
+        if isinstance(dilation, (int, float)):
+            dilation = (dilation,)
         ctx.save_multiple_for_backward(
             (input, kernel, padding, stride, dilation, groups)
         )
@@ -1491,10 +1497,10 @@ class AutogradConv1D(AutogradFunction):
         output_padding = torch.nn.grad._grad_input_padding(
             grad_output,
             input.size(),
-            (stride,),
-            (padding,),
+            stride,
+            padding,
             (kernel_size,),
-            dilation=(dilation,),
+            dilation=dilation,
         )
         grad_input = grad_output.conv_transpose1d(
             kernel,

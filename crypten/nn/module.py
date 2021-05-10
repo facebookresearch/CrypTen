@@ -36,9 +36,9 @@ class Module:
         return f"{type(self).__name__} {encrypted_str} module"
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         """
-        Constructs a CrypTen model from an ONNX Protobuf string or file.
+        Constructs a CrypTen module from an ONNX Protobuf string or file.
         """
         raise NotImplementedError("Call this function on a Module type.")
 
@@ -123,13 +123,8 @@ class Module:
         """
         if name in self._parameters or hasattr(self, name):
             raise ValueError("Parameter or field %s already exists." % name)
-        if torch.is_tensor(param):  # unencrypted model
-            param.requires_grad = requires_grad
-            self._parameters[name] = param
-        else:  # encryped model
-            self._parameters[name] = crypten.cryptensor(
-                param, requires_grad=requires_grad
-            )
+        param.requires_grad = requires_grad
+        self._parameters[name] = param
         setattr(self, name, param)
 
     def set_parameter(self, name, param):
@@ -359,6 +354,7 @@ class Module:
         """
         if name in self._buffers or hasattr(self, name):
             raise ValueError("Buffer or field %s already exists." % name)
+        buffer.requires_grad = False
         self._buffers[name] = buffer
         setattr(self, name, buffer)
 
@@ -532,7 +528,7 @@ class Module:
             elif not self.encrypted:
                 if any(isinstance(arg, crypten.CrypTensor) for arg in args):
                     raise RuntimeError(
-                        "Cannot input CrypTensors into unencrypted model."
+                        "Cannot input CrypTensors into unencrypted model. "
                         "Encrypt the model before feeding it CrypTensors."
                     )
             return object.__getattribute__(self, name)(*tuple(args), **kwargs)
@@ -615,26 +611,49 @@ class Graph(Container):
 
     The module maintains a dict of named modules and a graph structure stored in
     a dict where each key is a module name, and the associated value is a list
-    of module names that provide the input into the module.
+    of module names that provide the input into the module. Each module may have
+    an optional list of output names as well, that is stored as an attribute in
+    the module by the `add_module` function.
     """
 
-    def __init__(self, input_names, output_name, modules=None, graph=None):
+    def __init__(self, input_names, output_names, modules=None, graph=None):
+        """
+        Initializes a graph module with inputs named by `input_names`, that
+        produces outputs named by `output_names`.
+
+        Optionally, `modules` and the `graph` structure can be specified as well.
+        Alternatively, the graph can be built up using the `add_module` function.
+        """
         super().__init__()
         if not isinstance(input_names, (list, tuple)):
             input_names = [input_names]
+        if not isinstance(output_names, (list, tuple)):
+            output_names = [output_names]
         self.input_names = input_names
-        self.output_name = output_name
+        self.output_names = output_names
         self._graph = {}
         if modules is not None:
             self._modules = modules
         if graph is not None:
             self._graph = graph
 
-    def add_module(self, name, module, input_names=None):
+    def add_module(self, name, module, input_names=None, output_names=None):
+        """
+        Adds a `module` with the specified `name` to the graph. If the `module`
+        expects inputs, their names should be specified via `input_names`.
+
+        The module is expected to produce an output with `name`. However, if the
+        module produces multiple outputs, these must be named in the
+        `output_names` list.
+
+        Both `input_names` and `output_names` are expected to be ordered.
+        """
         assert name not in self._graph, "Module %s already exists." % name
         self.register_module(name, module)
         if input_names is not None:
             self._graph[name] = input_names
+        if output_names is not None:
+            module._output_names = output_names
 
     def forward(self, *args):
         assert len(args) == len(
@@ -669,18 +688,37 @@ class Graph(Container):
         node_to_compute = _find_computable_node()
         while node_to_compute is not None:
 
-            # compute and store output of module:
+            # compute output of module:
             input = [values[name] for name in self._graph[node_to_compute]]
             if len(input) == 1:
                 input = input[0]  # unpack iterable if possible
+            module = self._modules[node_to_compute]
+            output = module(input)
 
-            output = self._modules[node_to_compute](input)
-            values[node_to_compute] = output
-            _mark_as_computed(node_to_compute)
+            # we may get one output:
+            output_names = getattr(module, "_output_names", None)
+            if output_names is None or len(output_names) == 1:
+                if output_names is not None:
+                    assert output_names[0] == node_to_compute, "invalid graph"
+                values[node_to_compute] = output
+                _mark_as_computed(node_to_compute)
+
+            # or multiple outputs:
+            else:
+                assert isinstance(
+                    output, tuple
+                ), f"expected outputs {output_names} of {module} to be tuple, not {type(output)}"
+                assert len(output_names) == len(
+                    output
+                ), f"expected {len(output_names)} outputs from {module}, received {len(output)}"
+                for node, value in zip(output_names, output):
+                    values[node] = value
+                    _mark_as_computed(node)
 
             # return output if it is available:
-            if node_to_compute == self.output_name:
-                return output
+            if all(computed[output_name] for output_name in self.output_names):
+                result = [values[output_name] for output_name in self.output_names]
+                return result[0] if len(result) == 1 else tuple(result)
 
             # find next node to compute:
             node_to_compute = _find_computable_node()
@@ -710,13 +748,13 @@ class Sequential(Graph):
                 for key, val in module.items():
                     self.add_module(key, val, input_names)
                     input_names = key
-                self.output_name = key
+                self.output_names = [key]
             else:
                 module_name = str(idx)
                 if idx > 0:
                     input_names = [str(idx - 1)]
                 self.add_module(module_name, module, input_names)
-                self.output_name = module_name
+                self.output_names = [module_name]
 
 
 class ModuleDict(Module):
@@ -789,56 +827,75 @@ for func_name in __module_dict_func_names:
     setattr(ModuleDict, func_name, func)
 
 
+class Parameter(Module):
+    """
+    Module that holds a parameter tensor. If `trainable` is set to `False`, the
+    parameter will be treated as a buffer: it will not be trained. Hence,
+    parameters do not inherit `requires_grad` from the tensor they are initialized
+    with.
+
+    Parameters are encrypted when the `encrypt()` function is called on a module.
+    """
+
+    def __init__(self, param, trainable=True):
+        super().__init__()
+
+        # ensure that input is a PyTorch or CrypTen tensor:
+        assert torch.is_tensor(param) or crypten.is_encrypted_tensor(
+            param
+        ), f"param must be PyTorch of CrypTen tensor, not {type(param)}"
+        if isinstance(param, torch.nn.parameter.Parameter):
+            param = param.data
+
+        # register parameter or buffer:
+        if trainable:
+            self.register_parameter("data", param)
+        else:
+            self.register_buffer("data", param)
+
+        # register whether or not module is encrypted:
+        self.encrypted = crypten.is_encrypted_tensor(param)
+
+    def forward(self, input):
+        return self.data
+
+    @property
+    def requires_grad(self):
+        return self.data.requires_grad
+
+
 class Constant(Module):
     """
-    Modules that returns a constant.
+    Module that holds a constant tensor. If `trainable` is set to `False`, the
+    parameter will be treated as a buffer: it will not be trained.
+
+    Constants are not encrypted when the `encrypt()` function is called on a module.
     """
 
     SUPPORTS_PLAINTEXT_INPUTS = True
 
-    def __init__(self, value, trainable=False):
+    def __init__(self, value):
         super().__init__()
         if not torch.is_tensor(value):
             value = torch.tensor(value)
+        assert torch.is_tensor(
+            value
+        ), f"value must be PyTorch tensor, not {type(value)}"
         value = value.to(dtype=torch.float)
-        if trainable:
-            self.register_parameter("value", value)
-        else:
-            self.register_buffer("value", value)
-        self.keep_plaintext_value = False
+        self.register_buffer("value", value)
 
     def forward(self, input):
         return self.value
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         assert "value" in attributes, "No value for Constant specified."
-        result = Constant(attributes["value"])
-        result.keep_plaintext_value = True
-        return result
+        return Constant(attributes["value"])
 
     def encrypt(self, mode=True, src=0):
-        if mode == self.encrypted:
-            return self
         self.encrypted = mode
-
-        # perform encryption or decryption of value:
-        if mode and not crypten.is_encrypted_tensor(self.value):
-
-            # do not encrypt constant module values from ONNX inputs:
-            if self.keep_plaintext_value:
-                warnings.warn(
-                    "CrypTen has determined that constant is a shape value. "
-                    f"It is silently not encrypting constant {self.value} for that reason. "
-                    "Please check carefully that this is the correct behavior.",
-                    RuntimeWarning,
-                )  # TODO: Deprecate silent non-encryption behavior.
-                return self
-            self.value = crypten.cryptensor(self.value)
-        elif not mode and crypten.is_encrypted_tensor(self.value):
-            self.value = self.value.get_plain_text()
         return self
 
 
@@ -853,9 +910,11 @@ class ConstantOfShape(Module):
         super().__init__()
         if not torch.is_tensor(value):
             value = torch.tensor(value)
+        assert torch.is_tensor(
+            value
+        ), f"value must be PyTorch tensor, not {type(value)}"
         value = value.to(dtype=torch.float)
         self.register_buffer("value", value)
-        self.keep_plaintext_value = False
 
     def forward(self, size):
         if torch.is_tensor(size):
@@ -866,34 +925,14 @@ class ConstantOfShape(Module):
         return self.value.expand(*size)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         assert "value" in attributes, "No value for ConstantOfShape specified."
-        result = ConstantOfShape(attributes["value"])
-        result.keep_plaintext_value = True
-        return result
+        return ConstantOfShape(attributes["value"])
 
     def encrypt(self, mode=True, src=0):
-        if mode == self.encrypted:
-            return self
         self.encrypted = mode
-
-        # perform encryption or decryption of value:
-        if mode and not crypten.is_encrypted_tensor(self.value):
-
-            # do not encrypt constant module values from ONNX inputs:
-            if self.keep_plaintext_value:
-                warnings.warn(
-                    "CrypTen has determined that constant is a shape value. "
-                    f"It is silently not encrypting constant {self.value} for that reason. "
-                    "Please check carefully that this is the correct behavior.",
-                    RuntimeWarning,
-                )  # TODO: Deprecate silent non-encryption behavior.
-                return self
-            self.value = crypten.cryptensor(self.value)
-        elif not mode and crypten.is_encrypted_tensor(self.value):
-            self.value = self.value.get_plain_text()
         return self
 
 
@@ -908,7 +947,7 @@ class Add(Module):
         return input[0].add(input[1])
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Add()
 
 
@@ -923,7 +962,7 @@ class Sub(Module):
         return input[0].sub(input[1])
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Sub()
 
 
@@ -938,7 +977,7 @@ class Mul(Module):
         return input[0].mul(input[1])
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Mul()
 
 
@@ -953,7 +992,7 @@ class Div(Module):
         return input[0].div(input[1])
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Div()
 
 
@@ -964,10 +1003,14 @@ class Pow(Module):
 
     def forward(self, input):
         base, power = input
+        if torch.is_tensor(power) and power.nelement() == 1:
+            power = power.item()
+            if int(power) == power:  # try to convert power to integer if possible
+                power = int(power)
         return base.pow(power)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Pow()
 
 
@@ -980,7 +1023,7 @@ class Sqrt(Module):
         return input.sqrt()
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Sqrt()
 
 
@@ -993,7 +1036,7 @@ class Exp(Module):
         return input.exp()
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Exp()
 
 
@@ -1006,7 +1049,7 @@ class Erf(Module):
         return input.erf()
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Erf()
 
 
@@ -1039,7 +1082,7 @@ class Mean(_Reduce):
         super().__init__(dim, keepdim, "mean")
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         keepdim = _identify_bool_attributes_with_defaults(attributes, "keepdims", 1)
@@ -1059,7 +1102,7 @@ class Sum(_Reduce):
         super().__init__(dim, keepdim, "sum")
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         keepdim = _identify_bool_attributes_with_defaults(attributes, "keepdims", 1)
@@ -1091,23 +1134,14 @@ class Transpose(Module):
         return input.permute(self.perm)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
-        if parameters is None:
-            parameters = {}
         # TODO: ONNX specification says the permutation should be
         # reversed if not provided in the attributes.  Because we
         # don't have the input size here, we need figure out a
         # different way of supporting this, if we want to do that.
-        perm = attributes["perm"]
-        module = Transpose(perm)
-
-        # New Linear onnx export causes "weight" to be input into Tranpose
-        # as a parameter
-        if "weight" in parameters.keys():
-            module.register_parameter("weight", parameters["weight"])
-        return module
+        return Transpose(attributes["perm"])
 
 
 class Squeeze(Module):
@@ -1142,7 +1176,7 @@ class Squeeze(Module):
         return input.squeeze(self.dimension)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         dimension = attributes["axes"]
@@ -1178,7 +1212,7 @@ class Unsqueeze(Module):
         return input.unsqueeze(self.dimension)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         dimension = attributes["axes"]
@@ -1212,7 +1246,7 @@ class Slice(Module):
         return output
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Slice(
             attributes["starts"], attributes["ends"], axes=attributes.get("axes", None)
         )
@@ -1224,13 +1258,22 @@ class Expand(Module):
     """
 
     def forward(self, x):
+
+        # unpack inputs:
         input, shape = tuple(x)
         if torch.is_tensor(shape):
             shape = shape.long().tolist()
+
+        # broadcasting in ONNX is different from PyTorch when shape is 1:
+        for idx in range(len(shape)):
+            if shape[idx] == 1 and input.size(idx) > 1:
+                shape[idx] = input.size(idx)
+
+        # perform the expansion:
         return input.expand(shape)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Expand()
 
 
@@ -1249,7 +1292,7 @@ class Cast(Module):
         return x  # this is a no-op as MPCTensors do not know their dtype
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         dtype = sym_help._get_const(attributes["to"], "i", "dtype")
         return Cast(dtype=sym_help.scalar_type_to_pytorch_type[dtype])
 
@@ -1272,7 +1315,7 @@ class Range(Module):
         return torch.arange(start, end, step)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Range()
 
 
@@ -1288,7 +1331,7 @@ class Equal(Module):
         return x1.eq(x2)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Equal()
 
 
@@ -1303,7 +1346,7 @@ class Where(Module):
         return crypten.where(condition, x1, x2)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Where()
 
 
@@ -1330,7 +1373,7 @@ class Flatten(Module):
             return x.view(prod, -1)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         # axis : int (default is 1)
@@ -1362,7 +1405,7 @@ class Shape(Module):
         return size
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Shape()
 
 
@@ -1384,7 +1427,7 @@ class Concat(Module):
         return crypten.cat(input, self.dimension)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         dimension = attributes["axis"]
@@ -1426,7 +1469,7 @@ class Reshape(Module):
         return tensor.reshape(shape)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if "shape" in attributes:
             return Reshape(shape=attributes["shape"])
         return Reshape()
@@ -1459,7 +1502,7 @@ class Dropout(Module):
         return input.dropout(p=self.p, training=self.training)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         return Dropout(attributes["ratio"])
@@ -1488,7 +1531,7 @@ class DropoutNd(Module):
         return input._feature_dropout(p=self.p, training=self.training)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         return DropoutNd(attributes["ratio"])
@@ -1512,7 +1555,7 @@ class Dropout2d(DropoutNd):
     """
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         return Dropout2d(attributes["ratio"])
@@ -1536,7 +1579,7 @@ class Dropout3d(DropoutNd):
     """
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         return Dropout3d(attributes["ratio"])
@@ -1596,7 +1639,7 @@ class Gather(Module):
         return result
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         if "axis" not in attributes:
@@ -1623,7 +1666,7 @@ class _ConstantPad(Module):
         return input.pad(self.padding, value=self.value, mode="constant")
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
         return _ConstantPad(
@@ -1658,6 +1701,44 @@ class ConstantPad3d(_ConstantPad):
         super(ConstantPad3d, self).__init__(padding, value, 3, mode=mode)
 
 
+class Gemm(Module):
+    """
+    Module that performs a general matrix multiplication.
+
+    Unlike the `Linear` module, this module is stateless.
+    """
+
+    def __init__(self, alpha=1.0, beta=1.0, trans_a=False, trans_b=False):
+        super().__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.trans_a = trans_a
+        self.trans_b = trans_b
+
+    def forward(self, x):
+        a, b, c = tuple(x)
+        if self.trans_a:
+            a = a.t()
+        if self.trans_b:
+            b = b.t()
+        output = a.matmul(b).mul(self.alpha)
+        output = output.add(c.mul(self.beta))
+        return output
+
+    @staticmethod
+    def from_onnx(attributes=None):
+        if attributes is None:
+            attributes = {}
+        assert "alpha" in attributes, "attribute alpha missing"
+        assert "beta" in attributes, "attribute beta missing"
+        return Gemm(
+            alpha=attributes["alpha"],
+            beta=attributes["beta"],
+            trans_a=attributes.get("transA", False),
+            trans_b=attributes.get("transB", False),
+        )
+
+
 class Linear(Module):
     """
     Module that performs linear transformation.
@@ -1690,21 +1771,6 @@ class Linear(Module):
         if hasattr(self, "bias"):
             output = output.add(self.bias)
         return output
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if parameters is None:
-            parameters = {}
-
-        # create module:
-        in_features = parameters["weight"].size(1)
-        out_features = parameters["weight"].size(0)
-        module = Linear(in_features, out_features, bias=("bias" in parameters))
-
-        # set parameters:
-        for key, value in parameters.items():
-            module.set_parameter(key, value)
-        return module
 
 
 class MatMul(Module):
@@ -1754,18 +1820,86 @@ class MatMul(Module):
         return output
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        if parameters is None:
-            parameters = {}
-        # set parameters if they exist
-        if parameters:
-            assert len(parameters) == 1, "Can have maximum one parameter"
-            weight_param = list(parameters.keys())[0]
-            value = parameters[weight_param]
-            module = MatMul(weight=value)
+    def from_onnx(attributes=None):
+        return MatMul()
+
+
+class Conv(Module):
+    """
+    Module that performs convolution, following the ONNX specification of that
+    operation. Unlike other Conv modules, this module is stateless.
+    """
+
+    def __init__(self, stride, padding, dilation, groups=1):
+        super().__init__()
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.groups = groups
+
+    def forward(self, x):
+
+        # unpack inputs:
+        if len(x) == 2:
+            x, weight = x
+            bias = None
+        elif len(x) == 3:
+            x, weight, bias = x
         else:
-            module = MatMul()
-        return module
+            raise ValueError(f"Conv module must have 2 or 3 inputs, not {len(x)}")
+
+        # prepare inputs into convolution function:
+        dim = weight.dim() - 2
+        if dim < 1 or dim > 2:
+            raise ValueError(
+                f"Convolution on {dim}-dimensional input is not supported."
+            )
+        args = [weight]
+        kwargs = {
+            "stride": self.stride,
+            "padding": self.padding,
+            "dilation": self.dilation,
+            "groups": self.groups,
+        }
+
+        # identify correct convolution function to use:
+        if torch.is_tensor(x):
+            func = getattr(torch.nn.functional, f"conv{dim}d", None)
+            args = [x] + args + bias  # torch function takes different inputs
+        else:
+            func = getattr(x, f"conv{dim}d", None)
+
+        # perform the convolution:
+        x = func(*args, **kwargs)
+
+        # add the bias term if it is specified, and wasn;t already added:
+        if not torch.is_tensor(x) and bias is not None:
+            bias = bias.unsqueeze(0)
+            while bias.dim() < x.dim():
+                bias = bias.unsqueeze(-1)
+            x = x.add(bias)
+        return x
+
+    @staticmethod
+    def from_onnx(attributes=None):
+
+        # check attribute inputs:
+        if attributes is None:
+            attributes = {}
+        for attr in ["strides", "pads", "dilations"]:
+            assert attr in attributes, f"missing attribute {attr}"
+
+        # CrypTen and Torch use a single padding number per dimension:
+        padding = attributes["pads"]
+        padding = [padding[idx] for idx in range(0, len(padding), 2)]
+
+        # return module:
+        return Conv(
+            attributes["strides"],
+            padding,
+            attributes["dilations"],
+            groups=attributes.get("group", 1),
+        )
 
 
 # TODO: Eliminate copy-pasta by implementing _Conv parent class
@@ -1900,34 +2034,6 @@ class Conv1d(Module):
         if hasattr(self, "bias"):
             x = x.add(self.bias.unsqueeze(-1))
         return x
-
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-
-        # check parameters and attributes:
-        if parameters is None:
-            parameters = {}
-        if attributes is None:
-            attributes = {}
-
-        # initialize module:
-        in_channels = parameters["weight"].size(1)
-        out_channels = parameters["weight"].size(0)
-        module = Conv1d(
-            in_channels,
-            out_channels,
-            attributes["kernel_shape"][0],
-            stride=attributes["strides"][0],
-            padding=attributes["pads"][0],
-            dilation=attributes["dilations"][0],
-            groups=attributes["group"],
-            bias=("bias" in parameters),
-        )
-
-        # set parameters:
-        for key, value in parameters.items():
-            module.set_parameter(key, value)
-        return module
 
 
 class Conv2d(Module):
@@ -2067,39 +2173,6 @@ class Conv2d(Module):
             x = x.add(self.bias.unsqueeze(-1).unsqueeze(-1))
         return x
 
-    @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        # check parameters and attributes:
-        if parameters is None:
-            parameters = {}
-        if attributes is None:
-            attributes = {}
-        if "pads" not in attributes:
-            attributes["pads"] = [0, 0]
-        if "group" not in attributes:
-            attributes["group"] = 1
-        if isinstance(attributes["pads"], list) and len(attributes["pads"]) > 2:
-            attributes["pads"] = attributes["pads"][::2]
-
-        # initialize module:
-        in_channels = parameters["weight"].size(1)
-        out_channels = parameters["weight"].size(0)
-        module = Conv2d(
-            in_channels,
-            out_channels,
-            attributes["kernel_shape"],
-            stride=attributes["strides"],
-            padding=attributes["pads"],
-            dilation=attributes["dilations"],
-            groups=attributes["group"],
-            bias=("bias" in parameters),
-        )
-
-        # set parameters:
-        for key, value in parameters.items():
-            module.set_parameter(key, value)
-        return module
-
 
 class ReLU(Module):
     r"""
@@ -2117,7 +2190,7 @@ class ReLU(Module):
         return x.relu()
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return ReLU()
 
 
@@ -2174,7 +2247,7 @@ class Hardtanh(Module):
         return "min_val={}, max_val={}".format(self.min_val, self.max_val)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Hardtanh(min_val=attributes["min"], max_val=attributes["max"])
 
 
@@ -2220,7 +2293,7 @@ class Sigmoid(Module):
         return x.sigmoid()
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return Sigmoid()
 
 
@@ -2256,9 +2329,10 @@ class Softmax(Module):
         return input.softmax(self.dim)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
+        assert "axis" in attributes, "axis attribute missing"
         return Softmax(attributes["axis"])
 
 
@@ -2291,9 +2365,10 @@ class LogSoftmax(Module):
         return input.log_softmax(self.dim)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
+        assert "axis" in attributes, "axis attribute missing"
         return LogSoftmax(attributes["axis"])
 
 
@@ -2349,7 +2424,7 @@ class _Pool2d(Module):
             raise ValueError("Unknown pooling type: %s" % self.pool_type)
 
     @staticmethod
-    def from_onnx(pool_type, parameters=None, attributes=None):
+    def from_onnx(pool_type, attributes=None):
 
         # check attributes:
         if attributes is None:
@@ -2427,10 +2502,8 @@ class AvgPool2d(_Pool2d):
         )
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        return super(AvgPool2d, AvgPool2d).from_onnx(
-            "average", parameters=parameters, attributes=attributes
-        )
+    def from_onnx(attributes=None):
+        return super(AvgPool2d, AvgPool2d).from_onnx("average", attributes=attributes)
 
 
 class MaxPool2d(_Pool2d):
@@ -2444,10 +2517,8 @@ class MaxPool2d(_Pool2d):
         )
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
-        return super(MaxPool2d, MaxPool2d).from_onnx(
-            "max", parameters=parameters, attributes=attributes
-        )
+    def from_onnx(attributes=None):
+        return super(MaxPool2d, MaxPool2d).from_onnx("max", attributes=attributes)
 
 
 class AdaptiveAvgPool2d(Module):
@@ -2496,7 +2567,7 @@ class AdaptiveAvgPool2d(Module):
         return resized_input.avg_pool2d(*args, **kwargs)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if "shape" in attributes:
             return AdaptiveAvgPool2d(output_size=attributes["shape"])
         return AdaptiveAvgPool2d()
@@ -2549,7 +2620,7 @@ class AdaptiveMaxPool2d(Module):
         return resized_input.max_pool2d(*args, **kwargs)
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         if "shape" in attributes:
             return AdaptiveMaxPool2d(output_size=attributes["shape"])
         return AdaptiveMaxPool2d()
@@ -2576,13 +2647,80 @@ class GlobalAveragePool(Module):
         return result.div(input.nelement() / float(first_two_dims))
 
     @staticmethod
-    def from_onnx(parameters=None, attributes=None):
+    def from_onnx(attributes=None):
         return GlobalAveragePool()
+
+
+class BatchNormalization(Module):
+    """
+    Module that performs batch normalization following the ONNX specification.
+
+    Unlike the `BatchNorm1d`, `BatchNorm2d`, and `BatchNorm3d` classes, this
+    module is stateless. It takes `input`, `weight`, `bias`, `running_mean`, and
+    `running_var` tensors as input into `forward()`.
+    """
+
+    def __init__(self, eps=1e-05, momentum=0.1):
+        super().__init__()
+        self.eps = eps
+        self.momentum = momentum
+        self.inv_var = None
+        self._running_var_id = None
+
+    def forward(self, x):
+        assert len(x), f"BatchNormalization expects 5 inputs, not {len(x)}"
+        input, weight, bias, running_mean, running_var = x
+
+        # in inference mode, we may be able to re-use inverse variance:
+        if not self.train:
+            if id(running_var) != self._running_var_id:
+                self.inv_var = self._compute_inv_var(running_var)
+                self._running_var_id = id(running_var)
+        else:
+            self.inv_var = None
+            self._running_var_id = None
+
+        # perform batch normalization:
+        output = input.batchnorm(
+            weight,
+            bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            training=self.training,
+            eps=self.eps,
+            momentum=self.momentum,
+            inv_var=self.inv_var,
+        )
+        if self.training:  # NOTE: Training graph is different from evaluation graph.
+            return output, running_mean, running_var, None, None
+        else:
+            return output
+
+    def _compute_inv_var(self, running_var):
+        """Computes inverse variance."""
+        if isinstance(running_var, crypten.CrypTensor):
+            inv_var = running_var.add(self.eps).inv_sqrt()
+        else:
+            inv_var = running_var.add(self.eps).sqrt().reciprocal()
+        return inv_var
+
+    @staticmethod
+    def from_onnx(attributes=None):
+        if attributes is None:
+            attributes = {}
+        return BatchNormalization(
+            eps=attributes.get("epsilon", 1e-05),
+            momentum=1.0 - attributes.get("momentum", 0.9),
+        )  # NOTE: Role of momentum is reversed in ONNX specification.
 
 
 class _BatchNorm(Module):
     """
-    Module that performs batch normalization on 1D tensors.
+    Module that performs batch normalization on 1D tensors. It is used as the
+    base implementation for the `BatchNorm1d`, `BatchNorm2d`, and `BatchNorm3d`
+    classes.
+
+    Unlike the `BatchNormalization` class, this module is stateful.
     """
 
     def __init__(self, num_features, eps=1e-05, momentum=0.1):
