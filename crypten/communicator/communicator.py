@@ -117,28 +117,18 @@ class Communicator:
 
     def reset_communication_stats(self):
         """Resets communication statistics."""
-        raise NotImplementedError("reset_communication_stats is not implemented")
-
-    def print_communication_stats(self):
-        """Prints communication statistics."""
-        raise NotImplementedError("print_communication_stats is not implemented")
-
-    def _log_communication(self, nelement):
-        """Updates log of communication statistics."""
-        raise NotImplementedError("_log_communication is not implemented")
-
-    def reset_communication_stats(self):
-        """Resets communication statistics."""
         self.comm_rounds = 0
         self.comm_bytes = 0
         self.comm_time = 0
 
     def print_communication_stats(self):
         """Prints communication statistics."""
-        logging.info("====Communication Stats====")
-        logging.info("Rounds: {}".format(self.comm_rounds))
-        logging.info("Bytes : {}".format(self.comm_bytes))
-        logging.info("Comm time: {}".format(self.comm_time))
+        import crypten
+
+        crypten.log("====Communication Stats====")
+        crypten.log("Rounds: {}".format(self.comm_rounds))
+        crypten.log("Bytes : {}".format(self.comm_bytes))
+        crypten.log("Comm time: {}".format(self.comm_time))
 
     def _log_communication(self, nelement):
         """Updates log of communication statistics."""
@@ -201,9 +191,9 @@ def _logging(func):
             else:  # one tensor communicated
                 self._log_communication(args[0].nelement())
 
-            tic = timeit.timeit()
+            tic = timeit.default_timer()
             result = func(self, *args, **kwargs)
-            toc = timeit.timeit()
+            toc = timeit.default_timer()
 
             self._log_communication_time(toc - tic)
             return result
