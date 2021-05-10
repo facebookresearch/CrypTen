@@ -316,7 +316,7 @@ class TestOnnxConverter(object):
         op_types = ["Sum", "AveragePool", "Mean"]
         for op_type in op_types:
             node = Node(op_type)
-            operator = onnx_converter.FromOnnx._get_operator_class(node.op_type, {})
+            operator = onnx_converter._get_operator_class(node.op_type, {})
             self.assertTrue(
                 issubclass(operator, crypten.nn.Module),
                 f"{op_type} operator class {operator} is not a CrypTen module.",
@@ -326,18 +326,14 @@ class TestOnnxConverter(object):
         node = Node("Conv")
         for kernel_shape in kernel_shapes:
             attributes = {"kernel_shape": kernel_shape}
-            operator = onnx_converter.FromOnnx._get_operator_class(
-                node.op_type, attributes
-            )
+            operator = onnx_converter._get_operator_class(node.op_type, attributes)
 
         # check invalid op_types
-        invalid_types = [("Conv", {"kernel_shape": [3, 3, 3]}), ("Banana", {})]
+        invalid_types = [("Convolution", {"kernel_shape": [3, 3, 3]}), ("Banana", {})]
         for invalid_type, attr in invalid_types:
             with self.assertRaises(ValueError):
                 node = Node(invalid_type)
-                operator = onnx_converter.FromOnnx._get_operator_class(
-                    node.op_type, attr
-                )
+                operator = onnx_converter._get_operator_class(node.op_type, attr)
 
     def test_export_pytorch_model(self):
         """Tests loading of onnx model from a file"""

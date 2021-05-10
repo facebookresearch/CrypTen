@@ -141,6 +141,8 @@ class CrossEntropyLoss(_Loss):
     """  # noqa: W605
 
     def forward(self, x, y):
+        x = x.squeeze()
+        y = y.squeeze()
         assert x.size() == y.size(), "input and target must have the same size"
         return x.cross_entropy(y, skip_forward=self.skip_forward)
 
