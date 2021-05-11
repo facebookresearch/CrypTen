@@ -69,7 +69,7 @@ from .module import (
     Unsqueeze,
     Where,
 )
-from .onnx_converter import TF_AND_TF2ONNX, from_pytorch, from_onnx
+from .onnx_converter import TF_AND_TF2ONNX, from_pytorch, from_onnx, from_tensorflow
 
 
 # expose contents of package
@@ -106,6 +106,7 @@ __all__ = [
     "Flatten",
     "from_pytorch",
     "from_onnx",
+    "from_tensorflow",
     "Gather",
     "Gemm",
     "GlobalAveragePool",
