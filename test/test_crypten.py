@@ -109,6 +109,10 @@ class TestCrypten(MultiProcessTestCase):
                     )
                     self._check(encrypted_out, reference, "%s failed" % op)
 
+    def test_log(self):
+        """Tests crypten.log logging function."""
+        crypten.log("test")
+
     def test_rand(self):
         """Tests uniform random variable generation on [0, 1)"""
         for size in [(10,), (10, 10), (10, 10, 10)]:

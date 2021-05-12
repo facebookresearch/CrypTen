@@ -547,7 +547,7 @@ def log(*args, in_order=False, dst=0, **kwargs):
             multiple ranks to log from.
     """
     __multiprocess_print_helper(
-        logging.log, *args, in_order=in_order, dst=dst, **kwargs
+        logging.info, *args, in_order=in_order, dst=dst, **kwargs
     )
 
 
