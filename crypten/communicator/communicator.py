@@ -138,33 +138,6 @@ class Communicator:
     def _log_communication_time(self, comm_time):
         self.comm_time += comm_time
 
-    def get_generator(self, idx, device=None):
-        """
-        Get the corresponding RNG generator, as specified by its index and device
-
-        Args:
-            idx: The index of the generator, can be either 0 or 1
-            device: The device that the generator lives in.
-        """
-
-        if device is None:
-            device = torch.device("cpu")
-        else:
-            device = torch.device(device)
-
-        if idx not in {0, 1}:
-            raise RuntimeError(f"Generator idx {idx} out of bounds.")
-
-        generator_name = f"g{idx}_cuda" if device.type == "cuda" else f"g{idx}"
-        generator = getattr(self, generator_name, None)
-
-        if generator is None:
-            raise ValueError(
-                f"Generator {generator_name} is not initialized, call crypten.init() first"
-            )
-
-        return generator
-
 
 def _logging(func):
     """Decorator that performs logging of communication statistics."""

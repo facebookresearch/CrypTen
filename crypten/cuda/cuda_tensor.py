@@ -381,7 +381,7 @@ class CUDALongTensor(object):
     def __ifloordiv__(self, y):
         if isinstance(y, CUDALongTensor):
             y = y.tensor()
-        self._tensor //= y
+        self._tensor = torch.div(self._tensor, y, rounding_mode="trunc")
         return self
 
     def __idiv__(self, y):

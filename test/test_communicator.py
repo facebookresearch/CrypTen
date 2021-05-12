@@ -36,32 +36,6 @@ class TestCommunicator:
     This class tests all member functions of crypten package
     """
 
-    def test_przs_generators(self):
-        """Tests that przs generators are initialized independently"""
-        # Check that each party has two unique generators for g0 and g1
-        t0 = torch.randint(-(2 ** 63), 2 ** 63 - 1, (1,), generator=comm.get().g0)
-        t1 = torch.randint(-(2 ** 63), 2 ** 63 - 1, (1,), generator=comm.get().g1)
-        self.assertNotEqual(t0.item(), t1.item())
-
-        # Check that generators are sync'd as expected
-        for rank in range(self.world_size):
-            receiver = rank
-            sender = (rank + 1) % self.world_size
-            if self.rank == receiver:
-                sender_value = comm.get().recv_obj(sender)
-                receiver_value = comm.get().g1.initial_seed()
-                self.assertEqual(sender_value, receiver_value)
-            elif self.rank == sender:
-                sender_value = comm.get().g0.initial_seed()
-                comm.get().send_obj(sender_value, receiver)
-
-    def test_global_generator(self):
-        """Tests that global generator is generated properly"""
-        # Check that all seeds are the same
-        this_generator = comm.get().global_generator.initial_seed()
-        generator0 = comm.get().broadcast_obj(this_generator, src=0)
-        self.assertEqual(this_generator, generator0)
-
     def test_send_recv(self):
         tensor = torch.tensor([self.rank], dtype=torch.long)
 

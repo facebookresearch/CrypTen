@@ -12,6 +12,7 @@ import math
 import unittest
 
 import crypten
+import crypten.communicator as comm
 import torch
 import torch.nn.functional as F
 from crypten.common import serial
@@ -49,6 +50,44 @@ class TestCrypten(MultiProcessTestCase):
             logging.info("Result %s" % tensor)
             logging.info("Result = %s;\nreference = %s" % (tensor, reference))
         self.assertTrue(test_passed, msg=msg)
+
+    def test_przs_generators(self):
+        """Tests that przs generators are initialized independently"""
+        # Check that each party has two unique generators for next and prev seeds
+        for device in crypten.generators["prev"].keys():
+            t0 = torch.randint(
+                -(2 ** 63),
+                2 ** 63 - 1,
+                (1,),
+                generator=crypten.generators["prev"][device],
+            )
+            t1 = torch.randint(
+                -(2 ** 63),
+                2 ** 63 - 1,
+                (1,),
+                generator=crypten.generators["next"][device],
+            )
+            self.assertNotEqual(t0.item(), t1.item())
+
+            # Check that generators are sync'd as expected
+            for rank in range(self.world_size):
+                receiver = rank
+                sender = (rank + 1) % self.world_size
+                if self.rank == receiver:
+                    sender_value = comm.get().recv_obj(sender)
+                    receiver_value = crypten.generators["next"][device].initial_seed()
+                    self.assertEqual(sender_value, receiver_value)
+                elif self.rank == sender:
+                    sender_value = crypten.generators["prev"][device].initial_seed()
+                    comm.get().send_obj(sender_value, receiver)
+
+    def test_global_generator(self):
+        """Tests that global generator is generated properly"""
+        # Check that all seeds are the same
+        for device in crypten.generators["global"].keys():
+            this_generator = crypten.generators["global"][device].initial_seed()
+            generator0 = comm.get().broadcast_obj(this_generator, src=0)
+            self.assertEqual(this_generator, generator0)
 
     def test_cat_stack(self):
         """Tests concatenation and stacking of tensors"""
