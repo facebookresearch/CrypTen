@@ -110,13 +110,15 @@ class BinarySharedTensor(object):
         two numbers. A zero sharing is found by having each party xor their two
         numbers together.
         """
+        from crypten import generators
+
         tensor = BinarySharedTensor(src=SENTINEL)
-        current_share = generate_kbit_random_tensor(
-            *size, device=device, generator=comm.get().get_generator(0, device=device)
-        )
-        next_share = generate_kbit_random_tensor(
-            *size, device=device, generator=comm.get().get_generator(1, device=device)
-        )
+        if device is None:
+            device = torch.device("cpu")
+        g0 = generators["prev"][device]
+        g1 = generators["next"][device]
+        current_share = generate_kbit_random_tensor(*size, device=device, generator=g0)
+        next_share = generate_kbit_random_tensor(*size, device=device, generator=g1)
         tensor.share = current_share ^ next_share
         return tensor
 

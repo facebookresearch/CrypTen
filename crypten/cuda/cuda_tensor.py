@@ -182,6 +182,14 @@ class CUDALongTensor(object):
 
     @staticmethod
     def __patched_conv_ops(op, x, y, *args, **kwargs):
+
+        if "groups" in kwargs:
+            groups = kwargs["groups"]
+            assert groups == 1, (
+                f"more than one group is unsupported on GPU (groups = {groups})"
+            )
+            del kwargs["groups"]
+
         nb = CUDALongTensor.__N_BLOCKS
         nb2 = nb ** 2
 
