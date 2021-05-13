@@ -157,13 +157,15 @@ class ArithmeticSharedTensor(object):
         each number being held by exactly 2 parties. One of these parties adds
         this number while the other subtracts this number.
         """
+        from crypten import generators
+
         tensor = ArithmeticSharedTensor(src=SENTINEL)
-        current_share = generate_random_ring_element(
-            *size, generator=comm.get().get_generator(0, device=device), device=device
-        )
-        next_share = generate_random_ring_element(
-            *size, generator=comm.get().get_generator(1, device=device), device=device
-        )
+        if device is None:
+            device = torch.device("cpu")
+        g0 = generators["prev"][device]
+        g1 = generators["next"][device]
+        current_share = generate_random_ring_element(*size, generator=g0, device=device)
+        next_share = generate_random_ring_element(*size, generator=g1, device=device)
         tensor.share = current_share - next_share
         return tensor
 

@@ -31,8 +31,13 @@ def test_worldsize_func():
 
 @mpc.run_multiprocess(world_size=2)
 def test_generator_func():
-    t0 = torch.randint(-(2 ** 63), 2 ** 63 - 1, (1,), generator=comm.get().g0).item()
-    t1 = torch.randint(-(2 ** 63), 2 ** 63 - 1, (1,), generator=comm.get().g1).item()
+    device = torch.device("cpu")
+    t0 = torch.randint(
+        -(2 ** 63), 2 ** 63 - 1, (1,), generator=crypten.generators["prev"][device]
+    ).item()
+    t1 = torch.randint(
+        -(2 ** 63), 2 ** 63 - 1, (1,), generator=crypten.generators["next"][device]
+    ).item()
     return (t0, t1)
 
 
@@ -45,12 +50,13 @@ def test_with_args_kwargs_func(first, *args, a=None, **kwargs):
 @mpc.run_multiprocess(world_size=5)
 def test_rng_seeds_func():
     """Tests that rng seeds differ and coordinate where desired"""
-    local_seed = comm.get().local_generator.initial_seed()
-    global_seed = comm.get().global_generator.initial_seed()
-    next_seed = comm.get().g0.initial_seed()
-    prev_seed = comm.get().g1.initial_seed()
+    device = torch.device("cpu")
+    prev_seed = crypten.generators["prev"][device].initial_seed()
+    next_seed = crypten.generators["next"][device].initial_seed()
+    local_seed = crypten.generators["local"][device].initial_seed()
+    global_seed = crypten.generators["global"][device].initial_seed()
 
-    return (local_seed, global_seed, next_seed, prev_seed)
+    return (prev_seed, next_seed, local_seed, global_seed)
 
 
 class TestContext(unittest.TestCase):
@@ -109,10 +115,10 @@ class TestContext(unittest.TestCase):
     def test_rng_seeds(self):
         all_seeds = test_rng_seeds_func()
 
-        local_seeds = [seed[0] for seed in all_seeds]
-        global_seeds = [seed[1] for seed in all_seeds]
-        next_seeds = [seed[2] for seed in all_seeds]
-        prev_seeds = [seed[3] for seed in all_seeds]
+        prev_seeds = [seed[0] for seed in all_seeds]
+        next_seeds = [seed[1] for seed in all_seeds]
+        local_seeds = [seed[2] for seed in all_seeds]
+        global_seeds = [seed[3] for seed in all_seeds]
 
         # Test local seeds are all unique
         self.assertTrue(len(set(local_seeds)) == len(local_seeds))
