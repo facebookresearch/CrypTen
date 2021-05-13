@@ -115,7 +115,7 @@ class MultiProcessTestCase(unittest.TestCase):
     def __init__(self, methodName):
         super().__init__(methodName)
 
-        self.device = self.DEFAULT_DEVICE
+        self.device = torch.device(self.DEFAULT_DEVICE)
         self.rank = self.MAIN_PROCESS_RANK
         self.mp_context = multiprocessing.get_context("spawn")
 

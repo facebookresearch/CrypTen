@@ -166,6 +166,7 @@ class TTPClient:
             logging.info(f"TTPClient {comm.get().get_rank()} initialized")
 
         def _setup_generators(self):
+            """Setup RNG generator shared between each party (client) and the TTPServer"""
             seed = torch.empty(size=(), dtype=torch.long)
             dist.irecv(
                 tensor=seed, src=comm.get().get_ttp_rank(), group=self.ttp_group

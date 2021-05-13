@@ -31,6 +31,14 @@ no_grad = CrypTensor.no_grad
 enable_grad = CrypTensor.enable_grad
 set_grad_enabled = CrypTensor.set_grad_enabled
 
+# Setup RNG generators
+generators = {
+    "prev": {},
+    "next": {},
+    "local": {},
+    "global": {},
+}
+
 
 def init(party_name=None, device=None):
     """
@@ -61,7 +69,7 @@ def init(party_name=None, device=None):
 
     # Setup seeds for Random Number Generation
     if comm.get().get_rank() < comm.get().get_world_size():
-        _setup_prng(device=device)
+        _setup_prng()
         if crypten.mpc.ttp_required():
             crypten.mpc.provider.ttp_provider.TTPClient._init()
 
@@ -175,10 +183,16 @@ def is_encrypted_tensor(obj):
     return isinstance(obj, CrypTensor)
 
 
-def _setup_prng(device=None):
+def _setup_prng():
     """
     Generate shared random seeds to generate pseudo-random sharings of
-    zero. The random seeds are shared such that each process shares
+    zero. For each device, we generator four random seeds:
+        "prev"  - shared seed with the previous party
+        "next"  - shared seed with the next party
+        "local" - seed known only to the local party (separate from torch's default seed to prevent interference from torch.manual_seed)
+        "global"- seed shared by all parties
+
+    The "prev" and "next" random seeds are shared such that each process shares
     one seed with the previous rank process and one with the next rank.
     This allows for the generation of `n` random values, each known to
     exactly two of the `n` parties.
@@ -188,36 +202,38 @@ def _setup_prng(device=None):
     pseudo-random sharing of zero. (This can be done for binary
     sharing using bitwise-xor rather than addition / subtraction)
     """
-    # Initialize RNG Generators
-    comm.get().g0 = torch.Generator()
-    comm.get().g1 = torch.Generator()
+    global generators
 
-    device = "cuda" if device is None else device
-    device = torch.device(device)
-    assert device.type == "cuda", "Must be a GPU device"
+    # Initialize RNG Generators
+    for key in generators.keys():
+        generators[key][torch.device("cpu")] = torch.Generator(
+            device=torch.device("cpu")
+        )
 
     if torch.cuda.is_available():
-        comm.get().g0_cuda = torch.Generator(device=device)
-        comm.get().g1_cuda = torch.Generator(device=device)
+        cuda_device_names = ["cuda"]
+        for i in range(torch.cuda.device_count()):
+            cuda_device_names.append(f"cuda:{i}")
+        cuda_devices = [torch.device(name) for name in cuda_device_names]
+
+        for device in cuda_devices:
+            for key in generators.keys():
+                generators[key][device] = torch.Generator(device=device)
 
     # Generate random seeds for Generators
     # NOTE: Chosen seed can be any number, but we choose as a random 64-bit
-    # integer here so other parties cannot guess its value.
+    # integer here so other parties cannot guess its value. We use os.urandom(8)
+    # here to generate seeds so that forked processes do not generate the same seed.
 
-    # We sometimes get here from a forked process, which causes all parties
-    # to have the same RNG state. Reset the seed to make sure RNG streams
-    # are different in all the parties. We use numpy's random here since
-    # setting its seed to None will produce different seeds even from
-    # forked processes.
-
+    # Generate next / prev seeds.
     seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
     next_seed = torch.tensor(seed)
-    prev_seed = torch.tensor([0], dtype=torch.long)  # placeholder
+    prev_seed = torch.tensor([0], dtype=torch.long)  # populated by irecv
 
     # Send random seed to next party, receive random seed from prev party
     world_size = comm.get().get_world_size()
     rank = comm.get().get_rank()
-    if world_size >= 2:  # Otherwise sending seeds will segfault.
+    if world_size >= 2:  # Guard against segfaults when world_size == 1.
         next_rank = (rank + 1) % world_size
         prev_rank = (next_rank - 2) % world_size
 
@@ -229,22 +245,27 @@ def _setup_prng(device=None):
     else:
         prev_seed = next_seed
 
-    # Pair-wise shared generators - Each party shares one generator (g0)
-    # with previous party and one (g1) with next party
-    comm.get().g0.manual_seed(next_seed.item())
-    comm.get().g1.manual_seed(prev_seed.item())
+    prev_seed = prev_seed.item()
+    next_seed = next_seed.item()
 
-    # Create local generator - Each party has a separate local generator
-    local_seed = int.from_bytes(os.urandom(8), "big")
-    comm.get().local_generator = torch.Generator()
-    comm.get().local_generator.manual_seed(local_seed)
+    # Create local seed - Each party has a separate local generator
+    local_seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
 
     # Create global generator - All parties share one global generator for sync'd rng
     global_seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
     global_seed = torch.tensor(global_seed)
-    global_seed = comm.get().broadcast(global_seed, 0)
-    comm.get().global_generator = torch.Generator()
-    comm.get().global_generator.manual_seed(global_seed.item())
+    global_seed = comm.get().broadcast(global_seed, 0).item()
+
+    # Create one of each seed per party
+    # Note: This is configured to coordinate seeds across cuda devices
+    # so that we can one party per gpu. If we want to support configurations
+    # where each party runs on multiple gpu's across machines, we will
+    # need to modify this.
+    for device in generators["prev"].keys():
+        generators["prev"][device].manual_seed(prev_seed)
+        generators["next"][device].manual_seed(next_seed)
+        generators["local"][device].manual_seed(local_seed)
+        generators["global"][device].manual_seed(global_seed)
 
 
 def load_from_party(
@@ -254,7 +275,7 @@ def load_from_party(
     model_class=None,
     src=0,
     load_closure=torch.load,
-    **kwargs
+    **kwargs,
 ):
     """
     Loads an object saved with `torch.save()` or `crypten.save_from_party()`.
@@ -545,6 +566,7 @@ __all__ = [
     "enable_grad",
     "set_grad_enabled",
     "debug",
+    "generators",
     "init",
     "init_thread",
     "log",

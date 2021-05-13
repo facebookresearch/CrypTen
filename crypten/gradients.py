@@ -485,7 +485,8 @@ class AutogradDropout(AutogradFunction):
                 return input.clone()
 
         # training mode:
-        random_tensor = torch.rand(input.size(), generator=comm.get().global_generator)
+        generator = crypten.generators["global"][input.device]
+        random_tensor = torch.rand(input.size(), generator=generator)
         boolean_mask = (random_tensor > p).to(dtype=torch.float)
         if inplace:
             result = input.mul_(boolean_mask.div(1.0 - p))
@@ -521,9 +522,8 @@ class AutogradFeatureDropout(AutogradFunction):
 
         # training mode:
         feature_dropout_size = input.size()[0:2]
-        random_tensor = torch.rand(
-            feature_dropout_size, generator=comm.get().global_generator
-        )
+        generator = crypten.generators["global"][input.device]
+        random_tensor = torch.rand(feature_dropout_size, generator=generator)
         boolean_mask = (random_tensor > p).to(dtype=torch.float)
         for i in range(2, input.dim()):
             boolean_mask = boolean_mask.unsqueeze(i)

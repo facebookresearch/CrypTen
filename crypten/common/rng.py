@@ -4,7 +4,7 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-import crypten.communicator as comm
+import crypten
 import torch
 from crypten.cuda import CUDALongTensor
 
@@ -12,7 +12,10 @@ from crypten.cuda import CUDALongTensor
 def generate_random_ring_element(size, ring_size=(2 ** 64), generator=None, **kwargs):
     """Helper function to generate a random number from a signed ring"""
     if generator is None:
-        generator = comm.get().local_generator
+        device = kwargs.get("device", torch.device("cpu"))
+        device = torch.device("cpu") if device is None else device
+        device = torch.device(device) if isinstance(device, str) else device
+        generator = crypten.generators["local"][device]
     # TODO (brianknott): Check whether this RNG contains the full range we want.
     rand_element = torch.randint(
         -(ring_size // 2),
@@ -29,12 +32,15 @@ def generate_random_ring_element(size, ring_size=(2 ** 64), generator=None, **kw
 
 def generate_kbit_random_tensor(size, bitlength=None, generator=None, **kwargs):
     """Helper function to generate a random k-bit number"""
-    if generator is None:
-        generator = comm.get().local_generator
     if bitlength is None:
         bitlength = torch.iinfo(torch.long).bits
     if bitlength == 64:
         return generate_random_ring_element(size, generator=generator, **kwargs)
+    if generator is None:
+        device = kwargs.get("device", torch.device("cpu"))
+        device = torch.device("cpu") if device is None else device
+        device = torch.device(device) if isinstance(device, str) else device
+        generator = crypten.generators["local"][device]
     rand_tensor = torch.randint(
         0, 2 ** bitlength, size, generator=generator, dtype=torch.long, **kwargs
     )
