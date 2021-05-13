@@ -364,6 +364,13 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
         self.assertEqual(comm.get().comm_rounds, 0)
         self.assertEqual(comm.get().comm_bytes, 0)
 
+        # test retrieving communication stats:
+        stats = comm.get().get_communication_stats()
+        self.assertIsInstance(stats, dict)
+        for key in ["rounds", "bytes", "time"]:
+            self.assertIn(key, stats)
+            self.assertEqual(stats[key], 0)
+
         # Test verbosity False setting and no logging
         comm.get().set_verbosity(False)
         tensor = get_random_test_tensor(size=size, is_float=False)
