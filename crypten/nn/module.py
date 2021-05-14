@@ -881,8 +881,7 @@ class Constant(Module):
         assert torch.is_tensor(
             value
         ), f"value must be PyTorch tensor, not {type(value)}"
-        value = value.to(dtype=torch.float)
-        self.register_buffer("value", value)
+        self.value = value.to(dtype=torch.float)
 
     def forward(self, input):
         return self.value
@@ -913,8 +912,7 @@ class ConstantOfShape(Module):
         assert torch.is_tensor(
             value
         ), f"value must be PyTorch tensor, not {type(value)}"
-        value = value.to(dtype=torch.float)
-        self.register_buffer("value", value)
+        self.value = value.to(dtype=torch.float)
 
     def forward(self, size):
         if torch.is_tensor(size):
