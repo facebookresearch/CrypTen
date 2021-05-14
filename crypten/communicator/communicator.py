@@ -127,8 +127,16 @@ class Communicator:
 
         crypten.log("====Communication Stats====")
         crypten.log("Rounds: {}".format(self.comm_rounds))
-        crypten.log("Bytes : {}".format(self.comm_bytes))
-        crypten.log("Comm time: {}".format(self.comm_time))
+        crypten.log("Bytes: {}".format(self.comm_bytes))
+        crypten.log("Communication time: {}".format(self.comm_time))
+
+    def get_communication_stats(self):
+        """Return communication statistics."""
+        return {
+            "rounds": self.comm_rounds,
+            "bytes": self.comm_bytes,
+            "time": self.comm_time,
+        }
 
     def _log_communication(self, nelement):
         """Updates log of communication statistics."""
