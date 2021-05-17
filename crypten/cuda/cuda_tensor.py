@@ -7,6 +7,7 @@
 
 import functools
 import math
+import operator
 
 import torch
 
@@ -192,7 +193,11 @@ class CUDALongTensor(object):
             ), f"more than one group is unsupported on GPU (groups = {groups})"
             del kwargs["groups"]
 
-        nb = CUDALongTensor.__DEFAULT_NBLOCKS
+        bs, c, *img = x.size()
+        c_out, c_in, *ks = y.size()
+        kernel_elements = functools.reduce(operator.mul, ks)
+
+        nb = 3 if kernel_elements < 256 else 4
         nb2 = nb ** 2
 
         x_encoded = CUDALongTensor.__encode_as_fp64(x, nb).data
@@ -201,9 +206,6 @@ class CUDALongTensor(object):
         repeat_idx = [1] * (x_encoded.dim() - 1)
         x_enc_span = x_encoded.repeat(nb, *repeat_idx)
         y_enc_span = torch.repeat_interleave(y_encoded, repeats=nb, dim=0)
-
-        bs, c, *img = x.size()
-        c_out, c_in, *ks = y.size()
 
         x_enc_span = x_enc_span.transpose_(0, 1).reshape(bs, nb2 * c, *img)
         y_enc_span = y_enc_span.reshape(nb2 * c_out, c_in, *ks)
