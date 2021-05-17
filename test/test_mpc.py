@@ -162,7 +162,6 @@ class TestMPC(object):
             (5, 3, 32, 32),
         ]
         for size in sizes:
-
             # encryption and decryption without source:
             reference = self._get_random_test_tensor(size=size, is_float=True)
             encrypted_tensor = MPCTensor(reference)
@@ -171,6 +170,17 @@ class TestMPC(object):
                 self._check(
                     encrypted_tensor, reference, "en/decryption failed", dst=dst
                 )
+
+            # test creation via new() function:
+            encrypted_tensor2 = encrypted_tensor.new(reference)
+            self.assertIsInstance(
+                encrypted_tensor2, MPCTensor, "new() returns incorrect type"
+            )
+            self._check(encrypted_tensor2, reference, "en/decryption failed")
+
+            # TODO: Implement broadcast_size on GPU
+            if self.device.type == "cuda":
+                continue
 
             # encryption and decryption with source:
             for src in range(self.world_size):
@@ -183,13 +193,6 @@ class TestMPC(object):
                         "en/decryption with broadcast_size failed",
                         dst=dst,
                     )
-
-            # test creation via new() function:
-            encrypted_tensor2 = encrypted_tensor.new(reference)
-            self.assertIsInstance(
-                encrypted_tensor2, MPCTensor, "new() returns incorrect type"
-            )
-            self._check(encrypted_tensor2, reference, "en/decryption failed")
 
         # MPCTensors cannot be initialized with None:
         with self.assertRaises(ValueError):
@@ -481,6 +484,10 @@ class TestMPC(object):
                     dilations,
                     groupings,
                 ):
+                    # group convolution is not supported on GPU
+                    if self.device.type == "cuda" and groups > 1:
+                        continue
+
                     input_size = (batches, in_channels * groups, signal_size)
                     signal = self._get_random_test_tensor(
                         size=input_size, is_float=True
@@ -553,6 +560,10 @@ class TestMPC(object):
                     dilations,
                     groupings,
                 ):
+                    # group convolution is not supported on GPU
+                    if self.device.type == "cuda" and groups > 1:
+                        continue
+
                     # sample input:
                     input_size = (batches, in_channels * groups, *image_size)
                     input = self._get_random_test_tensor(size=input_size, is_float=True)
@@ -608,7 +619,8 @@ class TestMPC(object):
 
             # Populate tensor with kernel indices
             arange_size = matrix_size[-2:]
-            index_values = torch.arange(arange_size.numel()).view(arange_size)
+            index_values = torch.arange(arange_size.numel(), device=indices.device)
+            index_values = index_values.view(arange_size)
             index_values = index_values.expand(matrix_size)
 
             # Ensure encrypted indices are correct

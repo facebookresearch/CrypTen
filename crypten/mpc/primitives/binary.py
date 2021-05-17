@@ -115,6 +115,8 @@ class BinarySharedTensor(object):
         tensor = BinarySharedTensor(src=SENTINEL)
         if device is None:
             device = torch.device("cpu")
+        elif isinstance(device, str):
+            device = torch.device(device)
         g0 = generators["prev"][device]
         g1 = generators["next"][device]
         current_share = generate_kbit_random_tensor(*size, device=device, generator=g0)

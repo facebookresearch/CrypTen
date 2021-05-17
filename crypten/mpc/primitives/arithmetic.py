@@ -162,6 +162,8 @@ class ArithmeticSharedTensor(object):
         tensor = ArithmeticSharedTensor(src=SENTINEL)
         if device is None:
             device = torch.device("cpu")
+        elif isinstance(device, str):
+            device = torch.device(device)
         g0 = generators["prev"][device]
         g1 = generators["next"][device]
         current_share = generate_random_ring_element(*size, generator=g0, device=device)

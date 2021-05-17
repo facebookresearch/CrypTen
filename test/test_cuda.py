@@ -87,6 +87,9 @@ class TestCUDA(TestMPC):
             (5,),
             (5, 5, 5, 5),
             (5, 5),
+            # Check large interleaves for 4x16-bit process
+            (1, 256),
+            (1, 1024),
         ]
         other_sizes = [
             (5,),
@@ -97,6 +100,8 @@ class TestCUDA(TestMPC):
             (5, 5, 5),
             (5, 5),
             (5, 5, 5, 5),
+            (256, 1),
+            (1024, 1),
         ]
 
         for x_size, y_size in zip(input_sizes, other_sizes):
@@ -247,9 +252,11 @@ class TestCUDA(TestMPC):
         b_cuda = CUDALongTensor(b)
 
         for op in funcs:
-            reference = getattr(torch, op)(a, b)
-            result = getattr(torch, op)(a_cuda, b_cuda)
-            result2 = getattr(a_cuda, op)(b_cuda)
+            kwargs = {"rounding_mode": "trunc"} if op == "div" else {}
+
+            reference = getattr(torch, op)(a, b, **kwargs)
+            result = getattr(torch, op)(a_cuda, b_cuda, **kwargs)
+            result2 = getattr(a_cuda, op)(b_cuda, **kwargs)
 
             self.assertTrue(type(result), CUDALongTensor)
             self._check_int(
@@ -548,7 +555,7 @@ class TestCUDA(TestMPC):
 class TestTFP(MultiProcessTestCase, TestCUDA):
     def __init__(self, methodName):
         super().__init__(methodName)
-        self.device = "cuda"
+        self.device = torch.device("cuda")
 
     def setUp(self):
         self._original_provider = crypten.mpc.get_default_provider()
@@ -565,7 +572,7 @@ class TestTFP(MultiProcessTestCase, TestCUDA):
 class TestTTP(MultiProcessTestCase, TestCUDA):
     def __init__(self, methodName):
         super().__init__(methodName)
-        self.device = "cuda"
+        self.device = torch.device("cuda")
 
     def setUp(self):
         self._original_provider = crypten.mpc.get_default_provider()

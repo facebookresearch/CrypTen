@@ -196,26 +196,34 @@ def adaptive_pool2d_helper(input, output_size, reduction="mean"):
 
     # Repeats a row `ind` of `tensor` at dimension `dim` for overlapping kernels
     def repeat_row(tensor, dim, ind):
-        x = tensor.index_select(dim, torch.arange(ind))
-        y = tensor.index_select(dim, torch.arange(ind, tensor.size(dim)))
-        repeated_row = tensor.index_select(dim, torch.tensor(ind - 1))
+        device = tensor.device
+        x = tensor.index_select(dim, torch.arange(ind, device=device))
+        y = tensor.index_select(dim, torch.arange(ind, tensor.size(dim), device=device))
+        repeated_row = tensor.index_select(dim, torch.tensor(ind - 1, device=device))
         return crypten.cat([x, repeated_row, y], dim=dim)
 
     # Extends a row where a kernel is smaller than the maximum kernel size
     def extend_row(tensor, dim, start_ind, end_ind):
+        device = tensor.device
         if reduction == "mean":
-            extended_value = tensor.index_select(dim, torch.arange(start_ind, end_ind))
+            extended_value = tensor.index_select(
+                dim, torch.arange(start_ind, end_ind, device=device)
+            )
             extended_value = extended_value.mean(dim, keepdim=True)
         elif reduction == "max":
-            extended_value = tensor.index_select(dim, torch.tensor(start_ind))
+            extended_value = tensor.index_select(
+                dim, torch.tensor(start_ind, device=device)
+            )
         else:
             raise ValueError(f"Invalid reduction {reduction} for adaptive pooling.")
 
         if start_ind == 0:
             return crypten.cat([extended_value, tensor], dim=dim)
 
-        x = tensor.index_select(dim, torch.arange(start_ind))
-        y = tensor.index_select(dim, torch.arange(start_ind, tensor.size(dim)))
+        x = tensor.index_select(dim, torch.arange(start_ind, device=device))
+        y = tensor.index_select(
+            dim, torch.arange(start_ind, tensor.size(dim), device=device)
+        )
         return crypten.cat([x, extended_value, y], dim=dim)
 
     strides = []
