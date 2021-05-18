@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import collections
 import itertools
 import logging
 import unittest
@@ -136,13 +137,18 @@ class TestCUDA(TestMPC):
         self._patched_conv1d(16, 5)
         self._conv1d(16, 5)
 
-    def _patched_conv1d(self, signal_size, in_channels):
+    def test_conv1d_large_filter(self):
+        self._patched_conv1d(1024, 1, kernel_sizes=[256, 512])
+
+    def _patched_conv1d(self, signal_size, in_channels, kernel_sizes=None):
         """Test convolution of torch.cuda.LongTensor with cuda_patches technique."""
         nbatches = [1, 3]
-        kernel_sizes = [1, 2, 3]
         ochannels = [1, 3, 6]
         paddings = [0, 1]
         strides = [1, 2]
+
+        if kernel_sizes is None:
+            kernel_sizes = [1, 2, 3]
 
         for func_name in ["conv1d", "conv_transpose1d"]:
             for (
@@ -195,24 +201,41 @@ class TestCUDA(TestMPC):
         self._patched_conv2d((16, 7), 5)
         self._conv2d((16, 7), 5)
 
+    def test_conv2d_large_kernel(self):
+        self.nbatches = [1]
+        self.ochannels = [1]
+        self.paddings = [0]
+        self.strides = [(64, 64)]
+        self.kernel_sizes = [(64, 64)]
+        self._patched_conv2d((64, 64), 1)
+
     def _patched_conv2d(self, image_size, in_channels):
         """Test convolution of torch.cuda.LongTensor with cuda_patches technique."""
-        nbatches = [1, 3]
-        kernel_sizes = [(1, 1), (2, 2), (2, 3)]
-        ochannels = [1, 3, 6]
-        paddings = [0, 1, (0, 1)]
-        strides = [1, 2, (1, 2)]
+        kwargs = collections.OrderedDict()
+        kwargs["nbatches"] = [1, 3]
+        kwargs["kernel_sizes"] = [(1, 1), (2, 2), (2, 3)]
+        kwargs["ochannels"] = [1, 3, 6]
+        kwargs["paddings"] = [0, 1, (0, 1)]
+        kwargs["strides"] = [1, 2, (1, 2)]
 
-        for func_name in ["conv2d"]:
+        for attribute in [
+            "nbatches",
+            "ochannels",
+            "paddings",
+            "strides",
+            "kernel_sizes",
+        ]:
+            if hasattr(self, attribute):
+                kwargs[attribute] = getattr(self, attribute)
+
+        for func_name in ["conv2d", "conv_transpose2d"]:
             for (
                 batches,
                 kernel_size,
                 out_channels,
                 padding,
                 stride,
-            ) in itertools.product(
-                nbatches, kernel_sizes, ochannels, paddings, strides
-            ):
+            ) in itertools.product(*[v for _, v in kwargs.items()]):
 
                 # sample input:
                 input_size = (batches, in_channels, *image_size)
