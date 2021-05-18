@@ -73,9 +73,7 @@ class TestOnnxConverter(object):
         if self.rank >= 0:
             crypten.init()
 
-    @unittest.skipIf(
-        not crypten.nn.TF_AND_TF2ONNX, "Tensorflow and tf2onnx not installed"
-    )
+    @unittest.skip("CrypTen no longer supports from_tensorflow")
     def test_tensorflow_model_conversion(self):
         import tensorflow as tf
         import tf2onnx
