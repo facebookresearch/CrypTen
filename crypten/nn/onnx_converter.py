@@ -61,6 +61,10 @@ def from_tensorflow(tensorflow_graph_def, inputs, outputs):
         `inputs`: input nodes
         `outputs`: output nodes
     """
+    raise DeprecationWarning(
+        "crypten.nn.from_tensorflow is deprecated. ",
+        "CrypTen will no longer support model conversion from TensorFlow.",
+    )
     # Exporting model to ONNX graph
     if not TF_AND_TF2ONNX:
         raise ImportError("Please install both tensorflow and tf2onnx packages")
