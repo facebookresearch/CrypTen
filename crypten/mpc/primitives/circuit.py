@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import functools
 import math
 
 import torch
@@ -15,23 +16,32 @@ import torch
 # [1] -> 001000100010....0010  =                     0010 x 16
 # [2] -> 000010000000....0010  =                 00001000 x  8
 # [n] -> [2^n 0s, 1, (2^n -1) 0s] x (32 / (2^n))
-__MASKS = torch.tensor(
-    [
-        6148914691236517205,
-        2459565876494606882,
-        578721382704613384,
-        36029346783166592,
-        140737488388096,
-        2147483648,
-    ],
-    dtype=torch.long,
-)
+@functools.lru_cache(maxsize=None)
+def __MASKS(device):
+    return torch.tensor(
+        [
+            6148914691236517205,
+            2459565876494606882,
+            578721382704613384,
+            36029346783166592,
+            140737488388096,
+            2147483648,
+        ],
+        dtype=torch.long,
+        device=device,
+    )
 
 # Cache other masks and constants to skip computation during each call
 __BITS = torch.iinfo(torch.long).bits
 __LOG_BITS = int(math.log2(torch.iinfo(torch.long).bits))
-__MULTIPLIERS = torch.tensor([(1 << (2 ** iter + 1)) - 2 for iter in range(__LOG_BITS)])
-__OUT_MASKS = __MASKS * __MULTIPLIERS
+
+@functools.lru_cache(maxsize=None)
+def __MULTIPLIERS(device):
+    return torch.tensor([(1 << (2 ** iter + 1)) - 2 for iter in range(__LOG_BITS)], device=device)
+
+@functools.lru_cache(maxsize=None)
+def __OUT_MASKS(device):
+    return __MASKS(device) * __MULTIPLIERS(device)
 
 
 def __SPK_circuit(S, P):
@@ -55,10 +65,10 @@ def __SPK_circuit(S, P):
     # fmt: off
     # Tree reduction circuit
     for i in range(__LOG_BITS):
-        in_mask = __MASKS[i].to(SP.device)                   # Start of arrows
-        out_mask = __OUT_MASKS[i].to(SP[1].device)           # End of arrows
-        not_out_mask = out_mask ^ -1                         # Not (end of arrows)
-        multiplier = __MULTIPLIERS[i].to(SP.device)
+        in_mask = __MASKS(SP.device)[i]             # Start of arrows
+        out_mask = __OUT_MASKS(SP[1].device)[i]     # End of arrows
+        not_out_mask = out_mask ^ -1                # Not (end of arrows)
+        multiplier = __MULTIPLIERS(SP.device)[i]
 
         # Set up S0, S1, P0, and P1
         P0 = SP[1] & out_mask               # Mask P0 from P
