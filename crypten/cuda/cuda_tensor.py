@@ -62,10 +62,12 @@ class CUDALongTensor(object):
             data (Tensor, array_like, or CUDALongTensor): Initial data for CUDALongTensor.
             device (torch.device): The desired device of CUDALongTensor. Must be a cuda device.
         """
-        device = "cuda" if device is None else device
-        assert device.startswith(
-            "cuda"
-        ), "Cannot specify a non-cuda device for CUDALongTensor"
+        if device is None:
+            device = "cuda" if (data is None or not data.is_cuda) else data.device
+        else:
+            assert device.startswith(
+                "cuda"
+            ), "cannot specify a non-cuda device for CUDALongTensor"
 
         self._tensor = None
         if data is None:

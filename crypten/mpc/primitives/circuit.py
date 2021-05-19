@@ -55,14 +55,15 @@ def __SPK_circuit(S, P):
     # fmt: off
     # Tree reduction circuit
     for i in range(__LOG_BITS):
-        in_mask = __MASKS[i]                # Start of arrows
-        out_mask = __OUT_MASKS[i]           # End of arrows
-        not_out_mask = out_mask ^ -1        # Not (end of arrows)
+        in_mask = __MASKS[i].to(SP.device)                   # Start of arrows
+        out_mask = __OUT_MASKS[i].to(SP[1].device)           # End of arrows
+        not_out_mask = out_mask ^ -1                         # Not (end of arrows)
+        multiplier = __MULTIPLIERS[i].to(SP.device)
 
         # Set up S0, S1, P0, and P1
         P0 = SP[1] & out_mask               # Mask P0 from P
         S1P1 = SP & in_mask                 # Mask S1P1 from SP
-        S1P1._tensor *= __MULTIPLIERS[i]    # Fan out S1P1 along arrows
+        S1P1._tensor *= multiplier          # Fan out S1P1 along arrows
 
         # Update S and P
         update = P0 & S1P1                  # S0 ^= P0 & S1, P0 = P0 & P1
