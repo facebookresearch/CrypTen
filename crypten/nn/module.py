@@ -682,6 +682,26 @@ class Graph(Container):
                     return key
             return None
 
+        def _clear_unused_values():
+            """Clear values that are no longer needed (to save memory)."""
+            remove_keys = []
+            for remove_key in values.keys():
+                can_be_removed = True
+
+                # we cannot remove a value if it is still needed:
+                for key, value_list in self._graph.items():
+                    if not computed[key] and remove_key in value_list:
+                        can_be_removed = False
+                        break
+                if can_be_removed:
+                    remove_keys.append(remove_key)
+
+            # remove all values we no longer need:
+            for remove_key in remove_keys:
+                del values[remove_key]
+            # NOTE: We maintain inputs_available[remove_key] as True to
+            # prevent re-computation of the node.
+
         # perform forward pass:
         for input_name in self.input_names:
             _mark_as_computed(input_name)
@@ -722,6 +742,9 @@ class Graph(Container):
 
             # find next node to compute:
             node_to_compute = _find_computable_node()
+
+            # clean up values we no longer need:
+            _clear_unused_values()
 
         # this should never happen:
         raise ValueError("nn.Graph.forward() failed. Is graph unconnected?")
