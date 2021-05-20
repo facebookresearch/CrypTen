@@ -10,6 +10,7 @@ from contextlib import contextmanager
 import torch
 
 from .common import approximations
+from .debug import validation_mode, validate_correctness
 from .gradients import AutogradContext, get_grad_fn
 
 
@@ -256,8 +257,16 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         Makes sure that any function call on the tensor gets recorded in order
         to facilitate gradient computation using autograd.
         """
-        if name in CrypTensor.PROTECTED_ATTRIBUTES or not CrypTensor.AUTOGRAD_ENABLED:
+        if name in CrypTensor.PROTECTED_ATTRIBUTES:
             return object.__getattribute__(self, name)
+        elif not CrypTensor.AUTOGRAD_ENABLED:
+            function = object.__getattribute__(self, name)
+
+            # Validate if requested
+            if validation_mode():
+                return validate_correctness(self, function, name)
+
+            return function
         else:
             # replace Python built-in methods with corresponding method name:
             name = CrypTensor.PYTHON_BUILTIN.get(name, name)
@@ -318,6 +327,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                     result = result[0]
                 return result
 
+            if validation_mode():
+                return validate_correctness(self, autograd_forward, name)
             return autograd_forward
 
     # below are all the functions that subclasses of CrypTensor should implement:

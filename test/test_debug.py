@@ -6,8 +6,8 @@
 # LICENSE file in the root directory of this source tree.
 
 import crypten
-from crypten.debug import configure_logging, pdb, set_debug_mode
-from test.multiprocess_test_case import MultiProcessTestCase
+from crypten.debug import configure_logging, pdb, set_debug_mode, set_validation_mode
+from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 from torch import tensor
 
 
@@ -20,6 +20,7 @@ class TestDebug(MultiProcessTestCase):
 
         # Testing debug mode
         set_debug_mode()
+        set_validation_mode()
 
     def testLogging(self):
         configure_logging()
@@ -33,3 +34,23 @@ class TestDebug(MultiProcessTestCase):
         encrypted_tensor.share = tensor(2 ** 63 - 1)
         with self.assertRaises(ValueError):
             encrypted_tensor.div(2)
+
+    def test_correctness_validation(self):
+        for grad_enabled in [False, True]:
+            crypten.set_grad_enabled(grad_enabled)
+
+            tensor = get_random_test_tensor(size=(2, 2), is_float=True)
+            encrypted_tensor = crypten.cryptensor(tensor)
+
+            # Ensure correct validation works properly
+            encrypted_tensor.add(1)
+
+            # Ensure incorrect validation works properly for size
+            encrypted_tensor.add = lambda y: crypten.cryptensor(0)
+            with self.assertRaises(ValueError):
+                encrypted_tensor.add(1)
+
+            # Ensure incorrect validation works properly for value
+            encrypted_tensor.add = lambda y: crypten.cryptensor(tensor)
+            with self.assertRaises(ValueError):
+                encrypted_tensor.add(1)
