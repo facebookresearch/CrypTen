@@ -146,7 +146,9 @@ class Communicator:
 
 def _logging(func):
     """Decorator that performs logging of communication statistics."""
+    from functools import wraps
 
+    @wraps(func)
     def logging_wrapper(self, *args, **kwargs):
 
         # TODO: Replace this
