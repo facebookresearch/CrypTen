@@ -16,13 +16,10 @@ from .binary import BinarySharedTensor
 
 
 def _A2B(arithmetic_tensor):
-    binary_tensor = BinarySharedTensor.stack(
-        [
-            BinarySharedTensor(arithmetic_tensor.share, src=i)
-            for i in range(comm.get().get_world_size())
-        ]
-    )
-    binary_tensor = binary_tensor.sum(dim=0)
+    binary_tensor = None
+    for i in range(comm.get().get_world_size()):
+        binary_share = BinarySharedTensor(arithmetic_tensor.share, src=i)
+        binary_tensor = binary_share if i == 0 else binary_tensor + binary_share
     binary_tensor.encoder = arithmetic_tensor.encoder
     return binary_tensor
 
