@@ -15,7 +15,7 @@ import warnings
 
 import crypten.common  # noqa: F401
 import crypten.communicator as comm
-import crypten.models  # noqa: F401
+# import crypten.models  # noqa: F401
 import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
 import crypten.optim  # noqa: F401
