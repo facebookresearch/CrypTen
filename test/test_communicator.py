@@ -342,7 +342,7 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
         for size in sizes:
             for op in ops:
                 tensor = get_random_test_tensor(size=size, is_float=False)
-                bytes = tensor.numel() * 8
+                nbytes = tensor.numel() * 8
                 crypten.reset_communication_stats()
 
                 # Setup op-specific kwargs / inputs
@@ -357,7 +357,11 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
 
                 tensor = getattr(comm.get(), op)(tensor, *args)
                 self.assertEqual(comm.get().comm_rounds, 1)
-                self.assertEqual(comm.get().comm_bytes, bytes * (self.world_size - 1))
+                if op in ["all_reduce", "all_gather"]:
+                    reference = 2 * nbytes * (self.world_size - 1)
+                else:
+                    reference = nbytes * (self.world_size - 1)
+                self.assertEqual(comm.get().comm_bytes, reference)
 
         # Test reset_communication_stats
         crypten.reset_communication_stats()
