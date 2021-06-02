@@ -138,7 +138,7 @@ class TestCommunicator:
             if self.rank == rank:
                 tensor += 1
 
-            tensor = comm.get().broadcast(tensor, src=rank)
+            tensor = comm.get().broadcast(tensor, rank)
             self.assertTrue(torch.is_tensor(tensor))
             self.assertEqual(tensor.item(), 1)
 
@@ -179,7 +179,7 @@ class TestCommunicator:
             else:
                 tensors = [torch.zeros(size) for size in sizes]
 
-            tensors = comm.get().broadcast(tensors, src=rank, batched=True)
+            tensors = comm.get().broadcast(tensors, rank, batched=True)
             self.assertTrue(isinstance(tensors, list))
             for tensor in tensors:
                 self.assertTrue(torch.is_tensor(tensor))
@@ -342,7 +342,7 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
         for size in sizes:
             for op in ops:
                 tensor = get_random_test_tensor(size=size, is_float=False)
-                bytes = tensor.numel() * 8
+                nbytes = tensor.numel() * 8
                 crypten.reset_communication_stats()
 
                 # Setup op-specific kwargs / inputs
@@ -357,7 +357,11 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
 
                 tensor = getattr(comm.get(), op)(tensor, *args)
                 self.assertEqual(comm.get().comm_rounds, 1)
-                self.assertEqual(comm.get().comm_bytes, bytes * (self.world_size - 1))
+                if op in ["all_reduce", "all_gather"]:
+                    reference = 2 * nbytes * (self.world_size - 1)
+                else:
+                    reference = nbytes * (self.world_size - 1)
+                self.assertEqual(comm.get().comm_bytes, reference)
 
         # Test reset_communication_stats
         crypten.reset_communication_stats()
@@ -374,7 +378,7 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
         # Test verbosity False setting and no logging
         comm.get().set_verbosity(False)
         tensor = get_random_test_tensor(size=size, is_float=False)
-        tensor = comm.get().broadcast(tensor, src=0)
+        tensor = comm.get().broadcast(tensor, 0)
         self.assertEqual(comm.get().comm_rounds, 0)
         self.assertEqual(comm.get().comm_bytes, 0)
 

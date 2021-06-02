@@ -282,7 +282,7 @@ class DistributedCommunicator(Communicator):
 
     @_logging
     def recv_obj(self, src, group=None):
-        """Receives a tensor from a source `src`."""
+        """Receives an object from a source `src`."""
         if group is None:
             group = self.main_group
 

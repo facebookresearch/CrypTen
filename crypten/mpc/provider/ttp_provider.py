@@ -6,14 +6,13 @@
 # LICENSE file in the root directory of this source tree.
 
 import logging
-from functools import reduce
 
 import crypten
 import crypten.communicator as comm
 import torch
 import torch.distributed as dist
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
-from crypten.common.util import count_wraps, torch_stack
+from crypten.common.util import count_wraps
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
 
@@ -312,13 +311,11 @@ class TTPServer:
         gens = self._get_generators(device=self.device)
         if remove_rank:
             gens = gens[1:]
-        result = torch_stack(
-            [
-                generate_random_ring_element(size, generator=g, device=g.device)
-                for g in gens
-            ]
-        )
-        return result.sum(0)
+        result = None
+        for idx, g in enumerate(gens):
+            elem = generate_random_ring_element(size, generator=g, device=g.device)
+            result = elem if idx == 0 else result + elem
+        return result
 
     def _get_binary_PRSS(self, size, bitlength=None, remove_rank=None):
         """
@@ -328,13 +325,13 @@ class TTPServer:
         gens = self._get_generators(device=self.device)
         if remove_rank:
             gens = gens[1:]
-        result = [
-            generate_kbit_random_tensor(
+        result = None
+        for idx, g in enumerate(gens):
+            elem = generate_kbit_random_tensor(
                 size, bitlength=bitlength, generator=g, device=g.device
             )
-            for g in gens
-        ]
-        return reduce(lambda a, b: a ^ b, result)
+            result = elem if idx == 0 else result ^ elem
+        return result
 
     def additive(self, size0, size1, op, *args, **kwargs):
 
