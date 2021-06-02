@@ -367,7 +367,7 @@ class BinarySharedTensor(object):
         if dst is None:
             return comm.get().all_reduce(shares, op=op, batched=True)
         else:
-            return comm.get().reduce(shares, dst=dst, op=op, batched=True)
+            return comm.get().reduce(shares, dst, op=op, batched=True)
 
     def reveal(self, dst=None):
         """Get plaintext without any downscaling"""
@@ -375,7 +375,7 @@ class BinarySharedTensor(object):
         if dst is None:
             return comm.get().all_reduce(self.share, op=op)
         else:
-            return comm.get().reduce(self.share, dst=dst, op=op)
+            return comm.get().reduce(self.share, dst, op=op)
 
     def get_plain_text(self, dst=None):
         """Decrypts the tensor."""

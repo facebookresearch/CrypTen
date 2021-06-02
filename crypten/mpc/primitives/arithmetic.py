@@ -278,7 +278,7 @@ class ArithmeticSharedTensor(object):
         if dst is None:
             return comm.get().all_reduce(shares, batched=True)
         else:
-            return comm.get().reduce(shares, dst=dst, batched=True)
+            return comm.get().reduce(shares, dst, batched=True)
 
     def reveal(self, dst=None):
         """Decrypts the tensor without any downscaling."""
@@ -286,7 +286,7 @@ class ArithmeticSharedTensor(object):
         if dst is None:
             return comm.get().all_reduce(tensor)
         else:
-            return comm.get().reduce(tensor, dst=dst)
+            return comm.get().reduce(tensor, dst)
 
     def get_plain_text(self, dst=None):
         """Decrypts the tensor."""

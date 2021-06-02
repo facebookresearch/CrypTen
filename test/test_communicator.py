@@ -138,7 +138,7 @@ class TestCommunicator:
             if self.rank == rank:
                 tensor += 1
 
-            tensor = comm.get().broadcast(tensor, src=rank)
+            tensor = comm.get().broadcast(tensor, rank)
             self.assertTrue(torch.is_tensor(tensor))
             self.assertEqual(tensor.item(), 1)
 
@@ -179,7 +179,7 @@ class TestCommunicator:
             else:
                 tensors = [torch.zeros(size) for size in sizes]
 
-            tensors = comm.get().broadcast(tensors, src=rank, batched=True)
+            tensors = comm.get().broadcast(tensors, rank, batched=True)
             self.assertTrue(isinstance(tensors, list))
             for tensor in tensors:
                 self.assertTrue(torch.is_tensor(tensor))
@@ -378,7 +378,7 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
         # Test verbosity False setting and no logging
         comm.get().set_verbosity(False)
         tensor = get_random_test_tensor(size=size, is_float=False)
-        tensor = comm.get().broadcast(tensor, src=0)
+        tensor = comm.get().broadcast(tensor, 0)
         self.assertEqual(comm.get().comm_rounds, 0)
         self.assertEqual(comm.get().comm_bytes, 0)
 

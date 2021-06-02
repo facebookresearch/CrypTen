@@ -88,7 +88,7 @@ class TestCrypten(MultiProcessTestCase):
         # Check that all seeds are the same
         for device in crypten.generators["global"].keys():
             this_generator = crypten.generators["global"][device].initial_seed()
-            generator0 = comm.get().broadcast_obj(this_generator, src=0)
+            generator0 = comm.get().broadcast_obj(this_generator, 0)
             self.assertEqual(this_generator, generator0)
 
     def test_cat_stack(self):
@@ -283,7 +283,7 @@ class TestCrypten(MultiProcessTestCase):
                     reference = (
                         tensor if self.rank == src else torch.empty(size=size_out)
                     )
-                    comm.get().broadcast(reference, src=src)
+                    comm.get().broadcast(reference, src)
                     self._check(encrypted_load, reference, "crypten.load() failed")
 
                     # test for invalid load_closure

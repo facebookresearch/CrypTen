@@ -583,7 +583,7 @@ class TestNN(object):
                         # with different values on each process, we only want to
                         # check that they are consistent with source parameter value
                         reference = getattr(module, key)
-                        src_reference = comm.get().broadcast(reference, src=0)
+                        src_reference = comm.get().broadcast(reference, 0)
                         msg = "parameter %s in %s incorrect" % (key, module_name)
                         if isinstance(encr_param, crypten.nn.Parameter):
                             encr_param = encr_param.data
@@ -711,7 +711,7 @@ class TestNN(object):
                 # create encrypted CrypTen module:
                 encr_module = crypten.nn.Linear(*dim)
                 for n, p in module.named_parameters():
-                    p = comm.get().broadcast(p, src=0)
+                    p = comm.get().broadcast(p, 0)
                     encr_module.set_parameter(n, p)
                 encr_module.encrypt().train()
 

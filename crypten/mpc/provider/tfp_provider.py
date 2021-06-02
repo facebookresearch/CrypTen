@@ -63,7 +63,7 @@ class TrustedFirstParty:
         ]
         theta_r = count_wraps(r)
 
-        shares = comm.get().scatter(r, src=0)
+        shares = comm.get().scatter(r, 0)
         r = ArithmeticSharedTensor.from_shares(shares, precision=0)
         theta_r = ArithmeticSharedTensor(theta_r, precision=0, src=0)
 

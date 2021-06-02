@@ -237,8 +237,8 @@ def _setup_prng():
         next_rank = (rank + 1) % world_size
         prev_rank = (next_rank - 2) % world_size
 
-        req0 = comm.get().isend(tensor=next_seed, dst=next_rank)
-        req1 = comm.get().irecv(tensor=prev_seed, src=prev_rank)
+        req0 = comm.get().isend(next_seed, next_rank)
+        req1 = comm.get().irecv(prev_seed, src=prev_rank)
 
         req0.wait()
         req1.wait()
