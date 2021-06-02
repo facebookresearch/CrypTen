@@ -840,7 +840,7 @@ class MPCTensor(CrypTensor):
             result_size[-1] += c1
 
         # Sum the one-hot gradient blocks at corresponding index locations.
-        result = MPCTensor(torch.zeros(result_size))
+        result = MPCTensor(torch.zeros(result_size, device=kernels.device))
         for i in range(self.size(2)):
             for j in range(self.size(3)):
                 left_ind = s0 * i

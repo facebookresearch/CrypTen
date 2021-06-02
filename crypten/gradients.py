@@ -486,8 +486,10 @@ class AutogradDropout(AutogradFunction):
 
         # training mode:
         generator = crypten.generators["global"][input.device]
-        random_tensor = torch.rand(input.size(), generator=generator)
-        boolean_mask = (random_tensor > p).to(dtype=torch.float)
+        random_tensor = torch.rand(
+            input.size(), generator=generator, device=input.device
+        )
+        boolean_mask = (random_tensor > p).to(input.device, dtype=torch.float)
         if inplace:
             result = input.mul_(boolean_mask.div(1.0 - p))
         else:
@@ -1117,7 +1119,9 @@ class AutogradMean(AutogradFunction):
         )
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
-        return grad_output.mul(torch.ones(input_size).div_(nelement))
+        return grad_output.mul(
+            torch.ones(input_size, device=grad_output.device).div_(nelement)
+        )
 
 
 @register_function("var")
@@ -1351,9 +1355,9 @@ class AutogradAvgPool2D(AutogradFunction):
 
         in_channels = input_shape[-3]
         # compute as d conv2d / d input with kernel as average filter
-        kernel = torch.ones(in_channels, 1, kernel_size[0], kernel_size[1]) / (
-            kernel_size[0] * kernel_size[1]
-        )
+        kernel = torch.ones(
+            in_channels, 1, kernel_size[0], kernel_size[1], device=grad_output.device
+        ) / (kernel_size[0] * kernel_size[1])
 
         # TODO: Eliminate dependency on torch internal function by implementing in util
         grad_input_padding = torch.nn.grad._grad_input_padding(

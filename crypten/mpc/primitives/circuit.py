@@ -5,33 +5,46 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import functools
 import math
 
 import torch
 
-
-# Cached SPK masks are:
-# [0] -> 010101010101....0101  =                       01 x 32
-# [1] -> 001000100010....0010  =                     0010 x 16
-# [2] -> 000010000000....0010  =                 00001000 x  8
-# [n] -> [2^n 0s, 1, (2^n -1) 0s] x (32 / (2^n))
-__MASKS = torch.tensor(
-    [
-        6148914691236517205,
-        2459565876494606882,
-        578721382704613384,
-        36029346783166592,
-        140737488388096,
-        2147483648,
-    ],
-    dtype=torch.long,
-)
-
-# Cache other masks and constants to skip computation during each call
+# Cache masks and constants to skip computation during each call
 __BITS = torch.iinfo(torch.long).bits
 __LOG_BITS = int(math.log2(torch.iinfo(torch.long).bits))
-__MULTIPLIERS = torch.tensor([(1 << (2 ** iter + 1)) - 2 for iter in range(__LOG_BITS)])
-__OUT_MASKS = __MASKS * __MULTIPLIERS
+
+
+@functools.lru_cache(maxsize=None)
+def __SPK_circuit_constants(device):
+    """
+    Generate the __MASKS, __OUT_MASKS, and __MULTIPLIERS constants
+    used by __SPK_circuit.
+    """
+    # Cached SPK masks are:
+    # [0] -> 010101010101....0101  =                       01 x 32
+    # [1] -> 001000100010....0010  =                     0010 x 16
+    # [2] -> 000010000000....0010  =                 00001000 x  8
+    # [n] -> [2^n 0s, 1, (2^n -1) 0s] x (32 / (2^n))
+    __MASKS = torch.tensor(
+        [
+            6148914691236517205,
+            2459565876494606882,
+            578721382704613384,
+            36029346783166592,
+            140737488388096,
+            2147483648,
+        ],
+        dtype=torch.long,
+        device=device,
+    )
+
+    __MULTIPLIERS = torch.tensor(
+        [(1 << (2 ** iter + 1)) - 2 for iter in range(__LOG_BITS)], device=device
+    )
+    __OUT_MASKS = __MASKS * __MULTIPLIERS
+
+    return __MASKS, __OUT_MASKS, __MULTIPLIERS
 
 
 def __SPK_circuit(S, P):
@@ -51,6 +64,8 @@ def __SPK_circuit(S, P):
 
     # Vectorize private AND calls to reduce rounds:
     SP = BinarySharedTensor.stack([S, P])
+
+    __MASKS, __OUT_MASKS, __MULTIPLIERS = __SPK_circuit_constants(SP.device)
 
     # fmt: off
     # Tree reduction circuit
