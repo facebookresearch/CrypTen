@@ -74,7 +74,36 @@ def _inverse_broadcast(grad_output, input_size):
     return grad_output
 
 
-class AutogradContext(object):
+class BaseAutogradContext(object):
+    """
+    Base implementation for AutogradContext, which saves context information
+    for AutogradFunctions. Base implementation contains no-ops for all functions.
+    """
+
+    def __init__(self):
+        pass
+
+    def reset(self):
+        pass
+
+    def save_for_backward(self, value):
+        pass
+
+    def save_multiple_for_backward(self, values):
+        pass
+
+    def mark_non_differentiable(self, non_differentiable):
+        pass
+
+    def is_differentiable(self, tensor):
+        raise RuntimeError("Cannot check differentiability in BaseAutogradContext.")
+
+    @property
+    def saved_tensors(self):
+        raise RuntimeError("Cannot check saved_tensors in BaseAutogradContext.")
+
+
+class AutogradContext(BaseAutogradContext):
     """
     Object that can be used by AutogradFunction for saving context information.
     """

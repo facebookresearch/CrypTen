@@ -11,7 +11,7 @@ import torch
 
 from .common import approximations
 from .debug import validation_mode, validate_correctness
-from .gradients import AutogradContext, get_grad_fn
+from .gradients import AutogradContext, BaseAutogradContext, get_grad_fn
 
 
 # list of all static functions that CrypTensors support:
@@ -276,18 +276,12 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         # determine if self is a dummy object (the case for staticmethods):
         is_dummy = getattr(self, "__IS_DUMMY__", False)
 
-        def noop(*args, **kwargs):
-            return
-
         def autograd_forward_no_ctx(*args, **kwargs):
             if not is_dummy:
                 args = [self] + list(args)
 
             # Create dummy AutogradContext that stores no data
-            ctx = AutogradContext()
-            ctx.save_for_backward = noop
-            ctx.save_multiple_for_backward = noop
-            ctx.mark_non_differentiable = noop
+            ctx = BaseAutogradContext()
 
             with CrypTensor.no_grad():
                 result = grad_fn.forward(ctx, *args, **kwargs)
