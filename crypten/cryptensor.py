@@ -57,9 +57,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
     provides a full autograd implementation to the user.
     """
 
-    # attributes that should not be dispatched to underlying tensor:
+    # attributes that should be dispatched to underlying tensor:
     PROTECTED_ATTRIBUTES = [
         "__dict__",
+        "__class__",
         "requires_grad",
         "grad",
         "grad_fn",
@@ -72,6 +73,24 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         "detach_",
         "_reset_gradients",
     ]
+
+    # functions that should be implemented by CrypTensor subclass:
+    REQUIRED_FUNCTIONS = [
+        "_ltz",
+        "add",
+        "avg_pool1d",
+        "avg_pool2d",
+        "clone",
+        "conv1d",
+        "conv2d",
+        "copy_",
+        "div_",
+        "matmul",
+        "neg",
+    ]
+
+    # dict for storing functional overrides from subclasses:
+    FUNCTION_OVERRIDES = {}
 
     # mapping of Python built-in methods to CrypTensor methods:
     PYTHON_BUILTIN = {
@@ -252,38 +271,38 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 f"CrypTen does not support torch function {func}."
             )
 
-    def __getattribute__(self, name):
-        """
-        Makes sure that any function call on the tensor gets recorded in order
-        to facilitate gradient computation using autograd.
-        """
-        if name in CrypTensor.PROTECTED_ATTRIBUTES:
-            return object.__getattribute__(self, name)
-        elif not CrypTensor.AUTOGRAD_ENABLED:
-            function = object.__getattribute__(self, name)
+    def _get_forward_function_no_ctx(self, grad_fn):
 
-            # Validate if requested
-            if validation_mode():
-                return validate_correctness(self, function, name)
+        # determine if self is a dummy object (the case for staticmethods):
+        is_dummy = getattr(self, "__IS_DUMMY__", False)
 
-            return function
-        else:
-            # replace Python built-in methods with corresponding method name:
-            name = CrypTensor.PYTHON_BUILTIN.get(name, name)
+        def noop(*args, **kwargs):
+            return
 
-            # identify the AutogradFunction corresponding to the function name:
-            grad_fn, in_place = get_grad_fn(name)
+        def autograd_forward_no_ctx(*args, **kwargs):
+            if not is_dummy:
+                args = [self] + list(args)
 
-            # dispatch calls to size(), etc. without going through AutoGradFunction:
-            if grad_fn is None:
-                return object.__getattribute__(self, name)
+            # Create dummy AutogradContext that stores no data
+            ctx = AutogradContext()
+            ctx.save_for_backward = noop
+            ctx.save_multiple_for_backward = noop
+            ctx.mark_non_differentiable = noop
 
-            def autograd_forward(*args, **kwargs):
-                """Forward function that stores data for autograd in result."""
+            with CrypTensor.no_grad():
+                result = grad_fn.forward(ctx, *args, **kwargs)
+            return result
 
-                # determine if self is a dummy object (the case for staticmethods):
-                is_dummy = getattr(self, "__IS_DUMMY__", False)
+        return autograd_forward_no_ctx
 
+    def _get_autograd_forward_function(self, name, grad_fn, in_place):
+
+        # determine if self is a dummy object (the case for staticmethods):
+        is_dummy = getattr(self, "__IS_DUMMY__", False)
+
+        def autograd_forward(*args, **kwargs):
+            """Forward function that stores data for autograd in result."""
+            with CrypTensor.no_grad():
                 # only CrypTensors can be children:
                 tensor_args = _find_all_cryptensors(args)
                 children = tensor_args if is_dummy else [self, *tensor_args]
@@ -291,12 +310,12 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 # identify whether result requires gradient:
                 requires_grad = any(child.requires_grad for child in children)
 
-                # in-place functions require special treatment:
+                if not requires_grad:
+                    return self.__getattribute__(name)(*args, **kwargs)
+
+                # in-place functions are not supported when requires_grad:
                 if in_place:
-                    if requires_grad:  # they are not supported in autograd
-                        raise RuntimeError("Cannot use in-place functions in autograd.")
-                    else:  # and need to be called directly outside autograd
-                        return object.__getattribute__(self, name)(*args, **kwargs)
+                    raise RuntimeError("Cannot use in-place functions with autograd.")
 
                 # prepare inputs and context for forward call:
                 ctx = AutogradContext()
@@ -304,32 +323,124 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                     args = [self] + list(args)
 
                 # apply correct autograd function:
-                with CrypTensor.no_grad():
-                    result = grad_fn.forward(ctx, *args, **kwargs)
-                if not isinstance(result, tuple):  # output may be tensor or tuple
+                result = grad_fn.forward(ctx, *args, **kwargs)
+
+                # output may be tensor or tuple
+                if not isinstance(result, tuple):
                     result = (result,)
                     remove_tuple = True
                 else:
                     remove_tuple = False
 
-                if requires_grad:
-
-                    # maintain references to children and context in result:
-                    for res in result:
-                        res.requires_grad = ctx.is_differentiable(res)
-                        if res.requires_grad:
-                            res.children = children
-                            res.grad_fn = grad_fn
-                            res.ctx = ctx
+                # maintain references to children and context in result:
+                for res in result:
+                    res.requires_grad = ctx.is_differentiable(res)
+                    if res.requires_grad:
+                        res.children = children
+                        res.grad_fn = grad_fn
+                        res.ctx = ctx
 
                 # return result:
                 if remove_tuple:
                     result = result[0]
-                return result
+            return result
 
-            if validation_mode():
-                return validate_correctness(self, autograd_forward, name)
-            return autograd_forward
+        return autograd_forward
+
+    def __getattribute__(self, name):
+        """
+        Makes sure that any function call on the tensor gets recorded in order
+        to facilitate gradient computation using autograd.
+
+        For clarity, this function attempts to fetch functions with the following priority:
+
+        1. If name is in PROTECTED_ATTRIBUTES, fetch from the CrypTensor object.
+
+        2. Attempt to fetch appropriate override from FUNCTION_OVERRIDES (i.e. no_grad, forward, and backward)
+
+        3. If requires_grad:
+            a. Fetch from grad_fn.forward; if none exists
+            b. raise NotImplementedError telling user to use `detach()`
+
+        4. If no_grad or not requires_grad:
+            a. If function is in REQUIRED_FUNCTIONS, fetch from CrypTensor object -
+               Note: These functions must be implemented within CrypTensor subclasses to be called
+            b. Fetch from grad_fn.{function name}
+            c. Fetch from grad_fn.forward, ignoring AutogradContext objects
+            d. Fetch from CrypTensor object
+
+        """
+        # 1. If name is in PROTECTED_ATTRIBUTES, fetch from the CrypTensor object.
+        if name in CrypTensor.PROTECTED_ATTRIBUTES:
+            return object.__getattribute__(self, name)
+
+        # Special case for copy_ inplace.
+        if name == "copy_":
+            return object.__getattribute__(self, "copy_")
+
+        # replace Python built-in methods with corresponding method name:
+        name = CrypTensor.PYTHON_BUILTIN.get(name, name)
+
+        # determine inplace and modify name accordingly
+        inplace = name.endswith("_") and not name.endswith("__")
+        if inplace:
+            if CrypTensor.AUTOGRAD_ENABLED and self.requires_grad:
+                raise RuntimeError(f"Autograd is not supported for in-place functions.")
+
+            # Note: native in-place support is now deprecated
+            # Instead, CrypTensors now compute out-of-place and
+            # copy_ in-place
+            name = name[:-1]
+            func = self.__getattribute__(name)
+
+            def oop_and_copy(*args, **kwargs):
+                result = func(*args, **kwargs)
+                self.copy_(result)
+                return self
+
+            return oop_and_copy
+
+        # identify the AutogradFunction corresponding to the function name:
+        grad_fn = get_grad_fn(name)
+
+        # dispatch calls to size(), etc. without going through AutogradFunction:
+        if grad_fn is None:
+            return object.__getattribute__(self, name)
+
+        # 2. Attempt to fetch appropriate override from FUNCTION_OVERRIDES (i.e. no_grad, forward, and backward)
+        if name in self.__class__.FUNCTION_OVERRIDES:
+            overrides = self.__class__.FUNCTION_OVERRIDES[name]
+            for variant in [name, "forward", "backward"]:
+                if variant in overrides:
+                    grad_fn.variant = overrides[variant]
+
+        # 3. If requires_grad:
+        #     a. Fetch from grad_fn.forward; if none exists
+        #     b. raise NotImplementedError telling user to use `detach()`
+        if CrypTensor.AUTOGRAD_ENABLED:
+            if not hasattr(grad_fn, "forward"):
+                raise NotImplementedError(
+                    f"Autograd forward not implemented for {name}. Please use detach()."
+                )
+            return self._get_autograd_forward_function(name, grad_fn, inplace)
+
+        # TODO: Add validation_mode / validate_correctness
+
+        # 4. If no_grad or not requires_grad:
+        #     a. If function is in REQUIRED_FUNCTIONS, fetch from CrypTensor object
+        #     b. Fetch from grad_fn.{function name}
+        #     c. Fetch from grad_fn.forward, ignoring AutogradContext objects
+        #     d. Fetch from CrypTensor object
+        if name in CrypTensor.REQUIRED_FUNCTIONS:
+            return object.__getattribute__(self, name)
+        elif hasattr(grad_fn, name):
+            return lambda *args, **kwargs: getattr(grad_fn, name)(self, *args, **kwargs)
+        try:
+            return object.__getattribute__(self, name)
+        # TODO: To add this above, we need to add @override tags to all non-required functions in MPCTensor
+        except AttributeError:
+            assert hasattr(grad_fn, "forward")
+            return self._get_forward_function_no_ctx(grad_fn)
 
     # below are all the functions that subclasses of CrypTensor should implement:
     def abs(self):
@@ -337,12 +448,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
     def __abs__(self):
         return self.abs()
-
-    def pow(self):
-        raise NotImplementedError("pow is not implemented")
-
-    def __pow__(self, tensor):
-        return self.pow(tensor)
 
     def __rpow__(self, scalar):
         raise NotImplementedError("__rpow__ is not implemented")
@@ -642,20 +747,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         raise NotImplementedError("min is not implemented")
 
-    def batchnorm(
-        self,
-        ctx,
-        weight,
-        bias,
-        running_mean=None,
-        running_var=None,
-        training=False,
-        eps=1e-05,
-        momentum=0.1,
-    ):
-        """Batch normalization."""
-        raise NotImplementedError("batchnorm is not implemented")
-
     def conv1d(self, *args, **kwargs):
         """1D convolution."""
         raise NotImplementedError("conv1d is not implemented")
@@ -849,14 +940,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             max_val: maximum value of the linear region range. Default: 1
         """
         raise NotImplementedError("hardtanh is not implemented")
-
-    def relu6(self):
-        r"""Applies the element-wise function:
-
-        .. math::
-            \text{ReLU6}(x) = \min(\max(0,x), 6)
-        """
-        raise NotImplementedError("relu6 is not implemented")
 
     def eq(self, tensor):
         """Element-wise equality

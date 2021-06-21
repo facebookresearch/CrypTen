@@ -16,6 +16,7 @@ from crypten.common.tensor_types import is_float_tensor, is_int_tensor, is_tenso
 from crypten.common.util import torch_cat, torch_stack
 from crypten.cryptensor import CrypTensor
 from crypten.cuda import CUDALongTensor
+from crypten.debug import validation_mode
 from crypten.encoder import FixedPointEncoder
 
 from . import beaver
@@ -411,6 +412,10 @@ class ArithmeticSharedTensor(object):
             y = y.long()
 
         if isinstance(y, int) or is_int_tensor(y):
+            if validation_mode():
+                tolerance = 1.0
+                tensor = self.get_plain_text()
+
             # Truncate protocol for dividing by public integers:
             if comm.get().get_world_size() > 2:
                 wraps = self.wraps()
@@ -421,6 +426,13 @@ class ArithmeticSharedTensor(object):
                 self -= wraps * 4 * (int(2 ** 62) // y)
             else:
                 self.share = self.share.div_(y, rounding_mode="trunc")
+
+            # Validate
+            if validation_mode():
+                if not torch.lt(
+                    torch.abs(self.get_plain_text() * y - tensor), tolerance
+                ).all():
+                    raise ValueError("Final result of division is incorrect.")
 
             return self
 

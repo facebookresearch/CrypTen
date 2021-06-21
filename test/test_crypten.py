@@ -227,6 +227,8 @@ class TestCrypten(MultiProcessTestCase):
                 if a == "encoder":
                     self.assertTrue(attr1._scale == attr2._scale)
                     self.assertTrue(attr1._precision_bits == attr2._precision_bits)
+                elif torch.is_tensor(attr1):
+                    self.assertTrue(attr1.eq(attr2).all())
                 else:
                     self.assertTrue(attr1 == attr2)
 

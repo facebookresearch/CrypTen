@@ -10,7 +10,6 @@ import math
 from functools import reduce
 
 import crypten
-import crypten.communicator as comm
 import torch
 
 
@@ -39,14 +38,10 @@ def register_function(name):
 def get_grad_fn(name):
     """
     Returns gradient function for the CrypTen function with the specified name.
-    Also returns a boolean indicating whether or not the function is in-place.
     """
     if name in FUNCTION_REGISTRY:
-        return FUNCTION_REGISTRY[name], False
-    elif name.endswith("_"):
-        if name[:-1] in FUNCTION_REGISTRY:  # this is an in-place function
-            return FUNCTION_REGISTRY[name[:-1]], True
-    return None, False
+        return FUNCTION_REGISTRY[name]
+    return None
 
 
 def _ensure_tensor(input):
@@ -615,6 +610,16 @@ class AutogradErf(AutogradFunction):
 
 @register_function("relu6")
 class AutogradReLU6(AutogradFunction):
+    r"""Applies the element-wise function:
+
+    .. math::
+        \text{ReLU6}(x) = \min(\max(0,x), 6)
+    """
+
+    @staticmethod
+    def relu6(self):
+        return self.hardtanh(min_value=0, max_value=6)
+
     @staticmethod
     def forward(ctx, input):
         intermediate = crypten.stack([input, 6 - input]).gt(0)
@@ -638,6 +643,7 @@ class AutogradAdd(AutogradFunction):
         input = _ensure_tensor(input)
         other = _ensure_tensor(other)
         ctx.save_multiple_for_backward([input.size(), other.size()])
+
         return input.add(other)
 
     @staticmethod
@@ -809,14 +815,47 @@ class AutogradRDiv(AutogradFunction):
 @register_function("pow")
 class AutogradPow(AutogradFunction):
     @staticmethod
+    def pow(self, p, **kwargs):
+        """
+        Computes an element-wise exponent `p` of a tensor, where `p` is an
+        integer.
+        """
+        if isinstance(p, float) and int(p) == p:
+            p = int(p)
+
+        if not isinstance(p, int):
+            raise TypeError(
+                "pow must take an integer exponent. For non-integer powers, use"
+                " pos_pow with positive-valued base."
+            )
+        if p < -1:
+            return self.reciprocal().pow(-p)
+        elif p == -1:
+            return self.reciprocal()
+        elif p == 0:
+            # Note: This returns 0 ** 0 -> 1 when inputs have zeros.
+            # This is consistent with PyTorch's pow function.
+            return crypten.cryptensor(torch.ones_like(self.data))
+        elif p == 1:
+            return self.clone()
+        elif p == 2:
+            return self.square()
+        elif p % 2 == 0:
+            return self.square().pow(p // 2)
+        else:
+            return self.square().mul_(self).pow((p - 1) // 2)
+
+    @staticmethod
     def forward(ctx, input, power):
-        ctx.save_multiple_for_backward([input, power])
-        return input.pow(power)
+        grad_pow = input.pow(power - 1)
+        grad = grad_pow.mul(power)
+        ctx.save_multiple_for_backward([input, grad])
+        return grad_pow.mul(input)
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, power = ctx.saved_tensors
-        return input.pow(power - 1.0).mul_(power).mul_(grad_output)
+        input, grad = ctx.saved_tensors
+        return grad.mul_(grad_output)
 
 
 @register_function("pos_pow")

@@ -232,7 +232,6 @@ class MPCTensor(CrypTensor):
                 of a binary tensor when converting from a binary share to an arithmetic share.
                 It will be ignored if the ptype doesn't match.
         """
-
         retval = self.clone()
         if retval.ptype == ptype:
             return retval
@@ -314,6 +313,16 @@ class MPCTensor(CrypTensor):
     def share(self, value):
         """Sets share to value"""
         self._tensor.share = value
+
+    @property
+    def data(self):
+        """Returns share data"""
+        return self.share.data
+
+    @data.setter
+    def data(self, value):
+        """Sets data to value"""
+        self.share.data = value
 
     @property
     def encoder(self):
@@ -935,14 +944,6 @@ class MPCTensor(CrypTensor):
         intermediate = intermediate[0].sub(intermediate[1])
         return intermediate.add_(min_value)
 
-    def relu6(self):
-        r"""Applies the element-wise function:
-
-        .. math::
-            \text{ReLU6}(x) = \min(\max(0,x), 6)
-        """
-        return self.hardtanh(min_value=0, max_value=6)
-
     @mode(Ptype.arithmetic)
     def pad(self, pad, mode="constant", value=0):
         result = self.shallow_copy()
@@ -1013,7 +1014,11 @@ class MPCTensor(CrypTensor):
             result.share = torch.broadcast_tensors(result.share, y.share)[0].clone()
         elif is_tensor(y):
             result.share = torch.broadcast_tensors(result.share, y)[0].clone()
-        return result.div_(y)
+
+        if isinstance(y, MPCTensor):
+            return result.mul(y.reciprocal())
+        result._tensor.div_(y)
+        return result
 
     def div_(self, y):
         """In-place version of :meth:`div`"""
@@ -1021,36 +1026,6 @@ class MPCTensor(CrypTensor):
             return self.mul_(y.reciprocal())
         self._tensor.div_(y)
         return self
-
-    def pow(self, p, **kwargs):
-        """
-        Computes an element-wise exponent `p` of a tensor, where `p` is an
-        integer.
-        """
-        if isinstance(p, float) and int(p) == p:
-            p = int(p)
-
-        if not isinstance(p, int):
-            raise TypeError(
-                "pow must take an integer exponent. For non-integer powers, use"
-                " pos_pow with positive-valued base."
-            )
-        if p < -1:
-            return self.reciprocal().pow(-p)
-        elif p == -1:
-            return self.reciprocal()
-        elif p == 0:
-            # Note: This returns 0 ** 0 -> 1 when inputs have zeros.
-            # This is consistent with PyTorch's pow function.
-            return MPCTensor(torch.ones_like(self.share))
-        elif p == 1:
-            return self.clone()
-        elif p == 2:
-            return self.square()
-        elif p % 2 == 0:
-            return self.square().pow(p // 2)
-        else:
-            return self.square().mul_(self).pow((p - 1) // 2)
 
     def pow_(self, p, **kwargs):
         """In-place version of pow_ function"""
@@ -1104,60 +1079,43 @@ class MPCTensor(CrypTensor):
         """Performs out-of-place index_add: Accumulate the elements of tensor into the
         self tensor by adding to the indices in the order given in index.
         """
-        return self.clone().index_add_(dim, index, tensor)
-
-    def index_add_(self, dim, index, tensor):
-        """Performs in-place index_add: Accumulate the elements of tensor into the
-        self tensor by adding to the indices in the order given in index.
-        """
+        result = self.clone()
         assert index.dim() == 1, "index needs to be a vector"
         public = isinstance(tensor, (int, float)) or is_tensor(tensor)
         private = isinstance(tensor, MPCTensor)
         if public:
-            self._tensor.index_add_(dim, index, tensor)
+            result._tensor.index_add_(dim, index, tensor)
         elif private:
-            self._tensor.index_add_(dim, index, tensor._tensor)
+            result._tensor.index_add_(dim, index, tensor._tensor)
         else:
             raise TypeError("index_add second tensor of unsupported type")
-        return self
+        return result
 
     def scatter_add(self, dim, index, other):
         """Adds all values from the tensor other into self at the indices
         specified in the index tensor.
         """
-        return self.clone().scatter_add_(dim, index, other)
-
-    def scatter_add_(self, dim, index, other):
-        """Adds all values from the tensor other into self at the indices
-        specified in the index tensor."""
+        result = self.clone()
         public = isinstance(other, (int, float)) or is_tensor(other)
         private = isinstance(other, CrypTensor)
         if public:
-            self._tensor.scatter_add_(dim, index, other)
+            result._tensor.scatter_add_(dim, index, other)
         elif private:
-            self._tensor.scatter_add_(dim, index, other._tensor)
+            result._tensor.scatter_add_(dim, index, other._tensor)
         else:
             raise TypeError("scatter_add second tensor of unsupported type")
-        return self
+        return result
 
-    def scatter_(self, dim, index, src):
-        """Writes all values from the tensor `src` into `self` at the indices
-        specified in the `index` tensor. For each value in `src`, its output index
-        is specified by its index in `src` for `dimension != dim` and by the
-        corresponding value in `index` for `dimension = dim`.
-        """
+    def scatter(self, dim, index, src):
+        """Out-of-place version of :meth:`MPCTensor.scatter_`"""
+        result = self.clone()
         if is_tensor(src):
             src = MPCTensor(src)
         assert isinstance(src, MPCTensor), "Unrecognized scatter src type: %s" % type(
             src
         )
-        self.share.scatter_(dim, index, src.share)
-        return self
-
-    def scatter(self, dim, index, src):
-        """Out-of-place version of :meth:`MPCTensor.scatter_`"""
-        result = self.clone()
-        return result.scatter_(dim, index, src)
+        result.share.scatter_(dim, index, src.share)
+        return result
 
     def unbind(self, dim=0):
         shares = self.share.unbind(dim=dim)

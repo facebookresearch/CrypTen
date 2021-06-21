@@ -1064,22 +1064,6 @@ class TestMPC(object):
                 encrypted_out = encrypted_tensor.pos_pow(p)
             self._check(encrypted_out, reference, f"pos_pow failed with power {p}")
 
-    def test_pow(self):
-        """Tests pow function"""
-        for pow_fn in ["pow", "pow_"]:
-            for power in [-3, -2, -1, 0, 1, 2, 3]:
-                tensor = self._get_random_test_tensor(is_float=True)
-                encrypted_tensor = MPCTensor(tensor)
-                reference = getattr(tensor, pow_fn)(power)
-                encrypted_out = getattr(encrypted_tensor, pow_fn)(power)
-            self._check(encrypted_out, reference, "pow failed with power %s" % power)
-            if pow_fn.endswith("_"):
-                self._check(
-                    encrypted_tensor, reference, "in-place pow_ does not modify input"
-                )
-            else:
-                self._check(encrypted_tensor, tensor, "out-of-place pow modifies input")
-
     def test_norm(self):
         """Tests p-norm"""
         for p in [1, 1.5, 2, 3, float("inf"), "fro"]:
@@ -1117,11 +1101,6 @@ class TestMPC(object):
                 encrypted_out = encrypted.hardtanh(minval, maxval)
 
                 self._check(encrypted_out, reference, "hardtanh failed")
-
-        # Test relu6
-        reference = torch.nn.functional.relu6(tensor)
-        encrypted_out = encrypted.relu6()
-        self._check(encrypted_out, reference, "relu6 failed")
 
     def test_inplace_warning(self):
         """Tests that a warning is thrown that indicates that the `inplace` kwarg
