@@ -44,6 +44,11 @@ def get_grad_fn(name):
     return None
 
 
+def get_grad_fn_registry():
+    global FUNCTION_REGISTRY
+    return FUNCTION_REGISTRY
+
+
 def _ensure_tensor(input):
     """
     Converts scalars in inputs to correct tensor type.
@@ -844,7 +849,7 @@ class AutogradRDiv(AutogradFunction):
 @register_function("pow")
 class AutogradPow(AutogradFunction):
     @staticmethod
-    def pow(self, p, **kwargs):
+    def base_impl(self, p, **kwargs):
         """
         Computes an element-wise exponent `p` of a tensor, where `p` is an
         integer.
@@ -858,21 +863,22 @@ class AutogradPow(AutogradFunction):
                 " pos_pow with positive-valued base."
             )
         if p < -1:
-            return self.reciprocal().pow(-p)
+            return AutogradPow.base_impl(self.reciprocal(), -p)
         elif p == -1:
             return self.reciprocal()
         elif p == 0:
             # Note: This returns 0 ** 0 -> 1 when inputs have zeros.
             # This is consistent with PyTorch's pow function.
-            return crypten.cryptensor(torch.ones_like(self.data))
+            return self.new(torch.ones_like(self.data))
         elif p == 1:
             return self.clone()
         elif p == 2:
             return self.square()
         elif p % 2 == 0:
-            return self.square().pow(p // 2)
+            return AutogradPow.base_impl(self.square(), p // 2)
         else:
-            return self.square().mul_(self).pow((p - 1) // 2)
+            x = self.square().mul_(self)
+            return AutogradPow.base_impl(x, (p - 1) // 2)
 
     @staticmethod
     def forward(ctx, input, power):

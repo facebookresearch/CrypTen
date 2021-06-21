@@ -11,7 +11,7 @@ import torch
 
 from .common import approximations
 from .debug import validation_mode, validate_correctness
-from .gradients import AutogradContext, BaseAutogradContext, get_grad_fn
+from .gradients import AutogradContext, BaseAutogradContext, get_grad_fn, get_grad_fn_registry
 
 
 # list of all static functions that CrypTensors support:
@@ -350,19 +350,14 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
         1. If name is in PROTECTED_ATTRIBUTES, fetch from the CrypTensor object.
 
-        2. Attempt to fetch appropriate override from FUNCTION_OVERRIDES (i.e. no_grad, forward, and backward)
-
-        3. If requires_grad:
+        2. If requires_grad:
             a. Fetch from grad_fn.forward; if none exists
             b. raise NotImplementedError telling user to use `detach()`
 
-        4. If no_grad or not requires_grad:
-            a. If function is in REQUIRED_FUNCTIONS, fetch from CrypTensor object -
-               Note: These functions must be implemented within CrypTensor subclasses to be called
-            b. Fetch from grad_fn.{function name}
-            c. Fetch from grad_fn.forward, ignoring AutogradContext objects
-            d. Fetch from CrypTensor object
-
+        3. If no_grad or not requires_grad:
+            a. Try to fetch function from CrypTensor object
+                - If this fails and function is REQUIRED, raise error
+            b. Fetch from grad_fn.forward, ignoring AutogradContext
         """
         # 1. If name is in PROTECTED_ATTRIBUTES, fetch from the CrypTensor object.
         if name in CrypTensor.PROTECTED_ATTRIBUTES:
@@ -401,14 +396,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         if grad_fn is None:
             return object.__getattribute__(self, name)
 
-        # 2. Attempt to fetch appropriate override from FUNCTION_OVERRIDES (i.e. no_grad, forward, and backward)
-        if name in self.__class__.FUNCTION_OVERRIDES:
-            overrides = self.__class__.FUNCTION_OVERRIDES[name]
-            for variant in [name, "forward", "backward"]:
-                if variant in overrides:
-                    grad_fn.variant = overrides[variant]
-
-        # 3. If requires_grad:
+        # 2. If requires_grad:
         #     a. Fetch from grad_fn.forward; if none exists
         #     b. raise NotImplementedError telling user to use `detach()`
         if CrypTensor.AUTOGRAD_ENABLED:
@@ -420,19 +408,16 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
         # TODO: Add validation_mode / validate_correctness
 
-        # 4. If no_grad or not requires_grad:
-        #     a. If function is in REQUIRED_FUNCTIONS, fetch from CrypTensor object
-        #     b. Fetch from grad_fn.{function name}
-        #     c. Fetch from grad_fn.forward, ignoring AutogradContext objects
-        #     d. Fetch from CrypTensor object
-        if name in CrypTensor.REQUIRED_FUNCTIONS:
-            return object.__getattribute__(self, name)
-        elif hasattr(grad_fn, name):
-            return lambda *args, **kwargs: getattr(grad_fn, name)(self, *args, **kwargs)
+        # 3. If no_grad or not requires_grad:
+        #     a. Try to fetch function from CrypTensor object
+        #         - If this fails and function is REQUIRED, raise error
+        #     b. Fetch from grad_fn.forward, ignoring AutogradContext
+
         try:
             return object.__getattribute__(self, name)
-        # TODO: To add this above, we need to add @override tags to all non-required functions in MPCTensor
-        except AttributeError:
+        except AttributeError as e:
+            if name in CrypTensor.REQUIRED_FUNCTIONS:
+                raise e
             assert hasattr(grad_fn, "forward")
             return self._get_forward_function_no_ctx(grad_fn)
 
@@ -1438,3 +1423,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 # Register function approximations
 for func in approximations.__all__:
     setattr(CrypTensor, func, getattr(approximations, func))
+
+# Register base implementations from gradient functions
+for name, grad_fn in get_grad_fn_registry().items():
+    if hasattr(grad_fn, "base_impl"):
+        setattr(CrypTensor, name, grad_fn.base_impl)
