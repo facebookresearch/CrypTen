@@ -8,6 +8,7 @@
 
 __all__ = [  # noqa: F822
     "__getitem__",
+    "__setitem__",
     "index_select",
     "view",
     "flatten",
@@ -73,3 +74,13 @@ for function_name in __all__:
 
 for function_name in PROPERTY_FUNCTIONS:
     _add_property_function(function_name)
+
+
+def __setitem__(self, index, value):
+    """Set tensor values by index"""
+    if not isinstance(value, type(self)):
+        kwargs = {"device": self.device}
+        if hasattr(self, "ptype"):
+            kwargs["ptype"] = self.ptype
+        value = self.new(value, **kwargs)
+    self._tensor.__setitem__(index, value._tensor)

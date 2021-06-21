@@ -465,14 +465,14 @@ def stack(tensors, dim=0):
     return type(tensors[0]).stack(tensors, dim=dim)
 
 
-def rand(*sizes, cryptensor_type=None):
+def rand(*sizes, device=None, cryptensor_type=None):
     """
     Returns a tensor with elements uniformly sampled in [0, 1).
     """
     with no_grad():
         if cryptensor_type is None:
             cryptensor_type = get_default_cryptensor_type()
-        return __CRYPTENSOR_TYPES__[cryptensor_type].rand(*sizes)
+        return __CRYPTENSOR_TYPES__[cryptensor_type].rand(*sizes, device=device)
 
 
 def randn(*sizes, cryptensor_type=None):

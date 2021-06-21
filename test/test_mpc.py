@@ -2010,7 +2010,7 @@ class TestMPC(object):
                 )
             )
 
-        for dropout_fn in ["dropout", "dropout2d", "dropout3d", "_feature_dropout"]:
+        for dropout_fn in ["dropout", "_feature_dropout"]:
             for prob in all_prob_values:
                 for size in [(5, 10), (5, 10, 15), (5, 10, 15, 20)]:
                     for inplace in [False, True]:

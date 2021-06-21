@@ -784,7 +784,7 @@ class TestGradients:
         # regular forward function
         # There's no need to check backwards since PyTorch backwards fails
         all_prob_values = [x * 0.2 for x in range(0, 5)]
-        for dropout_fn in ["dropout", "_feature_dropout", "dropout2d", "dropout3d"]:
+        for dropout_fn in ["dropout", "_feature_dropout"]:
             for prob in all_prob_values:
                 for size in [(5, 10), (5, 10, 15), (5, 10, 15, 20)]:
                     for use_zeros in [False, True]:
@@ -1116,6 +1116,38 @@ class TestGradients:
                 tensor.grad,
                 f"pos_pow backward failed with power {power}",
             )
+
+    def test_polynomial(self):
+        for terms in range(1, 5):
+            for encrypt_coeffs in [False, True]:
+                tensor = get_random_test_tensor(is_float=True)
+                tensor.requires_grad = True
+                tensor_encr = crypten.cryptensor(tensor, requires_grad=True)
+
+                coeffs_size = (terms,)
+                coeffs = get_random_test_tensor(size=coeffs_size, is_float=True)
+
+                reference = (
+                    tensor.unsqueeze(0)
+                    .pow(torch.arange(terms).add(1).view([terms] + [1] * terms))
+                    .mul(coeffs.view([terms] + [1] * terms))
+                    .sum(0)
+                    .view(tensor.size())
+                )
+                if encrypt_coeffs:
+                    coeffs = crypten.cryptensor(coeffs)
+                out_encr = tensor_encr.polynomial(coeffs)
+                self._check(out_encr, reference, "polynomial forward failed")
+
+                grad_out = get_random_test_tensor(size=reference.size(), is_float=True)
+                grad_out_encr = crypten.cryptensor(grad_out)
+                reference.backward(grad_out)
+                out_encr.backward(grad_out_encr)
+                self._check(
+                    tensor_encr.grad,
+                    tensor.grad,
+                    "polynomial backward failed",
+                )
 
 
 # Run all unit tests with both TFP and TTP providers

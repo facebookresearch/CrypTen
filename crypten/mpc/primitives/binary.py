@@ -93,6 +93,13 @@ class BinarySharedTensor(object):
             self.share ^= tensor
 
     @staticmethod
+    def new(*args, **kwargs):
+        """
+        Creates a new BinarySharedTensor, passing all args and kwargs into the constructor.
+        """
+        return BinarySharedTensor(*args, **kwargs)
+
+    @staticmethod
     def from_shares(share, precision=None, src=0, device=None):
         """Generate a BinarySharedTensor from a share from each party"""
         result = BinarySharedTensor(src=SENTINEL)

@@ -105,6 +105,13 @@ class ArithmeticSharedTensor(object):
         if self.rank == src:
             self.share += tensor
 
+    @staticmethod
+    def new(*args, **kwargs):
+        """
+        Creates a new ArithmeticSharedTensor, passing all args and kwargs into the constructor.
+        """
+        return ArithmeticSharedTensor(*args, **kwargs)
+
     @property
     def device(self):
         """Return the `torch.device` of the underlying _tensor"""

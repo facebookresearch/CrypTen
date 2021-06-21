@@ -9,7 +9,6 @@ import logging
 from dataclasses import dataclass
 from functools import wraps
 
-import crypten
 import torch
 from crypten import communicator as comm
 from crypten.common.tensor_types import is_tensor
@@ -275,14 +274,6 @@ class MPCTensor(CrypTensor):
         """Decrypts the tensor without any downscaling."""
         return self._tensor.reveal(dst=dst)
 
-    def __bool__(self):
-        """Override bool operator since encrypted tensors cannot evaluate"""
-        raise RuntimeError("Cannot evaluate MPCTensors to boolean values")
-
-    def __nonzero__(self):
-        """__bool__ for backwards compatibility with Python 2"""
-        raise RuntimeError("Cannot evaluate MPCTensors to boolean values")
-
     def __repr__(self):
         """Returns a representation of the tensor useful for debugging."""
         from crypten.debug import debug_mode
@@ -294,12 +285,6 @@ class MPCTensor(CrypTensor):
             f"MPCTensor(\n\t_tensor={share}\n"
             f"\tplain_text={plain_text}\n\tptype={ptype}\n)"
         )
-
-    def __setitem__(self, index, value):
-        """Set tensor values by index"""
-        if not isinstance(value, MPCTensor):
-            value = MPCTensor(value, ptype=self.ptype, device=self.device)
-        self._tensor.__setitem__(index, value._tensor)
 
     def __hash__(self):
         return hash(self.share)
@@ -425,107 +410,6 @@ class MPCTensor(CrypTensor):
         output will be 1 with probability according to the i-th value of the
         input tensor."""
         return self > MPCTensor.rand(self.size(), device=self.device)
-
-    # TODO: It seems we can remove all Dropout implementations below?
-    def dropout(self, p=0.5, training=True, inplace=False):
-        r"""
-        Randomly zeroes some of the elements of the input tensor with
-        probability :attr:`p`.
-
-        Args:
-            p: probability of a channel to be zeroed. Default: 0.5
-            training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, will do this operation in-place.
-                Default: ``False``
-        """
-        assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
-        if training and inplace:
-            logging.warning(
-                "CrypTen dropout does not support inplace computation during training."
-            )
-
-        if not training:
-            if inplace:
-                return self
-            else:
-                return self.clone()
-        rand_tensor = MPCTensor.rand(self.size(), device=self.device)
-        dropout_tensor = rand_tensor > p
-        if inplace:
-            result_tensor = self.mul_(dropout_tensor).div_(1 - p)
-        else:
-            result_tensor = self.mul(dropout_tensor).div_(1 - p)
-        return result_tensor
-
-    def dropout2d(self, p=0.5, training=True, inplace=False):
-        r"""
-        Randomly zero out entire channels (a channel is a 2D feature map,
-        e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
-        batched input is a 2D tensor :math:`\text{input}[i, j]`) of the input tensor).
-        Each channel will be zeroed out independently on every forward call with
-        probability :attr:`p` using samples from a Bernoulli distribution.
-
-        Args:
-            p: probability of a channel to be zeroed. Default: 0.5
-            training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, will do this operation in-place.
-                Default: ``False``
-        """
-        assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
-        return self._feature_dropout(p, training, inplace)
-
-    def dropout3d(self, p=0.5, training=True, inplace=False):
-        r"""
-        Randomly zero out entire channels (a channel is a 3D feature map,
-        e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
-        batched input is a 3D tensor :math:`\text{input}[i, j]`) of the input tensor).
-        Each channel will be zeroed out independently on every forward call with
-        probability :attr:`p` using samples from a Bernoulli distribution.
-
-        Args:
-            p: probability of a channel to be zeroed. Default: 0.5
-            training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, will do this operation in-place.
-                Default: ``False``
-        """
-        # This is 100% the same code as dropout2d. We duplicate this code so that
-        # stack traces are not confusing.
-        assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
-        return self._feature_dropout(p, training, inplace)
-
-    def _feature_dropout(self, p=0.5, training=True, inplace=False):
-        """Randomly zeros out entire channels in the input tensor with probability
-        :attr:`p`. (a channel is a nD feature map, e.g., the :math:`j`-th channel
-        of the :math:`i`-th sample in the batched input is a nD tensor
-        :math:`\text{input}[i, j]`)."""
-        assert self.dim() >= 2, "feature dropout requires dimension to be at least 2"
-        assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
-        if training and inplace:
-            logging.warning(
-                "CrypTen _feature_dropout does not support inplace computation during training."
-            )
-
-        if not training:
-            if inplace:
-                return self
-            else:
-                return self.clone()
-        # take first 2 dimensions
-        feature_dropout_size = self.size()[0:2]
-        # create dropout tensor over the first two dimensions
-        rand_tensor = MPCTensor.rand(feature_dropout_size, device=self.device)
-        feature_dropout_tensor = rand_tensor > p
-        # Broadcast to remaining dimensions
-        for i in range(2, self.dim()):
-            feature_dropout_tensor = feature_dropout_tensor.unsqueeze(i)
-        feature_dropout_tensor.share, self.share = torch.broadcast_tensors(
-            feature_dropout_tensor.share, self.share
-        )
-        if inplace:
-            result_tensor = self.mul_(feature_dropout_tensor).div_(1 - p)
-        else:
-            result_tensor = self.mul(feature_dropout_tensor).div_(1 - p)
-        return result_tensor
 
     # Comparators
     @mode(Ptype.binary)
@@ -921,75 +805,7 @@ class MPCTensor(CrypTensor):
 
         return self * condition + y_masked
 
-    def hardtanh(self, min_value=-1, max_value=1):
-        r"""Applies the HardTanh function element-wise
-
-        HardTanh is defined as:
-
-        .. math::
-            \text{HardTanh}(x) = \begin{cases}
-                1 & \text{ if } x > 1 \\
-                -1 & \text{ if } x < -1 \\
-                x & \text{ otherwise } \\
-            \end{cases}
-
-        The range of the linear region :math:`[-1, 1]` can be adjusted using
-        :attr:`min_val` and :attr:`max_val`.
-
-        Args:
-            min_val: minimum value of the linear region range. Default: -1
-            max_val: maximum value of the linear region range. Default: 1
-        """
-        intermediate = MPCTensor.stack([self - min_value, self - max_value]).relu()
-        intermediate = intermediate[0].sub(intermediate[1])
-        return intermediate.add_(min_value)
-
     @mode(Ptype.arithmetic)
-    def pad(self, pad, mode="constant", value=0):
-        result = self.shallow_copy()
-        if isinstance(value, MPCTensor):
-            result._tensor = self._tensor.pad(pad, mode=mode, value=value._tensor)
-        else:
-            result._tensor = self._tensor.pad(pad, mode=mode, value=value)
-        return result
-
-    @mode(Ptype.arithmetic)
-    def polynomial(self, coeffs, func="mul"):
-        """Computes a polynomial function on a tensor with given coefficients,
-        `coeffs`, that can be a list of values or a 1-D tensor.
-
-        Coefficients should be ordered from the order 1 (linear) term first,
-        ending with the highest order term. (Constant is not included).
-        """
-        # Coefficient input type-checking
-        if isinstance(coeffs, list):
-            coeffs = torch.tensor(coeffs, device=self.device)
-        assert is_tensor(coeffs) or crypten.is_encrypted_tensor(
-            coeffs
-        ), "Polynomial coefficients must be a list or tensor"
-        assert coeffs.dim() == 1, "Polynomial coefficients must be a 1-D tensor"
-
-        # Handle linear case
-        if coeffs.size(0) == 1:
-            return self.mul(coeffs)
-
-        # Compute terms of polynomial using exponentially growing tree
-        terms = crypten.stack([self, self.square()])
-        while terms.size(0) < coeffs.size(0):
-            highest_term = terms.index_select(
-                0, torch.tensor(terms.size(0) - 1, device=self.device)
-            )
-            new_terms = getattr(terms, func)(highest_term)
-            terms = crypten.cat([terms, new_terms])
-
-        # Resize the coefficients for broadcast
-        terms = terms[: coeffs.size(0)]
-        for _ in range(terms.dim() - 1):
-            coeffs = coeffs.unsqueeze(1)
-
-        # Multiply terms by coefficients and sum
-        return terms.mul(coeffs).sum(0)
-
     def div(self, y):
         r"""Divides each element of :attr:`self` with the scalar :attr:`y` or
         each element of the tensor :attr:`y` and returns a new resulting tensor.
@@ -1026,54 +842,6 @@ class MPCTensor(CrypTensor):
             return self.mul_(y.reciprocal())
         self._tensor.div_(y)
         return self
-
-    def pow_(self, p, **kwargs):
-        """In-place version of pow_ function"""
-        result = self.pow(p)
-        self.share.set_(result.share.data)
-        return self
-
-    def pos_pow(self, p):
-        """
-        Approximates self ** p by computing: :math:`x^p = exp(p * log(x))`
-
-        Note that this requires that the base `self` contain only positive values
-        since log can only be computed on positive numbers.
-
-        Note that the value of `p` can be an integer, float, public tensor, or
-        encrypted tensor.
-        """
-        if isinstance(p, int) or (isinstance(p, float) and int(p) == p):
-            return self.pow(p)
-        return self.log().mul_(p).exp()
-
-    def norm(self, p="fro", dim=None, keepdim=False):
-        """Computes the p-norm of the input tensor (or along a dimension)."""
-        if p == "fro":
-            p = 2
-
-        if isinstance(p, (int, float)):
-            assert p >= 1, "p-norm requires p >= 1"
-            if p == 1:
-                if dim is None:
-                    return self.abs().sum()
-                return self.abs().sum(dim, keepdim=keepdim)
-            elif p == 2:
-                if dim is None:
-                    return self.square().sum().sqrt()
-                return self.square().sum(dim, keepdim=keepdim).sqrt()
-            elif p == float("inf"):
-                if dim is None:
-                    return self.abs().max()
-                return self.abs().max(dim=dim, keepdim=keepdim)[0]
-            else:
-                if dim is None:
-                    return self.abs().pos_pow(p).sum().pos_pow(1 / p)
-                return self.abs().pos_pow(p).sum(dim, keepdim=keepdim).pos_pow(1 / p)
-        elif p == "nuc":
-            raise NotImplementedError("Nuclear norm is not implemented")
-        else:
-            raise ValueError(f"Improper value p ({p})for p-norm")
 
     def index_add(self, dim, index, tensor):
         """Performs out-of-place index_add: Accumulate the elements of tensor into the

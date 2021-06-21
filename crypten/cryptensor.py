@@ -11,7 +11,12 @@ import torch
 
 from .common import approximations, regular
 from .debug import validation_mode, validate_correctness
-from .gradients import AutogradContext, BaseAutogradContext, get_grad_fn, get_grad_fn_registry
+from .gradients import (
+    AutogradContext,
+    BaseAutogradContext,
+    get_grad_fn,
+    get_grad_fn_registry,
+)
 
 
 # list of all static functions that CrypTensors support:
@@ -466,7 +471,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             \text{{out_i}} = \text{{input_i}} + \text{{tensor}}
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("add is not implemented")
 
     def __add__(self, tensor):
@@ -489,7 +495,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         `broadcastable`_ with the shape of :attr:`self`.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("sub is not implemented")
 
     def __sub__(self, tensor):
@@ -521,7 +528,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         `broadcastable`_.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("mul is not implemented")
 
     def __mul__(self, tensor):
@@ -553,7 +561,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             tensor (Tensor or float): the tensor or value in the denominator.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("div is not implemented")
 
     def __div__(self, tensor):
@@ -613,7 +622,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             tensor (Tensor): the tensor to be multiplied
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("matmul is not implemented")
 
     def __matmul__(self, tensor):
@@ -817,48 +827,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         raise NotImplementedError("adaptive_max_pool2d is not implemented")
 
-    def dropout(self, p=0.5, training=True, inplace=False):
-        r"""
-        Randomly zeroes some of the elements of the input tensor with
-        probability :attr:`p`.
-
-        Args:
-            p: probability of a channel to be zeroed. Default: 0.5
-            training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, operation is in-place (default=``False``).
-        """
-        raise NotImplementedError("dropout is not implemented")
-
-    def dropout2d(self, p=0.5, training=True, inplace=False):
-        r"""
-        Randomly zero out entire channels (a channel is a 2D feature map,
-        e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
-        batched input is a 2D tensor :math:`\text{input}[i, j]`) of the input tensor).
-        Each channel will be zeroed out independently on every forward call with
-        probability :attr:`p` using samples from a Bernoulli distribution.
-
-        Args:
-            p: probability of a channel to be zeroed. Default: 0.5
-            training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, operation is in-place (default=``False``).
-        """
-        raise NotImplementedError("dropout2d is not implemented")
-
-    def dropout3d(self, p=0.5, training=True, inplace=False):
-        r"""
-        Randomly zero out entire channels (a channel is a 3D feature map,
-        e.g., the :math:`j`-th channel of the :math:`i`-th sample in the
-        batched input is a 3D tensor :math:`\text{input}[i, j]`) of the input
-        tensor). Each channel will be zeroed out independently on every forward
-        call with probability :attr:`p` using samples from a Bernoulli distribution.
-
-        Args:
-            p: probability of a channel to be zeroed. Default: 0.5
-            training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, operation is in-place (default=``False``)
-        """
-        raise NotImplementedError("dropout3d is not implemented")
-
     def where(self, condition, y):
         """Selects elements from self or y based on condition
 
@@ -1035,7 +1003,8 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             location where comparison is true
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B509
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
         raise NotImplementedError("lt is not implemented")
 
     def __lt__(self, tensor):
@@ -1418,6 +1387,14 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
     def set(self, enc_tensor):
         """Sets self encrypted to enc_tensor in place"""
         raise NotImplementedError("set is not implemented")
+
+    def __bool__(self):
+        """Override bool operator since encrypted tensors cannot evaluate"""
+        raise RuntimeError("Cannot evaluate CrypTensors to boolean values")
+
+    def __nonzero__(self):
+        """__bool__ for backwards compatibility with Python 2"""
+        raise RuntimeError("Cannot evaluate CrypTensors to boolean values")
 
 
 # Register function approximations
