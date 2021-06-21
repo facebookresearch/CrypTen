@@ -11,6 +11,7 @@ import crypten.communicator as comm
 
 # dependencies:
 import torch
+from crypten.common import regular
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor, is_tensor
 from crypten.common.util import torch_cat, torch_stack
@@ -188,7 +189,13 @@ class ArithmeticSharedTensor(object):
         """Create a shallow copy"""
         result = ArithmeticSharedTensor(src=SENTINEL)
         result.encoder = self.encoder
-        result.share = self.share
+        result._tensor = self._tensor
+        return result
+
+    def clone(self):
+        result = ArithmeticSharedTensor(src=SENTINEL)
+        result.encoder = self.encoder
+        result._tensor = self._tensor.clone()
         return result
 
     def copy_(self, other):
@@ -718,54 +725,6 @@ class ArithmeticSharedTensor(object):
         return -self + tensor
 
 
-REGULAR_FUNCTIONS = [
-    "clone",
-    "__getitem__",
-    "index_select",
-    "view",
-    "flatten",
-    "t",
-    "transpose",
-    "unsqueeze",
-    "squeeze",
-    "repeat",
-    "narrow",
-    "expand",
-    "roll",
-    "unfold",
-    "flip",
-    "trace",
-    "sum",
-    "cumsum",
-    "reshape",
-    "gather",
-    "unbind",
-    "split",
-    "permute",
-]
-
-
-PROPERTY_FUNCTIONS = ["__len__", "nelement", "dim", "size", "numel"]
-
-
-def _add_regular_function(function_name):
-    def regular_func(self, *args, **kwargs):
-        result = self.shallow_copy()
-        result.share = getattr(result.share, function_name)(*args, **kwargs)
-        return result
-
-    setattr(ArithmeticSharedTensor, function_name, regular_func)
-
-
-def _add_property_function(function_name):
-    def property_func(self, *args, **kwargs):
-        return getattr(self.share, function_name)(*args, **kwargs)
-
-    setattr(ArithmeticSharedTensor, function_name, property_func)
-
-
-for function_name in REGULAR_FUNCTIONS:
-    _add_regular_function(function_name)
-
-for function_name in PROPERTY_FUNCTIONS:
-    _add_property_function(function_name)
+# Register regular functions
+for func in regular.__all__:
+    setattr(ArithmeticSharedTensor, func, getattr(regular, func))

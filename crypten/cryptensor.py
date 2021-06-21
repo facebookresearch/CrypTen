@@ -9,7 +9,7 @@ from contextlib import contextmanager
 
 import torch
 
-from .common import approximations
+from .common import approximations, regular
 from .debug import validation_mode, validate_correctness
 from .gradients import AutogradContext, BaseAutogradContext, get_grad_fn, get_grad_fn_registry
 
@@ -1423,6 +1423,12 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 # Register function approximations
 for func in approximations.__all__:
     setattr(CrypTensor, func, getattr(approximations, func))
+
+
+# Register regular functions
+for func in regular.__all__:
+    setattr(CrypTensor, func, getattr(regular, func))
+
 
 # Register base implementations from gradient functions
 for name, grad_fn in get_grad_fn_registry().items():

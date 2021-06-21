@@ -9,6 +9,7 @@ import crypten.communicator as comm
 
 # dependencies:
 import torch
+from crypten.common import regular
 from crypten.common.rng import generate_kbit_random_tensor
 from crypten.common.tensor_types import is_tensor
 from crypten.common.util import torch_cat, torch_stack
@@ -178,7 +179,13 @@ class BinarySharedTensor(object):
         """Create a shallow copy"""
         result = BinarySharedTensor(src=SENTINEL)
         result.encoder = self.encoder
-        result.share = self.share
+        result._tensor = self._tensor
+        return result
+
+    def clone(self):
+        result = BinarySharedTensor(src=SENTINEL)
+        result.encoder = self.encoder
+        result._tensor = self._tensor.clone()
         return result
 
     def copy_(self, other):
@@ -459,51 +466,9 @@ class BinarySharedTensor(object):
     __ror__ = __or__
 
 
-REGULAR_FUNCTIONS = [
-    "clone",
-    "__getitem__",
-    "index_select",
-    "view",
-    "flatten",
-    "t",
-    "transpose",
-    "unsqueeze",
-    "squeeze",
-    "repeat",
-    "narrow",
-    "expand",
-    "roll",
-    "unfold",
-    "flip",
-    "reshape",
-    "gather",
-    "take",
-    "split",
-    "permute",
-]
-
-
-PROPERTY_FUNCTIONS = ["__len__", "nelement", "dim", "size", "numel"]
-
-
-def _add_regular_function(function_name):
-    def regular_func(self, *args, **kwargs):
-        result = self.shallow_copy()
-        result.share = getattr(result.share, function_name)(*args, **kwargs)
-        return result
-
-    setattr(BinarySharedTensor, function_name, regular_func)
-
-
-def _add_property_function(function_name):
-    def property_func(self, *args, **kwargs):
-        return getattr(self.share, function_name)(*args, **kwargs)
-
-    setattr(BinarySharedTensor, function_name, property_func)
-
-
-for function_name in REGULAR_FUNCTIONS:
-    _add_regular_function(function_name)
-
-for function_name in PROPERTY_FUNCTIONS:
-    _add_property_function(function_name)
+# Register regular functions
+additive_funcs = ["trace", "sum", "cumsum"]  # skip additive functions
+for func in regular.__all__:
+    if func in additive_funcs:
+        continue
+    setattr(BinarySharedTensor, func, getattr(regular, func))

@@ -1156,6 +1156,7 @@ OOP_UNARY_FUNCTIONS = {
     "avg_pool2d": Ptype.arithmetic,
     "take": Ptype.arithmetic,
     "square": Ptype.arithmetic,
+    "prod": Ptype.arithmetic,
     "mean": Ptype.arithmetic,
     "var": Ptype.arithmetic,
     "neg": Ptype.arithmetic,
@@ -1265,64 +1266,3 @@ for func_name, preferred_type in INPLACE_UNARY_FUNCTIONS.items():
 
 for func_name, preferred_type in INPLACE_BINARY_FUNCTIONS.items():
     _add_inplace_binary_passthrough_function(func_name, preferred_type)
-
-
-REGULAR_FUNCTIONS = [
-    "__getitem__",
-    "index_select",
-    "view",
-    "flatten",
-    "t",
-    "transpose",
-    "unsqueeze",
-    "squeeze",
-    "repeat",
-    "narrow",
-    "expand",
-    "roll",
-    "unfold",
-    "flip",
-    "trace",
-    "prod",
-    "sum",
-    "cumsum",
-    "reshape",
-    "gather",
-    "permute",
-]
-
-
-PROPERTY_FUNCTIONS = ["__len__", "nelement", "dim", "size", "numel"]
-
-
-def _add_regular_function(function_name):
-    """
-    Adds function to `MPCTensor` that is applied directly on the underlying
-    `_tensor` attribute, and stores the result in the same attribute.
-    """
-
-    def regular_func(self, *args, **kwargs):
-        result = self.shallow_copy()
-        result._tensor = getattr(result._tensor, function_name)(*args, **kwargs)
-        return result
-
-    setattr(MPCTensor, function_name, regular_func)
-
-
-def _add_property_function(function_name):
-    """
-    Adds function to `MPCTensor` that is applied directly on the underlying
-    `_tensor` attribute, and returns the result of that function.
-    """
-
-    def property_func(self, *args, **kwargs):
-        return getattr(self._tensor, function_name)(*args, **kwargs)
-
-    setattr(MPCTensor, function_name, property_func)
-
-
-for function_name in REGULAR_FUNCTIONS:
-    _add_regular_function(function_name)
-
-for function_name in PROPERTY_FUNCTIONS:
-    _add_property_function(function_name)
