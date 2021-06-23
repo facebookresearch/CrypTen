@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import crypten
 from crypten.common.tensor_types import is_tensor
 
 
@@ -19,6 +20,7 @@ __all__ = [
     "eq",
     "ge",
     "gt",
+    "hardtanh",
     "le",
     "lt",
     "ne",
@@ -81,6 +83,30 @@ def abs(self):
 def relu(self):
     """Compute a Rectified Linear function on the input tensor."""
     return self * self.ge(0)
+
+
+def hardtanh(self, min_value=-1, max_value=1):
+    r"""Applies the HardTanh function element-wise
+
+    HardTanh is defined as:
+
+    .. math::
+        \text{HardTanh}(x) = \begin{cases}
+            1 & \text{ if } x > 1 \\
+            -1 & \text{ if } x < -1 \\
+            x & \text{ otherwise } \\
+        \end{cases}
+
+    The range of the linear region :math:`[-1, 1]` can be adjusted using
+    :attr:`min_val` and :attr:`max_val`.
+
+    Args:
+        min_val: minimum value of the linear region range. Default: -1
+        max_val: maximum value of the linear region range. Default: 1
+    """
+    intermediate = crypten.stack([self - min_value, self - max_value]).relu()
+    intermediate = intermediate[0].sub(intermediate[1])
+    return intermediate.add_(min_value)
 
 
 def where(self, condition, y):

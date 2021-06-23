@@ -11,7 +11,6 @@ from functools import reduce
 
 import crypten
 import torch
-from crypten.common.tensor_types import is_tensor
 
 
 # registry that maps function names to AutogradFunctions:
@@ -43,11 +42,6 @@ def get_grad_fn(name):
     if name in FUNCTION_REGISTRY:
         return FUNCTION_REGISTRY[name]
     return None
-
-
-def get_grad_fn_registry():
-    global FUNCTION_REGISTRY
-    return FUNCTION_REGISTRY
 
 
 def _ensure_tensor(input):
@@ -500,38 +494,6 @@ class AutogradReLU(AutogradFunction):
 @register_function("dropout")
 class AutogradDropout(AutogradFunction):
     @staticmethod
-    def base_impl(self, p=0.5, training=True, inplace=False):
-        r"""
-        Randomly zeroes some of the elements of the input tensor with
-        probability :attr:`p`.
-
-        Args:
-            p: probability of a channel to be zeroed. Default: 0.5
-            training: apply dropout if is ``True``. Default: ``True``
-            inplace: If set to ``True``, will do this operation in-place.
-                Default: ``False``
-        """
-        assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
-        if training and inplace:
-            logging.warning(
-                "CrypTen dropout does not support inplace computation during training."
-            )
-
-        if not training:
-            if inplace:
-                return self
-            else:
-                return self.clone()
-
-        rand_tensor = crypten.rand(self.size(), device=self.device)
-        dropout_tensor = rand_tensor > p
-        if inplace:
-            result_tensor = self.mul_(dropout_tensor).div_(1 - p)
-        else:
-            result_tensor = self.mul(dropout_tensor).div_(1 - p)
-        return result_tensor
-
-    @staticmethod
     def forward(ctx, input, p=0.5, training=True, inplace=False):
 
         if training and inplace:
@@ -622,30 +584,6 @@ class AutogradTanh(AutogradFunction):
 
 @register_function("hardtanh")
 class AutogradHardtanh(AutogradFunction):
-    @staticmethod
-    def base_impl(self, min_value=-1, max_value=1):
-        r"""Applies the HardTanh function element-wise
-
-        HardTanh is defined as:
-
-        .. math::
-            \text{HardTanh}(x) = \begin{cases}
-                1 & \text{ if } x > 1 \\
-                -1 & \text{ if } x < -1 \\
-                x & \text{ otherwise } \\
-            \end{cases}
-
-        The range of the linear region :math:`[-1, 1]` can be adjusted using
-        :attr:`min_val` and :attr:`max_val`.
-
-        Args:
-            min_val: minimum value of the linear region range. Default: -1
-            max_val: maximum value of the linear region range. Default: 1
-        """
-        intermediate = crypten.stack([self - min_value, self - max_value]).relu()
-        intermediate = intermediate[0].sub(intermediate[1])
-        return intermediate.add_(min_value)
-
     @staticmethod
     def forward(ctx, input, min_val=-1, max_val=1):
         assert isinstance(
@@ -895,43 +833,6 @@ class AutogradRDiv(AutogradFunction):
 @register_function("polynomial")
 class AutogradPolynomial(AutogradFunction):
     @staticmethod
-    def base_impl(self, coeffs, func="mul"):
-        """Computes a polynomial function on a tensor with given coefficients,
-        `coeffs`, that can be a list of values or a 1-D tensor.
-
-        Coefficients should be ordered from the order 1 (linear) term first,
-        ending with the highest order term. (Constant is not included).
-        """
-        # Coefficient input type-checking
-        if isinstance(coeffs, list):
-            coeffs = torch.tensor(coeffs, device=self.device)
-        assert is_tensor(coeffs) or crypten.is_encrypted_tensor(
-            coeffs
-        ), "Polynomial coefficients must be a list or tensor"
-        assert coeffs.dim() == 1, "Polynomial coefficients must be a 1-D tensor"
-
-        # Handle linear case
-        if coeffs.size(0) == 1:
-            return self.mul(coeffs)
-
-        # Compute terms of polynomial using exponentially growing tree
-        terms = crypten.stack([self, self.square()])
-        while terms.size(0) < coeffs.size(0):
-            highest_term = terms.index_select(
-                0, torch.tensor(terms.size(0) - 1, device=self.device)
-            )
-            new_terms = getattr(terms, func)(highest_term)
-            terms = crypten.cat([terms, new_terms])
-
-        # Resize the coefficients for broadcast
-        terms = terms[: coeffs.size(0)]
-        for _ in range(terms.dim() - 1):
-            coeffs = coeffs.unsqueeze(1)
-
-        # Multiply terms by coefficients and sum
-        return terms.mul(coeffs).sum(0)
-
-    @staticmethod
     def forward(ctx, input, coeffs, func="mul"):
         ctx.mark_non_differentiable(coeffs)
         if isinstance(coeffs, (list, tuple)):
@@ -949,38 +850,6 @@ class AutogradPolynomial(AutogradFunction):
 @register_function("pow")
 class AutogradPow(AutogradFunction):
     @staticmethod
-    def base_impl(self, p, **kwargs):
-        """
-        Computes an element-wise exponent `p` of a tensor, where `p` is an
-        integer.
-        """
-        if isinstance(p, float) and int(p) == p:
-            p = int(p)
-
-        if not isinstance(p, int):
-            raise TypeError(
-                "pow must take an integer exponent. For non-integer powers, use"
-                " pos_pow with positive-valued base."
-            )
-        if p < -1:
-            return AutogradPow.base_impl(self.reciprocal(), -p)
-        elif p == -1:
-            return self.reciprocal()
-        elif p == 0:
-            # Note: This returns 0 ** 0 -> 1 when inputs have zeros.
-            # This is consistent with PyTorch's pow function.
-            return self.new(torch.ones_like(self.data))
-        elif p == 1:
-            return self.clone()
-        elif p == 2:
-            return self.square()
-        elif p % 2 == 0:
-            return AutogradPow.base_impl(self.square(), p // 2)
-        else:
-            x = self.square().mul_(self)
-            return AutogradPow.base_impl(x, (p - 1) // 2)
-
-    @staticmethod
     def forward(ctx, input, power):
         grad_pow = input.pow(power - 1)
         grad = grad_pow.mul(power)
@@ -995,21 +864,6 @@ class AutogradPow(AutogradFunction):
 
 @register_function("pos_pow")
 class AutogradPosPow(AutogradFunction):
-    @staticmethod
-    def base_impl(self, p):
-        """
-        Approximates self ** p by computing: :math:`x^p = exp(p * log(x))`
-
-        Note that this requires that the base `self` contain only positive values
-        since log can only be computed on positive numbers.
-
-        Note that the value of `p` can be an integer, float, public tensor, or
-        encrypted tensor.
-        """
-        if isinstance(p, int) or (isinstance(p, float) and int(p) == p):
-            return self.pow(p)
-        return self.log().mul_(p).exp()
-
     @staticmethod
     def forward(ctx, input, power):
         if isinstance(power, int) or (isinstance(power, float) and int(power) == power):
@@ -1178,35 +1032,6 @@ class AutogradSign(AutogradFunction):
 
 @register_function("norm")
 class AutogradNorm(AutogradFunction):
-    @staticmethod
-    def base_impl(self, p="fro", dim=None, keepdim=False):
-        """Computes the p-norm of the input tensor (or along a dimension)."""
-        if p == "fro":
-            p = 2
-
-        if isinstance(p, (int, float)):
-            assert p >= 1, "p-norm requires p >= 1"
-            if p == 1:
-                if dim is None:
-                    return self.abs().sum()
-                return self.abs().sum(dim, keepdim=keepdim)
-            elif p == 2:
-                if dim is None:
-                    return self.square().sum().sqrt()
-                return self.square().sum(dim, keepdim=keepdim).sqrt()
-            elif p == float("inf"):
-                if dim is None:
-                    return self.abs().max()
-                return self.abs().max(dim=dim, keepdim=keepdim)[0]
-            else:
-                if dim is None:
-                    return self.abs().pos_pow(p).sum().pos_pow(1 / p)
-                return self.abs().pos_pow(p).sum(dim, keepdim=keepdim).pos_pow(1 / p)
-        elif p == "nuc":
-            raise NotImplementedError("Nuclear norm is not implemented")
-        else:
-            raise ValueError(f"Improper value p ({p})for p-norm")
-
     @staticmethod
     def forward(ctx, input, p="fro", dim=None, keepdim=False):
         if p == float("inf"):
@@ -1523,15 +1348,6 @@ class AutogradLogSoftmax(AutogradFunction):
 
 @register_function("pad")
 class AutogradPad(AutogradFunction):
-    @staticmethod
-    def base_impl(self, pad, mode="constant", value=0):
-        result = self.shallow_copy()
-        if crypten.is_encrypted_tensor(value):
-            result._tensor = self._tensor.pad(pad, mode=mode, value=value._tensor)
-        else:
-            result._tensor = self._tensor.pad(pad, mode=mode, value=value)
-        return result
-
     @staticmethod
     def forward(ctx, input, padding, value=0.0, mode="constant"):
         ctx.save_for_backward(padding)

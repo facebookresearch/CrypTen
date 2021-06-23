@@ -14,7 +14,6 @@ from .gradients import (
     AutogradContext,
     BaseAutogradContext,
     get_grad_fn,
-    get_grad_fn_registry,
 )
 
 
@@ -859,9 +858,3 @@ for module_name in functions.__all__:
     module = getattr(functions, module_name)
     for func in module.__all__:
         setattr(CrypTensor, func, getattr(module, func))
-
-
-# Register base implementations from gradient functions
-for name, grad_fn in get_grad_fn_registry().items():
-    if hasattr(grad_fn, "base_impl"):
-        setattr(CrypTensor, name, grad_fn.base_impl)

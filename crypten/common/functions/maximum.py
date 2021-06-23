@@ -284,7 +284,11 @@ def _argmax_helper(
     appropriately, and then chooses among the different argmax algorithms.
     """
     if enc_tensor.dim() == 0:
-        result = enc_tensor.new(torch.ones(())) if one_hot else enc_tensor.new(torch.zeros(()))
+        result = (
+            enc_tensor.new(torch.ones(()))
+            if one_hot
+            else enc_tensor.new(torch.zeros(()))
+        )
         if _return_max:
             return result, None
         return result

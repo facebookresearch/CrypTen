@@ -474,8 +474,8 @@ class BinarySharedTensor(object):
 
 
 # Register regular functions
-additive_funcs = ["trace", "sum", "cumsum"]  # skip additive functions
+skip_funcs = ["trace", "sum", "cumsum", "pad"]  # skip additive functions and pad
 for func in regular.__all__:
-    if func in additive_funcs:
+    if func in skip_funcs:
         continue
     setattr(BinarySharedTensor, func, getattr(regular, func))

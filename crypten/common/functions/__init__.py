@@ -5,6 +5,15 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from . import approximations, logic, maximum, pooling, regular, sampling
+from . import approximations, dropout, logic, maximum, pooling, power, regular, sampling
 
-__all__ = ["approximations", "logic", "maximum", "pooling", "regular", "sampling"]
+__all__ = [
+    "approximations",
+    "dropout",
+    "logic",
+    "maximum",
+    "pooling",
+    "power",
+    "regular",
+    "sampling",
+]

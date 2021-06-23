@@ -5,6 +5,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import torch
 
 __all__ = [  # noqa: F822
     "__getitem__",
@@ -29,6 +30,7 @@ __all__ = [  # noqa: F822
     "gather",
     "unbind",
     "split",
+    "pad",
     "permute",
     "__len__",
     "nelement",
@@ -84,3 +86,17 @@ def __setitem__(self, index, value):
             kwargs["ptype"] = self.ptype
         value = self.new(value, **kwargs)
     self._tensor.__setitem__(index, value._tensor)
+
+
+def pad(self, pad, mode="constant", value=0):
+    result = self.shallow_copy()
+    if hasattr(value, "_tensor"):
+        value = value._tensor
+
+    if hasattr(result._tensor, "pad"):
+        result._tensor = self._tensor.pad(pad, mode=mode, value=value)
+    else:
+        result._tensor = torch.nn.functional.pad(
+            self._tensor, pad, mode=mode, value=value
+        )
+    return result

@@ -763,4 +763,6 @@ class ArithmeticSharedTensor(object):
 
 # Register regular functions
 for func in regular.__all__:
+    if func == "pad":
+        continue
     setattr(ArithmeticSharedTensor, func, getattr(regular, func))
