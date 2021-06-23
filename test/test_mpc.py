@@ -17,7 +17,7 @@ import torch
 import torch.nn.functional as F
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
-from crypten.common.util import pool2d_reshape
+from crypten.common.functions.pooling import _pool2d_reshape
 from crypten.mpc import MPCTensor, ptype as Ptype
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
@@ -624,7 +624,7 @@ class TestMPC(object):
             index_values = index_values.expand(matrix_size)
 
             # Ensure encrypted indices are correct
-            index_mask, size = pool2d_reshape(index_values, kernel_size, **kwargs)
+            index_mask, size = _pool2d_reshape(index_values, kernel_size, **kwargs)
             index_mask = index_mask.view(*size, kernel_size, kernel_size)
             crypten_indices = encrypted_indices.mul(index_mask).sum(-1).sum(-1)
 
@@ -687,7 +687,6 @@ class TestMPC(object):
 
     def test_adaptive_pooling(self):
         """test adaptive_avg_pool2d and adaptive_max_pool2d"""
-
         for in_size in range(1, 11):
             for out_size in list(range(1, in_size + 1)) + [None]:
                 input_size = (1, in_size, in_size)

@@ -5,7 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import logging
 from dataclasses import dataclass
 from functools import wraps
 
@@ -14,8 +13,6 @@ from crypten import communicator as comm
 from crypten.common.tensor_types import is_tensor
 from crypten.common.util import (
     ConfigBase,
-    adaptive_pool2d_helper,
-    pool2d_reshape,
     torch_cat,
     torch_stack,
 )
@@ -23,7 +20,6 @@ from crypten.cuda import CUDALongTensor
 
 from ..cryptensor import CrypTensor
 from ..encoder import FixedPointEncoder
-from .max_helper import _argmax_helper, _max_helper_all_tree_reductions
 from .primitives.binary import BinarySharedTensor
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
@@ -55,25 +51,6 @@ def mode(ptype, inplace=False):
             return convert_wrapper
 
     return function_wrapper
-
-
-def _one_hot_to_index(tensor, dim, keepdim, device=None):
-    """
-    Converts a one-hot tensor output from an argmax / argmin function to a
-    tensor containing indices from the input tensor from which the result of the
-    argmax / argmin was obtained.
-    """
-    if dim is None:
-        result = tensor.flatten()
-        result = result * torch.tensor(list(range(tensor.nelement())), device=device)
-        return result.sum()
-    else:
-        size = [1] * tensor.dim()
-        size[dim] = tensor.size(dim)
-        result = tensor * torch.tensor(
-            list(range(tensor.size(dim))), device=device
-        ).view(size)
-        return result.sum(dim, keepdim=keepdim)
 
 
 @dataclass
@@ -372,45 +349,6 @@ class MPCTensor(CrypTensor):
         rand.ptype = Ptype.binary
         return rand.to(Ptype.arithmetic, bits=encoder._precision_bits)
 
-    @staticmethod
-    def randn(*sizes, device=None):
-        """
-        Returns a tensor with normally distributed elements. Samples are
-        generated using the Box-Muller transform with optimizations for
-        numerical precision and MPC efficiency.
-        """
-        u = MPCTensor.rand(*sizes, device=device).flatten()
-        odd_numel = u.numel() % 2 == 1
-        if odd_numel:
-            u = MPCTensor.cat([u, MPCTensor.rand((1,), device=device)])
-
-        n = u.numel() // 2
-        u1 = u[:n]
-        u2 = u[n:]
-
-        # Radius = sqrt(- 2 * log(u1))
-        r2 = -2 * u1.log(input_in_01=True)
-        r = r2.sqrt()
-
-        # Theta = cos(2 * pi * u2) or sin(2 * pi * u2)
-        cos, sin = u2.sub(0.5).mul(6.28318531).cossin()
-
-        # Generating 2 independent normal random variables using
-        x = r.mul(sin)
-        y = r.mul(cos)
-        z = MPCTensor.cat([x, y])
-
-        if odd_numel:
-            z = z[1:]
-
-        return z.view(*sizes)
-
-    def bernoulli(self):
-        """Returns a tensor with elements in {0, 1}. The i-th element of the
-        output will be 1 with probability according to the i-th value of the
-        input tensor."""
-        return self > MPCTensor.rand(self.size(), device=self.device)
-
     # Comparators
     @mode(Ptype.binary)
     def _ltz(self):
@@ -421,26 +359,6 @@ class MPCTensor(CrypTensor):
         result = (self >> shift).to(Ptype.arithmetic, precision=precision, bits=1)
         result.encoder._scale = 1
         return result
-
-    @mode(Ptype.arithmetic)
-    def ge(self, y):
-        """Returns self >= y"""
-        return 1 - self.lt(y)
-
-    @mode(Ptype.arithmetic)
-    def gt(self, y):
-        """Returns self > y"""
-        return (-self + y)._ltz()
-
-    @mode(Ptype.arithmetic)
-    def le(self, y):
-        """Returns self <= y"""
-        return 1 - self.gt(y)
-
-    @mode(Ptype.arithmetic)
-    def lt(self, y):
-        """Returns self < y"""
-        return (self - y)._ltz()
 
     @mode(Ptype.arithmetic)
     def eq(self, y):
@@ -476,331 +394,6 @@ class MPCTensor(CrypTensor):
         result.encoder._scale = 1
 
         return result
-
-    @mode(Ptype.arithmetic)
-    def sign(self):
-        """Computes the sign value of a tensor (0 is considered positive)"""
-        return 1 - 2 * self._ltz()
-
-    @mode(Ptype.arithmetic)
-    def abs(self):
-        """Computes the absolute value of a tensor"""
-        return self * self.sign()
-
-    @mode(Ptype.arithmetic)
-    def relu(self):
-        """Compute a Rectified Linear function on the input tensor."""
-        return self * self.ge(0)
-
-    @mode(Ptype.arithmetic)
-    def weighted_index(self, dim=None):
-        """
-        Returns a tensor with entries that are one-hot along dimension `dim`.
-        These one-hot entries are set at random with weights given by the input
-        `self`.
-
-        Examples::
-
-            >>> encrypted_tensor = MPCTensor(torch.tensor([1., 6.]))
-            >>> index = encrypted_tensor.weighted_index().get_plain_text()
-            # With 1 / 7 probability
-            torch.tensor([1., 0.])
-
-            # With 6 / 7 probability
-            torch.tensor([0., 1.])
-        """
-        if dim is None:
-            return self.flatten().weighted_index(dim=0).view(self.size())
-
-        x = self.cumsum(dim)
-        max_weight = x.index_select(
-            dim, torch.tensor(x.size(dim) - 1, device=self.device)
-        )
-        r = MPCTensor.rand(max_weight.size(), device=self.device) * max_weight
-
-        gt = x.gt(r)
-        shifted = gt.roll(1, dims=dim)
-        shifted.share.index_fill_(dim, torch.tensor(0, device=self.device), 0)
-
-        return gt - shifted
-
-    @mode(Ptype.arithmetic)
-    def weighted_sample(self, dim=None):
-        """
-        Samples a single value across dimension `dim` with weights corresponding
-        to the values in `self`
-
-        Returns the sample and the one-hot index of the sample.
-
-        Examples::
-
-            >>> encrypted_tensor = MPCTensor(torch.tensor([1., 6.]))
-            >>> index = encrypted_tensor.weighted_sample().get_plain_text()
-            # With 1 / 7 probability
-            (torch.tensor([1., 0.]), torch.tensor([1., 0.]))
-
-            # With 6 / 7 probability
-            (torch.tensor([0., 6.]), torch.tensor([0., 1.]))
-        """
-        indices = self.weighted_index(dim)
-        sample = self.mul(indices).sum(dim)
-        return sample, indices
-
-    # max / min-related functions
-    @mode(Ptype.arithmetic)
-    def argmax(self, dim=None, keepdim=False, one_hot=True):
-        """Returns the indices of the maximum value of all elements in the
-        `input` tensor.
-        """
-        # TODO: Make dim an arg.
-        if self.dim() == 0:
-            result = (
-                MPCTensor(torch.ones((), device=self.device))
-                if one_hot
-                else MPCTensor(torch.zeros((), device=self.device))
-            )
-            return result
-
-        result = _argmax_helper(
-            self, dim, one_hot, config.max_method, _return_max=False
-        )
-
-        if not one_hot:
-            result = _one_hot_to_index(result, dim, keepdim, self.device)
-        return result
-
-    @mode(Ptype.arithmetic)
-    def argmin(self, dim=None, keepdim=False, one_hot=True):
-        """Returns the indices of the minimum value of all elements in the
-        `input` tensor.
-        """
-        # TODO: Make dim an arg.
-        return (-self).argmax(dim=dim, keepdim=keepdim, one_hot=one_hot)
-
-    @mode(Ptype.arithmetic)
-    def max(self, dim=None, keepdim=False, one_hot=True):
-        """Returns the maximum value of all elements in the input tensor."""
-        # TODO: Make dim an arg.
-        method = config.max_method
-        if dim is None:
-            if method in ["log_reduction", "double_log_reduction"]:
-                # max_result can be obtained directly
-                max_result = _max_helper_all_tree_reductions(self, method=method)
-            else:
-                # max_result needs to be obtained through argmax
-                with ConfigManager("max_method", method):
-                    argmax_result = self.argmax(one_hot=True)
-                max_result = self.mul(argmax_result).sum()
-            return max_result
-        else:
-            argmax_result, max_result = _argmax_helper(
-                self, dim=dim, one_hot=True, method=method, _return_max=True
-            )
-            if max_result is None:
-                max_result = (self * argmax_result).sum(dim=dim, keepdim=keepdim)
-            if keepdim:
-                max_result = (
-                    max_result.unsqueeze(dim)
-                    if max_result.dim() < self.dim()
-                    else max_result
-                )
-            if one_hot:
-                return max_result, argmax_result
-            else:
-                return (
-                    max_result,
-                    _one_hot_to_index(argmax_result, dim, keepdim, self.device),
-                )
-
-    @mode(Ptype.arithmetic)
-    def min(self, dim=None, keepdim=False, one_hot=True):
-        """Returns the minimum value of all elements in the input tensor."""
-        # TODO: Make dim an arg.
-        result = (-self).max(dim=dim, keepdim=keepdim, one_hot=one_hot)
-        if dim is None:
-            return -result
-        else:
-            return -result[0], result[1]
-
-    @mode(Ptype.arithmetic)
-    def max_pool2d(
-        self,
-        kernel_size,
-        padding=0,
-        stride=None,
-        dilation=1,
-        ceil_mode=False,
-        return_indices=False,
-    ):
-        """Applies a 2D max pooling over an input signal composed of several
-        input planes.
-        """
-        max_input = self.shallow_copy()
-        max_input.share, output_size = pool2d_reshape(
-            self.share,
-            kernel_size,
-            padding=padding,
-            stride=stride,
-            dilation=dilation,
-            ceil_mode=ceil_mode,
-            # padding with extremely negative values to avoid choosing pads.
-            # The magnitude of this value should not be too large because
-            # multiplication can otherwise fail.
-            pad_value=(-(2 ** 24)),
-            # TODO: Find a better solution for padding with max_pooling
-        )
-        max_vals, argmax_vals = max_input.max(dim=-1, one_hot=True)
-        max_vals = max_vals.view(output_size)
-        if return_indices:
-            if isinstance(kernel_size, int):
-                kernel_size = (kernel_size, kernel_size)
-            argmax_vals = argmax_vals.view(output_size + kernel_size)
-            return max_vals, argmax_vals
-        return max_vals
-
-    @mode(Ptype.arithmetic)
-    def _max_pool2d_backward(
-        self,
-        indices,
-        kernel_size,
-        padding=None,
-        stride=None,
-        dilation=1,
-        ceil_mode=False,
-        output_size=None,
-    ):
-        """Implements the backwards for a `max_pool2d` call."""
-        # Setup padding
-        if padding is None:
-            padding = 0
-        if isinstance(padding, int):
-            padding = padding, padding
-        assert isinstance(padding, tuple), "padding must be a int, tuple, or None"
-        p0, p1 = padding
-
-        # Setup stride
-        if stride is None:
-            stride = kernel_size
-        if isinstance(stride, int):
-            stride = stride, stride
-        assert isinstance(stride, tuple), "stride must be a int, tuple, or None"
-        s0, s1 = stride
-
-        # Setup dilation
-        if isinstance(stride, int):
-            dilation = dilation, dilation
-        assert isinstance(dilation, tuple), "dilation must be a int, tuple, or None"
-        d0, d1 = dilation
-
-        # Setup kernel_size
-        if isinstance(kernel_size, int):
-            kernel_size = kernel_size, kernel_size
-        assert isinstance(padding, tuple), "padding must be a int or tuple"
-        k0, k1 = kernel_size
-
-        assert self.dim() == 4, "Input to _max_pool2d_backward must have 4 dimensions"
-        assert (
-            indices.dim() == 6
-        ), "Indices input for _max_pool2d_backward must have 6 dimensions"
-
-        # Computes one-hot gradient blocks from each output variable that
-        # has non-zero value corresponding to the argmax of the corresponding
-        # block of the max_pool2d input.
-        kernels = self.view(self.size() + (1, 1)) * indices
-
-        # Use minimal size if output_size is not specified.
-        if output_size is None:
-            output_size = (
-                self.size(0),
-                self.size(1),
-                s0 * self.size(2) - 2 * p0,
-                s1 * self.size(3) - 2 * p1,
-            )
-
-        # Account for input padding
-        result_size = list(output_size)
-        result_size[-2] += 2 * p0
-        result_size[-1] += 2 * p1
-
-        # Account for input padding implied by ceil_mode
-        if ceil_mode:
-            c0 = self.size(-1) * s1 + (k1 - 1) * d1 - output_size[-1]
-            c1 = self.size(-2) * s0 + (k0 - 1) * d0 - output_size[-2]
-            result_size[-2] += c0
-            result_size[-1] += c1
-
-        # Sum the one-hot gradient blocks at corresponding index locations.
-        result = MPCTensor(torch.zeros(result_size, device=kernels.device))
-        for i in range(self.size(2)):
-            for j in range(self.size(3)):
-                left_ind = s0 * i
-                top_ind = s1 * j
-
-                result[
-                    :,
-                    :,
-                    left_ind : left_ind + k0 * d0 : d0,
-                    top_ind : top_ind + k1 * d1 : d1,
-                ] += kernels[:, :, i, j]
-
-        # Remove input padding
-        if ceil_mode:
-            result = result[:, :, : result.size(2) - c0, : result.size(3) - c1]
-        result = result[:, :, p0 : result.size(2) - p0, p1 : result.size(3) - p1]
-
-        return result
-
-    def adaptive_avg_pool2d(self, output_size):
-        r"""
-        Applies a 2D adaptive average pooling over an input signal composed of
-        several input planes.
-
-        See :class:`~torch.nn.AdaptiveAvgPool2d` for details and output shape.
-
-        Args:
-            output_size: the target output size (single integer or
-                double-integer tuple)
-        """
-        resized_input, args, kwargs = adaptive_pool2d_helper(
-            self, output_size, reduction="mean"
-        )
-        return resized_input.avg_pool2d(*args, **kwargs)
-
-    def adaptive_max_pool2d(self, output_size, return_indices=False):
-        r"""Applies a 2D adaptive max pooling over an input signal composed of
-        several input planes.
-
-        See :class:`~torch.nn.AdaptiveMaxPool2d` for details and output shape.
-
-        Args:
-            output_size: the target output size (single integer or
-                double-integer tuple)
-            return_indices: whether to return pooling indices. Default: ``False``
-        """
-        resized_input, args, kwargs = adaptive_pool2d_helper(
-            self, output_size, reduction="max"
-        )
-        return resized_input.max_pool2d(*args, **kwargs, return_indices=return_indices)
-
-    def where(self, condition, y):
-        """Selects elements from self or y based on condition
-
-        Args:
-            condition (torch.bool or MPCTensor): when True yield self,
-                otherwise yield y
-            y (torch.tensor or MPCTensor): values selected at indices
-                where condition is False.
-
-        Returns: MPCTensor or torch.tensor
-        """
-        if is_tensor(condition):
-            condition = condition.float()
-            y_masked = y * (1 - condition)
-        else:
-            # encrypted tensor must be first operand
-            y_masked = (1 - condition) * y
-
-        return self * condition + y_masked
 
     @mode(Ptype.arithmetic)
     def div(self, y):

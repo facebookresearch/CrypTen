@@ -12,7 +12,7 @@ from collections import OrderedDict
 import crypten
 import torch
 import torch.onnx.symbolic_helper as sym_help
-from crypten.common.util import adaptive_pool2d_helper
+from crypten.common.functions.pooling import _adaptive_pool2d_helper
 
 
 class Module:
@@ -339,9 +339,7 @@ class Module:
                 if self.encrypted and grad_threshold is not None:
                     # Compute based on square value since abs is more expensive
                     square_threshold = grad_threshold * grad_threshold
-                    grad = param.grad.mul(
-                        param.grad.square().lt(square_threshold)
-                    )
+                    grad = param.grad.mul(param.grad.square().lt(square_threshold))
                 else:
                     grad = param.grad
 
@@ -2582,7 +2580,7 @@ class AdaptiveAvgPool2d(Module):
         assert (
             output_size is not None
         ), "AdaptiveAvgPool2d requires an output_size in forward if not supplied in initialization"
-        resized_input, args, kwargs = adaptive_pool2d_helper(
+        resized_input, args, kwargs = _adaptive_pool2d_helper(
             input_tensor, output_size, reduction="mean"
         )
         return resized_input.avg_pool2d(*args, **kwargs)
@@ -2635,7 +2633,7 @@ class AdaptiveMaxPool2d(Module):
         assert (
             output_size is not None
         ), "AdaptiveMaxPool2d requires an output_size in forward if not supplied in initialization"
-        resized_input, args, kwargs = adaptive_pool2d_helper(
+        resized_input, args, kwargs = _adaptive_pool2d_helper(
             input_tensor, output_size, reduction="max"
         )
         return resized_input.max_pool2d(*args, **kwargs)

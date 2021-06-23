@@ -5,13 +5,92 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-
 import math
 
 import crypten
 import torch
 
 
+__all__ = [
+    "argmax",
+    "argmin",
+    "max",
+    "min",
+]
+
+
+def argmax(self, dim=None, keepdim=False, one_hot=True):
+    """Returns the indices of the maximum value of all elements in the
+    `input` tensor.
+    """
+    method = crypten.mpc.config.max_method
+
+    if self.dim() == 0:
+        result = (
+            self.new(torch.ones((), device=self.device))
+            if one_hot
+            else self.new(torch.zeros((), device=self.device))
+        )
+        return result
+
+    result = _argmax_helper(self, dim, one_hot, method, _return_max=False)
+
+    if not one_hot:
+        result = _one_hot_to_index(result, dim, keepdim, self.device)
+    return result
+
+
+def argmin(self, dim=None, keepdim=False, one_hot=True):
+    """Returns the indices of the minimum value of all elements in the
+    `input` tensor.
+    """
+    return (-self).argmax(dim=dim, keepdim=keepdim, one_hot=one_hot)
+
+
+def max(self, dim=None, keepdim=False, one_hot=True):
+    """Returns the maximum value of all elements in the input tensor."""
+    method = crypten.mpc.config.max_method
+    if dim is None:
+        if method in ["log_reduction", "double_log_reduction"]:
+            # max_result can be obtained directly
+            max_result = _max_helper_all_tree_reductions(self, method=method)
+        else:
+            # max_result needs to be obtained through argmax
+            with crypten.mpc.ConfigManager("max_method", method):
+                argmax_result = self.argmax(one_hot=True)
+            max_result = self.mul(argmax_result).sum()
+        return max_result
+    else:
+        argmax_result, max_result = _argmax_helper(
+            self, dim=dim, one_hot=True, method=method, _return_max=True
+        )
+        if max_result is None:
+            max_result = (self * argmax_result).sum(dim=dim, keepdim=keepdim)
+        if keepdim:
+            max_result = (
+                max_result.unsqueeze(dim)
+                if max_result.dim() < self.dim()
+                else max_result
+            )
+        if one_hot:
+            return max_result, argmax_result
+        else:
+            return (
+                max_result,
+                _one_hot_to_index(argmax_result, dim, keepdim, self.device),
+            )
+
+
+def min(self, dim=None, keepdim=False, one_hot=True):
+    """Returns the minimum value of all elements in the input tensor."""
+    result = (-self).max(dim=dim, keepdim=keepdim, one_hot=one_hot)
+    if dim is None:
+        return -result
+    else:
+        return -result[0], result[1]
+
+
+# Helper functions
 def _argmax_helper_pairwise(enc_tensor, dim=None):
     """Returns 1 for all elements that have the highest value in the appropriate
     dimension of the tensor. Uses O(n^2) comparisons and a constant number of
@@ -201,13 +280,11 @@ def _argmax_helper(
 ):
     """
     Returns 1 for one randomly chosen element among all the elements that have
-    the highest value in the appropriate dimension of the tensor. Sets up the MPCTensor
+    the highest value in the appropriate dimension of the tensor. Sets up the CrypTensor
     appropriately, and then chooses among the different argmax algorithms.
     """
-    from .mpc import MPCTensor
-
     if enc_tensor.dim() == 0:
-        result = MPCTensor(torch.ones(())) if one_hot else MPCTensor(torch.zeros(()))
+        result = enc_tensor.new(torch.ones(())) if one_hot else enc_tensor.new(torch.zeros(()))
         if _return_max:
             return result, None
         return result
@@ -231,3 +308,22 @@ def _argmax_helper(
         return result_args, result_val
     else:
         return result_args
+
+
+def _one_hot_to_index(tensor, dim, keepdim, device=None):
+    """
+    Converts a one-hot tensor output from an argmax / argmin function to a
+    tensor containing indices from the input tensor from which the result of the
+    argmax / argmin was obtained.
+    """
+    if dim is None:
+        result = tensor.flatten()
+        result = result * torch.tensor(list(range(tensor.nelement())), device=device)
+        return result.sum()
+    else:
+        size = [1] * tensor.dim()
+        size[dim] = tensor.size(dim)
+        result = tensor * torch.tensor(
+            list(range(tensor.size(dim))), device=device
+        ).view(size)
+        return result.sum(dim, keepdim=keepdim)
