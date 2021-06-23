@@ -424,19 +424,103 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             assert hasattr(grad_fn, "forward")
             return self._get_forward_function_no_ctx(grad_fn)
 
-    # below are all the functions that subclasses of CrypTensor should implement:
-    def abs(self):
-        raise NotImplementedError("abs is not implemented")
-
+    # Common functions:
     def __abs__(self):
         return self.abs()
 
-    def __rpow__(self, scalar):
-        raise NotImplementedError("__rpow__ is not implemented")
+    def __add__(self, tensor):
+        """Adds tensor to this tensor."""
+        return self.add(tensor)
 
-    def pow_(self):
-        raise NotImplementedError("pow_ is not implemented")
+    __radd__ = __add__
 
+    def __iadd__(self, tensor):
+        """Adds tensor to this tensor (in-place)."""
+        return self.add_(tensor)
+
+    def sub(self, tensor):
+        """Subtracts a :attr:`tensor` from :attr:`self` tensor.
+        The shape of :attr:`tensor` must be
+        `broadcastable`_ with the shape of :attr:`self`.
+
+        .. _broadcastable:
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """
+        return self.add(-tensor)
+
+    def __sub__(self, tensor):
+        """Subtracts tensor from this tensor."""
+        return self.sub(tensor)
+
+    def __rsub__(self, tensor):
+        """Subtracts self from tensor."""
+        return -self + tensor
+
+    def __isub__(self, tensor):
+        """Subtracts tensor from this tensor (in-place)."""
+        return self.sub_(tensor)
+
+    def __mul__(self, tensor):
+        """Element-wise multiply with a tensor."""
+        return self.mul(tensor)
+
+    __rmul__ = __mul__
+
+    def __imul__(self, tensor):
+        """Element-wise multiply with a tensor."""
+        return self.mul_(tensor)
+
+    def __div__(self, tensor):
+        """Element-wise divide by a tensor."""
+        return self.div(tensor)
+
+    def __truediv__(self, scalar):
+        """Element-wise divide by a tensor."""
+        return self.div(scalar)
+
+    def __itruediv__(self, scalar):
+        """Element-wise divide by a tensor."""
+        return self.div_(scalar)
+
+    def __neg__(self):
+        return self.neg()
+
+    def __matmul__(self, tensor):
+        """Perform matrix multiplication using some tensor"""
+        return self.matmul(tensor)
+
+    def __imatmul__(self, tensor):
+        """Perform matrix multiplication using some tensor"""
+        # Note: Matching PyTorch convention, which is not in-place here.
+        return self.matmul(tensor)
+
+    def square(self):
+        """
+        Computes the square of :attr:`self`
+        """
+        return self * self
+
+    def set(self, enc_tensor):
+        """Sets self encrypted to enc_tensor in place"""
+        if not isinstance(enc_tensor, CrypTensor):
+            enc_tensor = self.new(enc_tensor)
+        return self.copy_(enc_tensor)
+
+    @property
+    def shape(self):
+        return self.size()
+
+    def __bool__(self):
+        """Override bool operator since encrypted tensors cannot evaluate"""
+        raise RuntimeError("Cannot evaluate CrypTensors to boolean values")
+
+    def __nonzero__(self):
+        """__bool__ for backwards compatibility with Python 2"""
+        raise RuntimeError("Cannot evaluate CrypTensors to boolean values")
+
+    ##############################################################
+    # All CrypTensor subclasses should implement the following:  #
+    ##############################################################
     def get_plain_text(self):
         """Decrypts the encrypted tensor."""
         raise NotImplementedError("get_plain_text is not implemented")
@@ -450,9 +534,16 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """Copies value of other CrypTensor into this CrypTensor."""
         raise NotImplementedError("copy_ is not implemented")
 
-    def add_(self, tensor):
-        """Adds :attr:`tensor` to :attr:`self` (in-place) see :meth:`add`."""
-        raise NotImplementedError("add_ is not implemented")
+    def clone(self):
+        """
+        Returns a copy of the :attr:`self` tensor.
+        The copy has the same size and data type as :attr:`self`.
+
+        .. note::
+            This function is recorded in the computation graph. Gradients
+            propagating to the cloned tensor will propagate to the original tensor.
+        """
+        raise NotImplementedError("clone is not implemented")
 
     def add(self, tensor):
         r"""Adds :attr:`tensor` to this :attr:`self`.
@@ -473,46 +564,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         raise NotImplementedError("add is not implemented")
 
-    def __add__(self, tensor):
-        """Adds tensor to this tensor."""
-        return self.add(tensor)
-
-    __radd__ = __add__
-
-    def __iadd__(self, tensor):
-        """Adds tensor to this tensor (in-place)."""
-        return self.add_(tensor)
-
-    def sub_(self, tensor):
-        """Subtracts :attr:`tensor` from :attr:`self` (in-place), see :meth:`sub`"""
-        raise NotImplementedError("sub_ is not implemented")
-
-    def sub(self, tensor):
-        """Subtracts a :attr:`tensor` from :attr:`self` tensor.
-        The shape of :attr:`tensor` must be
-        `broadcastable`_ with the shape of :attr:`self`.
-
-        .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
-        """
-        raise NotImplementedError("sub is not implemented")
-
-    def __sub__(self, tensor):
-        """Subtracts tensor from this tensor."""
-        return self.sub(tensor)
-
-    def __rsub__(self, tensor):
-        """Subtracts self from tensor."""
-        return -self + tensor
-
-    def __isub__(self, tensor):
-        """Subtracts tensor from this tensor (in-place)."""
-        return self.sub_(tensor)
-
-    def mul_(self, tensor):
-        """Element-wise multiply with a :attr:`tensor` in-place, see :meth:`mul`."""
-        raise NotImplementedError("mul_ is not implemented")
-
     def mul(self, tensor):
         r"""Element-wise multiply with a :attr:`tensor`.
 
@@ -529,20 +580,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
         """
         raise NotImplementedError("mul is not implemented")
-
-    def __mul__(self, tensor):
-        """Element-wise multiply with a tensor."""
-        return self.mul(tensor)
-
-    __rmul__ = __mul__
-
-    def __imul__(self, tensor):
-        """Element-wise multiply with a tensor."""
-        return self.mul_(tensor)
-
-    def div_(self, tensor):
-        """Element-wise in-place divide by a :attr:`tensor` (see :meth:`div`)."""
-        raise NotImplementedError("div_ is not implemented")
 
     def div(self, tensor):
         r"""
@@ -563,18 +600,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         raise NotImplementedError("div is not implemented")
 
-    def __div__(self, tensor):
-        """Element-wise divide by a tensor."""
-        return self.div(tensor)
-
-    def __truediv__(self, scalar):
-        """Element-wise divide by a tensor."""
-        return self.div(scalar)
-
-    def __itruediv__(self, scalar):
-        """Element-wise divide by a tensor."""
-        return self.div_(scalar)
-
     def neg(self):
         r"""
         Returns a new tensor with the negative of the elements of :attr:`self`.
@@ -583,13 +608,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             \text{out} = -1 \times \text{input}
         """
         raise NotImplementedError("neg is not implemented")
-
-    def neg_(self):
-        """Negative value of a tensor (in-place), see :meth:`neg`"""
-        raise NotImplementedError("neg_ is not implemented")
-
-    def __neg__(self):
-        return self.neg()
 
     def matmul(self, tensor):
         r"""Performs matrix multiplication of :attr:`self` with :attr:`tensor`
@@ -624,40 +642,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         raise NotImplementedError("matmul is not implemented")
 
-    def __matmul__(self, tensor):
-        """Perform matrix multiplication using some tensor"""
-        return self.matmul(tensor)
-
-    def __imatmul__(self, tensor):
-        """Perform matrix multiplication using some tensor"""
-        # Note: Matching PyTorch convention, which is not in-place here.
-        return self.matmul(tensor)
-
-    def square(self):
-        """
-        Computes the square of :attr:`self`
-        """
-        return self * self
-
-    def norm(self, p="fro", dim=None, keepdim=False):
-        """
-        Computes the p-norm of the :attr:`self` (or along a dimension)
-
-        Args:
-            p (str, int, or float): specifying type of p-norm
-            dim (int): optional dimension along which to compute p-norm
-            keepdim (bool): whether the output tensor has `dim` retained or not
-        """
-        raise NotImplementedError("norm is not implemented")
-
-    def mean(self, dim=None):
-        """Compute mean."""
-        raise NotImplementedError("mean is not implemented")
-
-    def var(self, dim=None):
-        """Compute variance."""
-        raise NotImplementedError("var is not implemented")
-
     def conv1d(self, *args, **kwargs):
         """1D convolution."""
         raise NotImplementedError("conv1d is not implemented")
@@ -665,6 +649,14 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
     def conv2d(self, *args, **kwargs):
         """2D convolution."""
         raise NotImplementedError("conv2d is not implemented")
+
+    def conv_transpose1d(self, kernel, **kwargs):
+        """Perform a 1D transpose convolution (deconvolution) using the given kernel"""
+        raise NotImplementedError("conv_transpose1d is not implemented")
+
+    def conv_transpose2d(self, kernel, **kwargs):
+        """Perform a 2D transpose convolution (deconvolution) using the given kernel"""
+        raise NotImplementedError("conv_transpose2d is not implemented")
 
     def avg_pool2d(self, kernel_size, stride=None, padding=0):
         """Perform an average pooling on each 2D matrix of the given tensor
@@ -674,181 +666,14 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         raise NotImplementedError("avg_pool2d is not implemented")
 
-    def hardtanh(self, min_val=-1, max_val=1):
-        r"""Applies the HardTanh function element-wise
-
-        HardTanh is defined as:
-
-        .. math::
-            \text{HardTanh}(x) = \begin{cases}
-                1 & \text{ if } x > 1 \\
-                -1 & \text{ if } x < -1 \\
-                x & \text{ otherwise } \\
-            \end{cases}
-
-        The range of the linear region :math:`[-1, 1]` can be adjusted using
-        :attr:`min_val` and :attr:`max_val`.
-
-        Args:
-            min_val: minimum value of the linear region range. Default: -1
-            max_val: maximum value of the linear region range. Default: 1
-        """
-        raise NotImplementedError("hardtanh is not implemented")
-
-    def dot(self, tensor, weights=None):
-        """Perform (weighted) inner product with plain or cipher text."""
-        raise NotImplementedError("dot is not implemented")
-
-    def ger(self, tensor):
-        """Compute outer product."""
-        raise NotImplementedError("ger is not implemented")
-
-    def index_add(self, dim, index, tensor):
-        """Accumulate the elements of :attr:`tensor` into
-        :attr:`self` by adding to the indices in the order given in :attr:`index`
-
-        Example: if ``dim == 0`` and ``index[i] == j``, then the ``i``-th row
-        of tensor is added to the ``j``-th row of :attr:`self`
-
-        Args:
-            dim (int): dimension along which to index
-            index (LongTensor): indices of tensor to select from
-            tensor (MPCTensor or torch.Tensor): containing values to add
-        """
-        raise NotImplementedError("index_add is not implemented")
-
-    def index_add_(self, dim, index, tensor):
-        """Accumulate the elements of :attr:`tensor` into
-        :attr:`self` by adding to the indices in the order given in :attr:`index`
-
-        Example: if ``dim == 0`` and ``index[i] == j``, then the ``i``-th row
-        of tensor is added to the ``j``-th row of :attr:`self`
-
-        Args:
-            dim (int): dimension along which to index
-            index (LongTensor): indices of tensor to select from
-            tensor (MPCTensor or torch.Tensor): containing values to add
-        """
-        raise NotImplementedError("index_add_ is not implemented")
-
-    def scatter_add(self, dim, index, other):
-        """Adds all values from the :attr:`other` into :attr:`self` at the
-        indices specified in :attr:`index`. This an out-of-place version of
-        :meth:`scatter_add_`. For each value in :attr:`other`, it is added to an
-        index in :attr:`self` which is specified by its index in :attr:`other`
-        for ``dimension != dim`` and by the corresponding
-        value in index for ``dimension = dim``.
-
-        Args:
-            dim (int): the axis along which to index
-            index (LongTensor): the indices of elements to scatter and add,
-                can be either empty or the same size of src.
-                When empty, the operation returns identity.
-            other (Tensor): the source elements to scatter and add
-        """
-        raise NotImplementedError("scatter_add is not implemented")
-
-    def scatter_add_(self, dim, index, other):
-        """Adds all values from the :attr:`other` into :attr:`self` at the
-        indices specified in :attr:`index`.
-        For each value in :attr:`other`, it is added to an
-        index in :attr:`self` which is specified by its index in :attr:`other`
-        for ``dimension != dim`` and by the corresponding
-        value in index for ``dimension = dim``.
-
-
-        Args:
-            dim (int): the axis along which to index
-            index (LongTensor): the indices of elements to scatter and add,
-                can be either empty or the same size of src.
-                When empty, the operation returns identity.
-            other (Tensor): the source elements to scatter and add
-        """
-        raise NotImplementedError("scatter_add_ is not implemented")
-
-    # static methods:
     @staticmethod
-    def cat(tensors, dim=0):
+    def rand(*sizes, device=None):
         """
-        Concatenates a list of `CrypTensor`s along dimension `dim`.
+        Returns a tensor with elements uniformly sampled in [0, 1). The uniform
+        random samples are generated by generating random bits using fixed-point
+        encoding and converting the result to an ArithmeticSharedTensor.
         """
-        raise NotImplementedError("cat is not implemented")
-
-    @staticmethod
-    def stack(tensors, dim=0):
-        """
-        Stacks a list of `CrypTensor`s along dimension `dim`.
-        """
-        raise NotImplementedError("stack is not implemented")
-
-    # Regular functions:
-    def clone(self):
-        """
-        Returns a copy of the :attr:`self` tensor.
-        The copy has the same size and data type as :attr:`self`.
-
-        .. note::
-            This function is recorded in the computation graph. Gradients
-            propagating to the cloned tensor will propagate to the original tensor.
-        """
-        raise NotImplementedError("clone is not implemented")
-
-    def index_select(self, dim, index):
-        """
-        Returns a new tensor which indexes the :attr:`self` tensor along
-        dimension :attr:`dim` using the entries in :attr:`index`.
-
-        The returned tensor has the same number of dimensions as :attr:`self`
-        The dimension :attr:`dim` has the same size as the length
-        of :attr:`index`; other dimensions have the same size as in :attr:`self`.
-        """
-        raise NotImplementedError("index_select is not implemented")
-
-    def take(self, index, dimension=None):
-        """
-        Returns a new tensor with the elements of :attr:`input` at the given
-        indices. When the dimension is None, :attr:`self` tensor is treated as
-        if it were viewed as a 1D tensor, and the result takes the same shape as
-        the indices. When the dimension is an integer, the result take entries
-        of tensor along a dimension according to the :attr:`index`.
-        """
-        raise NotImplementedError("take is not implemented")
-
-    def pad(self, pad, mode="constant", value=0):
-        """Pads tensor with constant."""
-        raise NotImplementedError("pad is not implemented")
-
-    # properties:
-    def __len__(self):
-        raise NotImplementedError("__len__ is not implemented")
-
-    def numel(self):
-        raise NotImplementedError("numel is not implemented")
-
-    def nelement(self):
-        raise NotImplementedError("nelement is not implemented")
-
-    def dim(self):
-        raise NotImplementedError("dim is not implemented")
-
-    def size(self):
-        raise NotImplementedError("size is not implemented")
-
-    @property
-    def shape(self):
-        return self.size()
-
-    def set(self, enc_tensor):
-        """Sets self encrypted to enc_tensor in place"""
-        raise NotImplementedError("set is not implemented")
-
-    def __bool__(self):
-        """Override bool operator since encrypted tensors cannot evaluate"""
-        raise RuntimeError("Cannot evaluate CrypTensors to boolean values")
-
-    def __nonzero__(self):
-        """__bool__ for backwards compatibility with Python 2"""
-        raise RuntimeError("Cannot evaluate CrypTensors to boolean values")
+        raise NotImplementedError("rand is not implemented")
 
 
 from .common import functions

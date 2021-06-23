@@ -5,8 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from functools import reduce
-
 import crypten.communicator as comm
 
 # dependencies:
@@ -14,7 +12,7 @@ import torch
 from crypten.common.functions import regular
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor, is_tensor
-from crypten.common.util import torch_cat, torch_stack
+from crypten.common.util import torch_stack
 from crypten.cryptensor import CrypTensor
 from crypten.cuda import CUDALongTensor
 from crypten.debug import validation_mode
@@ -494,64 +492,6 @@ class ArithmeticSharedTensor(object):
         """Perform matrix multiplication using some tensor"""
         return self._arithmetic_function(y, "matmul")
 
-    def prod(self, dim=None, keepdim=False):
-        """
-        Returns the product of each row of the `input` tensor in the given
-        dimension `dim`.
-
-        If `keepdim` is `True`, the output tensor is of the same size as `input`
-        except in the dimension `dim` where it is of size 1. Otherwise, `dim` is
-        squeezed, resulting in the output tensor having 1 fewer dimension than
-        `input`.
-        """
-        if dim is None:
-            return self.flatten().prod(dim=0)
-
-        result = self.clone()
-        while result.size(dim) > 1:
-            size = result.size(dim)
-            x, y, remainder = result.split([size // 2, size // 2, size % 2], dim=dim)
-            result = x.mul_(y)
-            result.share = torch_cat([result.share, remainder.share], dim=dim)
-
-        # Squeeze result if necessary
-        if not keepdim:
-            result.share = result.share.squeeze(dim)
-        return result
-
-    def mean(self, *args, **kwargs):
-        """Computes mean of given tensor"""
-        result = self.sum(*args, **kwargs)
-
-        # Handle special case where input has 0 dimensions
-        if self.dim() == 0:
-            return result
-
-        # Compute divisor to use to compute mean
-        size = self.size()
-        if len(args) > 0:  # dimension is specified
-            dims = [args[0]] if isinstance(args[0], int) else args[0]
-            size = [size[dim] for dim in dims]
-        assert len(size) > 0, "cannot reduce over zero dimensions"
-        divisor = reduce(lambda x, y: x * y, size)
-
-        return result.div(divisor)
-
-    def var(self, *args, **kwargs):
-        """Computes variance of tensor along specified dimensions."""
-        if len(args) > 0:  # dimension is specified
-            mean = self.mean(*args, **{"keepdim": True})
-        else:
-            mean = self.mean()
-        result = (self - mean).square().sum(*args, **kwargs)
-        size = self.size()
-        if len(args) > 0:  # dimension is specified
-            dims = [args[0]] if isinstance(args[0], int) else args[0]
-            size = [size[dim] for dim in dims]
-        assert len(size) > 0, "cannot reduce over zero dimensions"
-        divisor = reduce(lambda x, y: x * y, size)
-        return result.div(divisor)
-
     def conv1d(self, kernel, **kwargs):
         """Perform a 1D convolution using the given kernel"""
         return self._arithmetic_function(kernel, "conv1d", **kwargs)
@@ -651,21 +591,6 @@ class ArithmeticSharedTensor(object):
         )
         return result
 
-    def take(self, index, dimension=None):
-        """Take entries of tensor along a dimension according to the index.
-        This function is identical to torch.take() when dimension=None,
-        otherwise, it is identical to ONNX gather() function.
-        """
-        result = self.shallow_copy()
-        index = index.long()
-        if dimension is None or self.dim() == 0:
-            result.share = torch.take(self.share, index)
-        else:
-            all_indices = [slice(0, x) for x in self.size()]
-            all_indices[dimension] = index
-            result.share = self.share[all_indices]
-        return result
-
     # negation and reciprocal:
     def neg_(self):
         """Negate the tensor's values"""
@@ -682,22 +607,6 @@ class ArithmeticSharedTensor(object):
 
     def square(self):
         return self.clone().square_()
-
-    def dot(self, y, weights=None):
-        """Compute a dot product between two tensors"""
-        assert self.size() == y.size(), "Number of elements do not match"
-        if weights is not None:
-            assert weights.size() == self.size(), "Incorrect number of weights"
-            result = self * weights
-        else:
-            result = self.clone()
-
-        return result.mul_(y).sum()
-
-    def ger(self, y):
-        """Computer an outer product between two vectors"""
-        assert self.dim() == 1 and y.dim() == 1, "Outer product must be on 1D tensors"
-        return self.view((-1, 1)).matmul(y.view((1, -1)))
 
     def where(self, condition, y):
         """Selects elements from self or y based on condition
@@ -763,6 +672,5 @@ class ArithmeticSharedTensor(object):
 
 # Register regular functions
 for func in regular.__all__:
-    if func == "pad":
-        continue
-    setattr(ArithmeticSharedTensor, func, getattr(regular, func))
+    if not hasattr(ArithmeticSharedTensor, func):
+        setattr(ArithmeticSharedTensor, func, getattr(regular, func))

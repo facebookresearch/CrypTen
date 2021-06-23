@@ -6,16 +6,11 @@
 # LICENSE file in the root directory of this source tree.
 
 from dataclasses import dataclass
-from functools import wraps
 
 import torch
 from crypten import communicator as comm
 from crypten.common.tensor_types import is_tensor
-from crypten.common.util import (
-    ConfigBase,
-    torch_cat,
-    torch_stack,
-)
+from crypten.common.util import ConfigBase, torch_stack
 from crypten.cuda import CUDALongTensor
 
 from ..cryptensor import CrypTensor
@@ -23,34 +18,6 @@ from ..encoder import FixedPointEncoder
 from .primitives.binary import BinarySharedTensor
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
-
-
-def mode(ptype, inplace=False):
-    if inplace:
-
-        def function_wrapper(func):
-            # @wraps ensures docstrings are updated
-            @wraps(func)
-            def convert_wrapper(self, *args, **kwargs):
-                self._tensor = convert(self._tensor, ptype)
-                self.ptype = ptype
-                self = func(self, *args, **kwargs)
-                return self
-
-            return convert_wrapper
-
-    else:
-
-        def function_wrapper(func):
-            # @wraps ensures docstrings are updated
-            @wraps(func)
-            def convert_wrapper(self, *args, **kwargs):
-                result = self.to(ptype)
-                return func(result, *args, **kwargs)
-
-            return convert_wrapper
-
-    return function_wrapper
 
 
 @dataclass
@@ -215,14 +182,6 @@ class MPCTensor(CrypTensor):
         retval.ptype = ptype
         return retval
 
-    def arithmetic(self):
-        """Converts self._tensor to arithmetic secret sharing"""
-        return self.to(Ptype.arithmetic)
-
-    def binary(self):
-        """Converts self._tensor to binary secret sharing"""
-        return self.to(Ptype.binary)
-
     @property
     def device(self):
         """Return the `torch.device` of the underlying share"""
@@ -297,43 +256,6 @@ class MPCTensor(CrypTensor):
         self._tensor.encoder = value
 
     @staticmethod
-    def __cat_stack_helper(op, tensors, *args, **kwargs):
-        assert op in ["cat", "stack"], "Unsupported op for helper function"
-        assert isinstance(tensors, list), "%s input must be a list" % op
-        assert len(tensors) > 0, "expected a non-empty list of MPCTensors"
-
-        _ptype = kwargs.pop("ptype", None)
-        # Populate ptype field
-        if _ptype is None:
-            for tensor in tensors:
-                if isinstance(tensor, MPCTensor):
-                    _ptype = tensor.ptype
-                    break
-        if _ptype is None:
-            _ptype = Ptype.arithmetic
-
-        # Make all inputs MPCTensors of given ptype
-        for i, tensor in enumerate(tensors):
-            if tensor.ptype != _ptype:
-                tensors[i] = tensor.to(_ptype)
-
-        # Operate on all input tensors
-        result = tensors[0].clone()
-        funcs = {"cat": torch_cat, "stack": torch_stack}
-        result.share = funcs[op]([tensor.share for tensor in tensors], *args, **kwargs)
-        return result
-
-    @staticmethod
-    def cat(tensors, *args, **kwargs):
-        """Perform matrix concatenation"""
-        return MPCTensor.__cat_stack_helper("cat", tensors, *args, **kwargs)
-
-    @staticmethod
-    def stack(tensors, *args, **kwargs):
-        """Perform tensor stacking"""
-        return MPCTensor.__cat_stack_helper("stack", tensors, *args, **kwargs)
-
-    @staticmethod
     def rand(*sizes, device=None):
         """
         Returns a tensor with elements uniformly sampled in [0, 1). The uniform
@@ -350,17 +272,17 @@ class MPCTensor(CrypTensor):
         return rand.to(Ptype.arithmetic, bits=encoder._precision_bits)
 
     # Comparators
-    @mode(Ptype.binary)
     def _ltz(self):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
         shift = torch.iinfo(torch.long).bits - 1
-
         precision = 0 if self.encoder.scale == 1 else None
-        result = (self >> shift).to(Ptype.arithmetic, precision=precision, bits=1)
+
+        result = self._to_ptype(Ptype.binary)
+        result.share >>= shift
+        result = result._to_ptype(Ptype.arithmetic, precision=precision, bits=1)
         result.encoder._scale = 1
         return result
 
-    @mode(Ptype.arithmetic)
     def eq(self, y):
         """Returns self == y"""
         if comm.get().get_world_size() == 2:
@@ -368,7 +290,6 @@ class MPCTensor(CrypTensor):
 
         return 1 - self.ne(y)
 
-    @mode(Ptype.arithmetic)
     def ne(self, y):
         """Returns self != y"""
         if comm.get().get_world_size() == 2:
@@ -378,7 +299,6 @@ class MPCTensor(CrypTensor):
         difference.share = torch_stack([difference.share, -(difference.share)])
         return difference._ltz().sum(0)
 
-    @mode(Ptype.arithmetic)
     def _eqz_2PC(self):
         """Returns self == 0"""
         # Create BinarySharedTensors from shares
@@ -395,7 +315,6 @@ class MPCTensor(CrypTensor):
 
         return result
 
-    @mode(Ptype.arithmetic)
     def div(self, y):
         r"""Divides each element of :attr:`self` with the scalar :attr:`y` or
         each element of the tensor :attr:`y` and returns a new resulting tensor.
@@ -426,201 +345,47 @@ class MPCTensor(CrypTensor):
         result._tensor.div_(y)
         return result
 
-    def div_(self, y):
-        """In-place version of :meth:`div`"""
-        if isinstance(y, MPCTensor):
-            return self.mul_(y.reciprocal())
-        self._tensor.div_(y)
-        return self
 
-    def index_add(self, dim, index, tensor):
-        """Performs out-of-place index_add: Accumulate the elements of tensor into the
-        self tensor by adding to the indices in the order given in index.
-        """
-        result = self.clone()
-        assert index.dim() == 1, "index needs to be a vector"
-        public = isinstance(tensor, (int, float)) or is_tensor(tensor)
-        private = isinstance(tensor, MPCTensor)
-        if public:
-            result._tensor.index_add_(dim, index, tensor)
-        elif private:
-            result._tensor.index_add_(dim, index, tensor._tensor)
-        else:
-            raise TypeError("index_add second tensor of unsupported type")
-        return result
+UNARY_FUNCTIONS = [
+    "avg_pool2d",
+    "square",
+    "neg",
+]
 
-    def scatter_add(self, dim, index, other):
-        """Adds all values from the tensor other into self at the indices
-        specified in the index tensor.
-        """
-        result = self.clone()
-        public = isinstance(other, (int, float)) or is_tensor(other)
-        private = isinstance(other, CrypTensor)
-        if public:
-            result._tensor.scatter_add_(dim, index, other)
-        elif private:
-            result._tensor.scatter_add_(dim, index, other._tensor)
-        else:
-            raise TypeError("scatter_add second tensor of unsupported type")
-        return result
-
-    def scatter(self, dim, index, src):
-        """Out-of-place version of :meth:`MPCTensor.scatter_`"""
-        result = self.clone()
-        if is_tensor(src):
-            src = MPCTensor(src)
-        assert isinstance(src, MPCTensor), "Unrecognized scatter src type: %s" % type(
-            src
-        )
-        result.share.scatter_(dim, index, src.share)
-        return result
-
-    def unbind(self, dim=0):
-        shares = self.share.unbind(dim=dim)
-        results = tuple(
-            MPCTensor(0, ptype=self.ptype, device=self.device)
-            for _ in range(len(shares))
-        )
-        for i in range(len(shares)):
-            results[i].share = shares[i]
-        return results
-
-    def split(self, split_size, dim=0):
-        shares = self.share.split(split_size, dim=dim)
-        results = tuple(
-            MPCTensor(0, ptype=self.ptype, device=self.device)
-            for _ in range(len(shares))
-        )
-        for i in range(len(shares)):
-            results[i].share = shares[i]
-        return results
-
-    def set(self, enc_tensor):
-        """
-        Sets self encrypted to enc_tensor in place by setting
-        shares of self to those of enc_tensor.
-
-        Args:
-            enc_tensor (MPCTensor): with encrypted shares.
-        """
-        if is_tensor(enc_tensor):
-            enc_tensor = MPCTensor(enc_tensor)
-        assert isinstance(enc_tensor, MPCTensor), "enc_tensor must be an MPCTensor"
-        self.share.set_(enc_tensor.share)
-        return self
+BINARY_FUNCTIONS = [
+    "add",
+    "sub",
+    "mul",
+    "matmul",
+    "conv1d",
+    "conv2d",
+    "conv_transpose1d",
+    "conv_transpose2d",
+]
 
 
-OOP_UNARY_FUNCTIONS = {
-    "avg_pool2d": Ptype.arithmetic,
-    "take": Ptype.arithmetic,
-    "square": Ptype.arithmetic,
-    "prod": Ptype.arithmetic,
-    "mean": Ptype.arithmetic,
-    "var": Ptype.arithmetic,
-    "neg": Ptype.arithmetic,
-    "__neg__": Ptype.arithmetic,
-    "invert": Ptype.binary,
-    "lshift": Ptype.binary,
-    "rshift": Ptype.binary,
-    "__invert__": Ptype.binary,
-    "__lshift__": Ptype.binary,
-    "__rshift__": Ptype.binary,
-    "__rand__": Ptype.binary,
-    "__rxor__": Ptype.binary,
-    "__ror__": Ptype.binary,
-}
-
-OOP_BINARY_FUNCTIONS = {
-    "add": Ptype.arithmetic,
-    "sub": Ptype.arithmetic,
-    "mul": Ptype.arithmetic,
-    "matmul": Ptype.arithmetic,
-    "conv1d": Ptype.arithmetic,
-    "conv2d": Ptype.arithmetic,
-    "conv_transpose1d": Ptype.arithmetic,
-    "conv_transpose2d": Ptype.arithmetic,
-    "dot": Ptype.arithmetic,
-    "ger": Ptype.arithmetic,
-    "__xor__": Ptype.binary,
-    "__or__": Ptype.binary,
-    "__and__": Ptype.binary,
-}
-
-INPLACE_UNARY_FUNCTIONS = {
-    "neg_": Ptype.arithmetic,
-    "invert_": Ptype.binary,
-    "lshift_": Ptype.binary,
-    "rshift_": Ptype.binary,
-}
-
-INPLACE_BINARY_FUNCTIONS = {
-    "add_": Ptype.arithmetic,
-    "sub_": Ptype.arithmetic,
-    "mul_": Ptype.arithmetic,
-    "__ior__": Ptype.binary,
-    "__ixor__": Ptype.binary,
-    "__iand__": Ptype.binary,
-}
-
-
-def _add_oop_unary_passthrough_function(name, preferred=None):
-    def ou_wrapper_function(self, *args, **kwargs):
+def _add_unary_passthrough_function(name):
+    def unary_wrapper_function(self, *args, **kwargs):
         result = self.shallow_copy()
         result._tensor = getattr(result._tensor, name)(*args, **kwargs)
         return result
 
-    if preferred is None:
-        setattr(MPCTensor, name, ou_wrapper_function)
-    else:
-        setattr(MPCTensor, name, mode(preferred, False)(ou_wrapper_function))
+    setattr(MPCTensor, name, unary_wrapper_function)
 
 
-def _add_oop_binary_passthrough_function(name, preferred=None):
-    def ob_wrapper_function(self, value, *args, **kwargs):
+def _add_binary_passthrough_function(name):
+    def binary_wrapper_function(self, value, *args, **kwargs):
         result = self.shallow_copy()
         if isinstance(value, MPCTensor):
             value = value._tensor
         result._tensor = getattr(result._tensor, name)(value, *args, **kwargs)
         return result
 
-    if preferred is None:
-        setattr(MPCTensor, name, ob_wrapper_function)
-    else:
-        setattr(MPCTensor, name, mode(preferred, False)(ob_wrapper_function))
+    setattr(MPCTensor, name, binary_wrapper_function)
 
 
-def _add_inplace_unary_passthrough_function(name, preferred=None):
-    def iu_wrapper_function(self, *args, **kwargs):
-        self._tensor = getattr(self._tensor, name)(*args, **kwargs)
-        return self
+for func_name in UNARY_FUNCTIONS:
+    _add_unary_passthrough_function(func_name)
 
-    if preferred is None:
-        setattr(MPCTensor, name, iu_wrapper_function)
-    else:
-        setattr(MPCTensor, name, mode(preferred, True)(iu_wrapper_function))
-
-
-def _add_inplace_binary_passthrough_function(name, preferred=None):
-    def ib_wrapper_function(self, value, *args, **kwargs):
-        if isinstance(value, MPCTensor):
-            value = value._tensor
-        self._tensor = getattr(self._tensor, name)(value, *args, **kwargs)
-        return self
-
-    if preferred is None:
-        setattr(MPCTensor, name, ib_wrapper_function)
-    else:
-        setattr(MPCTensor, name, mode(preferred, True)(ib_wrapper_function))
-
-
-for func_name, preferred_type in OOP_UNARY_FUNCTIONS.items():
-    _add_oop_unary_passthrough_function(func_name, preferred_type)
-
-for func_name, preferred_type in OOP_BINARY_FUNCTIONS.items():
-    _add_oop_binary_passthrough_function(func_name, preferred_type)
-
-for func_name, preferred_type in INPLACE_UNARY_FUNCTIONS.items():
-    _add_inplace_unary_passthrough_function(func_name, preferred_type)
-
-for func_name, preferred_type in INPLACE_BINARY_FUNCTIONS.items():
-    _add_inplace_binary_passthrough_function(func_name, preferred_type)
+for func_name in BINARY_FUNCTIONS:
+    _add_binary_passthrough_function(func_name)
