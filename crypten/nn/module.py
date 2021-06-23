@@ -340,7 +340,7 @@ class Module:
                     # Compute based on square value since abs is more expensive
                     square_threshold = grad_threshold * grad_threshold
                     grad = param.grad.mul(
-                        param.grad.square().lt(square_threshold, _scale=False)
+                        param.grad.square().lt(square_threshold)
                     )
                 else:
                     grad = param.grad

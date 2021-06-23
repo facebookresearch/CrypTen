@@ -28,7 +28,7 @@ def _argmax_helper_pairwise(enc_tensor, dim=None):
 
     # Use either prod or sum & comparison depending on size
     if row_length - 1 < torch.iinfo(torch.long).bits * 2:
-        pairwise_comparisons = a.ge(b, _scale=False)
+        pairwise_comparisons = a.ge(b)
         result = pairwise_comparisons.prod(0)
         result.share *= enc_tensor.encoder._scale
         result.encoder = enc_tensor.encoder

@@ -413,56 +413,55 @@ class MPCTensor(CrypTensor):
 
     # Comparators
     @mode(Ptype.binary)
-    def _ltz(self, _scale=True):
+    def _ltz(self):
         """Returns 1 for elements that are < 0 and 0 otherwise"""
         shift = torch.iinfo(torch.long).bits - 1
-        result = (self >> shift).to(Ptype.arithmetic, bits=1)
-        if _scale:
-            return result * result.encoder._scale
-        else:
-            result.encoder._scale = 1
-            return result
+
+        precision = 0 if self.encoder.scale == 1 else None
+        result = (self >> shift).to(Ptype.arithmetic, precision=precision, bits=1)
+        result.encoder._scale = 1
+        return result
 
     @mode(Ptype.arithmetic)
-    def ge(self, y, _scale=True):
+    def ge(self, y):
         """Returns self >= y"""
-        return 1 - self.lt(y, _scale=_scale)
+        return 1 - self.lt(y)
 
     @mode(Ptype.arithmetic)
-    def gt(self, y, _scale=True):
+    def gt(self, y):
         """Returns self > y"""
-        return (-self + y)._ltz(_scale=_scale)
+        return (-self + y)._ltz()
 
     @mode(Ptype.arithmetic)
-    def le(self, y, _scale=True):
+    def le(self, y):
         """Returns self <= y"""
-        return 1 - self.gt(y, _scale=_scale)
+        return 1 - self.gt(y)
 
     @mode(Ptype.arithmetic)
-    def lt(self, y, _scale=True):
+    def lt(self, y):
         """Returns self < y"""
-        return (self - y)._ltz(_scale=_scale)
+        return (self - y)._ltz()
 
     @mode(Ptype.arithmetic)
-    def eq(self, y, _scale=True):
+    def eq(self, y):
         """Returns self == y"""
         if comm.get().get_world_size() == 2:
-            return (self - y)._eqz_2PC(_scale=_scale)
+            return (self - y)._eqz_2PC()
 
-        return 1 - self.ne(y, _scale=_scale)
+        return 1 - self.ne(y)
 
     @mode(Ptype.arithmetic)
-    def ne(self, y, _scale=True):
+    def ne(self, y):
         """Returns self != y"""
         if comm.get().get_world_size() == 2:
-            return 1 - self.eq(y, _scale=_scale)
+            return 1 - self.eq(y)
 
         difference = self - y
         difference.share = torch_stack([difference.share, -(difference.share)])
-        return difference._ltz(_scale=_scale).sum(0)
+        return difference._ltz().sum(0)
 
     @mode(Ptype.arithmetic)
-    def _eqz_2PC(self, _scale=True):
+    def _eqz_2PC(self):
         """Returns self == 0"""
         # Create BinarySharedTensors from shares
         x0 = MPCTensor(self.share, src=0, ptype=Ptype.binary)
@@ -470,30 +469,28 @@ class MPCTensor(CrypTensor):
 
         # Perform equality testing using binary shares
         x0._tensor = x0._tensor.eq(x1._tensor)
-        x0.encoder = x0.encoder if _scale else self.encoder
+        x0.encoder = self.encoder
 
         # Convert to Arithmetic sharing
         result = x0.to(Ptype.arithmetic, bits=1)
-
-        if not _scale:
-            result.encoder._scale = 1
+        result.encoder._scale = 1
 
         return result
 
     @mode(Ptype.arithmetic)
-    def sign(self, _scale=True):
+    def sign(self):
         """Computes the sign value of a tensor (0 is considered positive)"""
-        return 1 - 2 * self._ltz(_scale=_scale)
+        return 1 - 2 * self._ltz()
 
     @mode(Ptype.arithmetic)
     def abs(self):
         """Computes the absolute value of a tensor"""
-        return self * self.sign(_scale=False)
+        return self * self.sign()
 
     @mode(Ptype.arithmetic)
     def relu(self):
         """Compute a Rectified Linear function on the input tensor."""
-        return self * self.ge(0, _scale=False)
+        return self * self.ge(0)
 
     @mode(Ptype.arithmetic)
     def weighted_index(self, dim=None):
@@ -521,7 +518,7 @@ class MPCTensor(CrypTensor):
         )
         r = MPCTensor.rand(max_weight.size(), device=self.device) * max_weight
 
-        gt = x.gt(r, _scale=False)
+        gt = x.gt(r)
         shifted = gt.roll(1, dims=dim)
         shifted.share.index_fill_(dim, torch.tensor(0, device=self.device), 0)
 

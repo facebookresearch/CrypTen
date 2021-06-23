@@ -203,7 +203,7 @@ def reciprocal(self, input_in_01=False):
 
     method = config.reciprocal_method
     if not config.reciprocal_all_pos:
-        sgn = self.sign(_scale=False)
+        sgn = self.sign()
         pos = sgn * self
         with ConfigManager("reciprocal_all_pos", True):
             return sgn * reciprocal(pos)
@@ -348,7 +348,7 @@ def sigmoid(self):
         tanh_approx = tanh(self.div(2))
         return tanh_approx.div(2) + 0.5
     elif method == "reciprocal":
-        ltz = self._ltz(_scale=False)
+        ltz = self._ltz()
         sign = 1 - 2 * ltz
 
         pos_input = self.mul(sign)

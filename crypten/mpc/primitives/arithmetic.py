@@ -310,6 +310,30 @@ class ArithmeticSharedTensor(object):
             return torch.empty(self.share.size())
         return self.encoder.decode(self.reveal(dst=dst))
 
+    def encode_(self, new_encoder):
+        """Rescales the input to a new encoding in-place"""
+        if self.encoder.scale == new_encoder.scale:
+            return self
+        elif self.encoder.scale < new_encoder.scale:
+            scale_factor = new_encoder.scale // self.encoder.scale
+            self.share *= scale_factor
+        else:
+            scale_factor = self.encoder.scale // new_encoder.scale
+            self = self.div_(scale_factor)
+        self.encoder = new_encoder
+        return self
+
+    def encode(self, new_encoder):
+        """Rescales the input to a new encoding"""
+        return self.clone().encode_(new_encoder)
+
+    def encode_as_(self, other):
+        """Rescales self to have the same encoding as other"""
+        return self.encode_(other.encoder)
+
+    def encode_as(self, other):
+        return self.encode(other.encoder)
+
     def _arithmetic_function_(self, y, op, *args, **kwargs):
         return self._arithmetic_function(y, op, inplace=True, *args, **kwargs)
 
@@ -350,6 +374,11 @@ class ArithmeticSharedTensor(object):
                 result.share = getattr(torch, op)(result.share, y, *args, **kwargs)
         elif private:
             if additive_func:  # ['add', 'sub', 'add_', 'sub_']
+                # Re-encode if necessary:
+                if self.encoder.scale > y.encoder.scale:
+                    y.encode_as_(result)
+                elif self.encoder.scale < y.encoder.scale:
+                    result.encode_as_(y)
                 result.share = getattr(result.share, op)(y.share)
             else:  # ['mul', 'matmul', 'convNd', 'conv_transposeNd']
                 # NOTE: 'mul_' calls 'mul' here

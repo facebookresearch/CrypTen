@@ -11,6 +11,22 @@ import torch
 from crypten.common.util import count_wraps
 
 
+class IgnoreEncodings:
+    """Context Manager to ignore tensor encodings"""
+
+    def __init__(self, list_of_tensors):
+        self.list_of_tensors = list_of_tensors
+        self.encodings_cache = [tensor.encoder.scale for tensor in list_of_tensors]
+
+    def __enter__(self):
+        for tensor in self.list_of_tensors:
+            tensor.encoder._scale = 1
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        for i, tensor in enumerate(self.list_of_tensors):
+            tensor.encoder._scale = self.encodings_cache[i]
+
+
 def __beaver_protocol(op, x, y, *args, **kwargs):
     """Performs Beaver protocol for additively secret-shared tensors x and y
 
@@ -58,7 +74,8 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
             raise ValueError("Beaver Triples verification failed!")
 
     # Vectorized reveal to reduce rounds of communication
-    epsilon, delta = ArithmeticSharedTensor.reveal_batch([x - a, y - b])
+    with IgnoreEncodings([a, b, x, y]):
+        epsilon, delta = ArithmeticSharedTensor.reveal_batch([x - a, y - b])
 
     # z = c + (a * delta) + (epsilon * b) + epsilon * delta
     c._tensor += getattr(torch, op)(epsilon, b._tensor, *args, **kwargs)
@@ -103,7 +120,8 @@ def square(x):
     provider = crypten.mpc.get_default_provider()
     r, r2 = provider.square(x.size(), device=x.device)
 
-    epsilon = (x - r).reveal()
+    with IgnoreEncodings([x, r]):
+        epsilon = (x - r).reveal()
     return r2 + 2 * r * epsilon + epsilon * epsilon
 
 
@@ -125,7 +143,8 @@ def wraps(x):
     beta_xr = theta_r.clone()
     beta_xr._tensor = count_wraps([x._tensor, r._tensor])
 
-    z = x + r
+    with IgnoreEncodings([x, r]):
+        z = x + r
     theta_z = comm.get().gather(z._tensor, 0)
     theta_x = beta_xr - theta_r
 

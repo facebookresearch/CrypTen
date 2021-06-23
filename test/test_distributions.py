@@ -40,7 +40,7 @@ class TestDistributions(object):
                 sample.size() == size, "Incorrect size for %s distribution" % name
             )
 
-            plain_sample = sample.get_plain_text()
+            plain_sample = sample.get_plain_text().float()
             mean = plain_sample.mean()
             var = plain_sample.var()
             self.assertTrue(

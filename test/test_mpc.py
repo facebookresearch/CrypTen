@@ -776,35 +776,30 @@ class TestMPC(object):
 
     def test_comparators(self):
         """Test comparators (>, >=, <, <=, ==, !=)"""
-        for _scale in [False, True]:
-            for comp in ["gt", "ge", "lt", "le", "eq", "ne"]:
-                for tensor_type in [lambda x: x, MPCTensor]:
-                    tensor1 = self._get_random_test_tensor(is_float=True)
-                    tensor2 = self._get_random_test_tensor(is_float=True)
+        for comp in ["gt", "ge", "lt", "le", "eq", "ne"]:
+            for tensor_type in [lambda x: x, MPCTensor]:
+                tensor1 = self._get_random_test_tensor(is_float=True)
+                tensor2 = self._get_random_test_tensor(is_float=True)
 
-                    encrypted_tensor1 = MPCTensor(tensor1)
-                    encrypted_tensor2 = tensor_type(tensor2)
+                encrypted_tensor1 = MPCTensor(tensor1)
+                encrypted_tensor2 = tensor_type(tensor2)
 
-                    reference = getattr(tensor1, comp)(tensor2).float()
-                    encrypted_out = getattr(encrypted_tensor1, comp)(
-                        encrypted_tensor2, _scale=_scale
-                    )
+                reference = getattr(tensor1, comp)(tensor2).float()
+                encrypted_out = getattr(encrypted_tensor1, comp)(encrypted_tensor2)
 
-                    self._check(encrypted_out, reference, "%s comparator failed" % comp)
+                self._check(encrypted_out, reference, "%s comparator failed" % comp)
 
-                    # Check deterministic example to guarantee all combinations
-                    tensor1 = torch.tensor([2.0, 3.0, 1.0, 2.0, 2.0])
-                    tensor2 = torch.tensor([2.0, 2.0, 2.0, 3.0, 1.0])
+                # Check deterministic example to guarantee all combinations
+                tensor1 = torch.tensor([2.0, 3.0, 1.0, 2.0, 2.0])
+                tensor2 = torch.tensor([2.0, 2.0, 2.0, 3.0, 1.0])
 
-                    encrypted_tensor1 = MPCTensor(tensor1)
-                    encrypted_tensor2 = tensor_type(tensor2)
+                encrypted_tensor1 = MPCTensor(tensor1)
+                encrypted_tensor2 = tensor_type(tensor2)
 
-                    reference = getattr(tensor1, comp)(tensor2).float()
-                    encrypted_out = getattr(encrypted_tensor1, comp)(
-                        encrypted_tensor2, _scale=_scale
-                    )
+                reference = getattr(tensor1, comp)(tensor2).float()
+                encrypted_out = getattr(encrypted_tensor1, comp)(encrypted_tensor2)
 
-                    self._check(encrypted_out, reference, "%s comparator failed" % comp)
+                self._check(encrypted_out, reference, "%s comparator failed" % comp)
 
     def test_max_min_pairwise(self):
         """Tests max and min for the deterministic constant (n^2) algorithm"""
