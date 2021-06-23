@@ -102,7 +102,7 @@ class TestCommon(unittest.TestCase):
         """Checks setting configuartion with config manager works"""
         # Set the config directly
         cfgs = [
-            (crypten.common.approximations, "exp_iterations", "ApproxConfig"),
+            (crypten.common.functions.approximations, "exp_iterations", "ApproxConfig"),
             (crypten.mpc, "max_method", "MPCConfig"),
         ]
 

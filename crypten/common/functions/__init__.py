@@ -5,4 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-__all__ = ["functions", "rng", "tensor_types", "util", "serial"]
+from . import approximations, regular
+
+__all__ = ["approximations", "regular"]

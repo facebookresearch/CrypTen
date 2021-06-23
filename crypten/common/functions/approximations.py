@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import crypten
 import torch
 
-from .util import ConfigBase
+from ..util import ConfigBase
 
 
 __all__ = [

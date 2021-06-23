@@ -11,7 +11,7 @@ import crypten.communicator as comm
 
 # dependencies:
 import torch
-from crypten.common import regular
+from crypten.common.functions import regular
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor, is_tensor
 from crypten.common.util import torch_cat, torch_stack

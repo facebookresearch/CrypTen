@@ -9,7 +9,7 @@ import crypten.communicator as comm
 
 # dependencies:
 import torch
-from crypten.common import regular
+from crypten.common.functions import regular
 from crypten.common.rng import generate_kbit_random_tensor
 from crypten.common.tensor_types import is_tensor
 from crypten.common.util import torch_cat, torch_stack

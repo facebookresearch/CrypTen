@@ -9,7 +9,6 @@ from contextlib import contextmanager
 
 import torch
 
-from .common import approximations, regular
 from .debug import validation_mode, validate_correctness
 from .gradients import (
     AutogradContext,
@@ -1397,14 +1396,13 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         raise RuntimeError("Cannot evaluate CrypTensors to boolean values")
 
 
-# Register function approximations
-for func in approximations.__all__:
-    setattr(CrypTensor, func, getattr(approximations, func))
+from .common import functions
 
-
-# Register regular functions
-for func in regular.__all__:
-    setattr(CrypTensor, func, getattr(regular, func))
+# Register common functions
+for module_name in functions.__all__:
+    module = getattr(functions, module_name)
+    for func in module.__all__:
+        setattr(CrypTensor, func, getattr(module, func))
 
 
 # Register base implementations from gradient functions
