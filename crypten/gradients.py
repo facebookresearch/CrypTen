@@ -552,7 +552,7 @@ class AutogradFeatureDropout(AutogradFunction):
         boolean_mask = (random_tensor > p).to(dtype=torch.float)
         for i in range(2, input.dim()):
             boolean_mask = boolean_mask.unsqueeze(i)
-        boolean_mask, _ = torch.broadcast_tensors(boolean_mask, input.share)
+        boolean_mask, _ = torch.broadcast_tensors(boolean_mask, input.data)
         if inplace:
             result = input.mul_(boolean_mask.div(1.0 - p))
         else:
@@ -1016,7 +1016,7 @@ class AutogradAbs(AutogradFunction):
     @staticmethod
     def backward(ctx, grad_output):
         (sign,) = ctx.saved_tensors
-        return grad_output.mul(sign.mul_(2.0).sub_(1.0))
+        return grad_output.mul(sign)
 
 
 @register_function("sign")
@@ -1170,33 +1170,58 @@ class AutogradMean(AutogradFunction):
 @register_function("var")
 class AutogradVariance(AutogradFunction):
     @staticmethod
-    def forward(ctx, *args, **kwargs):
+    def forward(ctx, self, *args, **kwargs):
 
         # preprocess inputs:
-        assert len(args) >= 1
-        if len(args) == 1:
-            (input,) = args  # no dimension to compute variance over in args
-            dim = kwargs.get("dim", None)
+        if len(args) == 0:
+            dim = None
+            unbiased = kwargs.get("unbiased", False)
+            keepdim = False
+            mean = self.mean()
+        elif len(args) == 1:
+            dim = args[0]
+            unbiased = kwargs.get("unbiased", False)
+            keepdim = kwargs.get("keepdim", False)
+        elif len(args) == 2:
+            dim, unbiased = args[0], args[1]
+            keepdim = kwargs.get("keepdim", False)
         else:
-            assert len(args) == 2
-            assert "dim" not in kwargs
-            input, dim = args  # dimension to compute variance over in args
-        keepdim = kwargs.get("keepdim", False)
+            dim, unbiased, keepdim = args[0], args[1], args[2]
+
+        if dim is not None:  # dimension is specified
+            mean = self.mean(dim, keepdim=True)
+
+        # Compute square error
+        result = (self - mean).square()
+        if dim is None:
+            result = result.sum()
+        else:
+            result = result.sum(dim, keepdim=keepdim)
+
+        # Determine divisor
+        divisor = self.nelement() // result.nelement()
+        if not unbiased:
+            divisor -= 1
 
         # compute variance:
-        ctx.save_multiple_for_backward((input, dim, keepdim))
-        return input.var(dim, keepdim=keepdim) if dim is not None else input.var()
+        ctx.save_multiple_for_backward((self, mean, divisor, dim, keepdim))
+        return (
+            self.var(dim, unbiased=unbiased, keepdim=keepdim)
+            if dim is not None
+            else self.var(unbiased=unbiased)
+        )
 
     @staticmethod
     def backward(ctx, grad_output):
-        input, dim, keepdim = ctx.saved_tensors
-        nelement = float(
-            reduce(lambda x, y: x * y, input.size()) if dim is None else input.size(dim)
-        )
+        input, mean, divisor, dim, keepdim = ctx.saved_tensors
+
         if not keepdim and dim is not None:
             grad_output = grad_output.unsqueeze(dim)
-        mean = input.mean() if dim is None else input.mean(dim, keepdim=keepdim)
-        return (input - mean).mul(2.0).mul(grad_output).div(nelement)
+
+        numerator = input.sub(mean).mul(2).mul(grad_output)
+        if divisor == 0:
+            return numerator
+        return numerator.div(divisor)
 
 
 @register_function("min")
@@ -1381,9 +1406,7 @@ class AutogradAvgPool2D(AutogradFunction):
             kernel_size = (kernel_size, kernel_size)
 
         # perform average pooling:
-        output = input.avg_pool2d(
-            kernel_size, padding=padding, stride=stride, ceil_mode=ceil_mode
-        )
+        output = input.avg_pool2d(kernel_size, padding=padding, stride=stride)
 
         # store information for backward pass:
         ctx.save_multiple_for_backward(
@@ -1732,7 +1755,7 @@ class AutogradBatchNorm(AutogradFunction):
         # compute mean and variance, track batch statistics:
         if training:
             mean = x.mean(stats_dimensions)
-            variance = x.var(stats_dimensions)
+            variance = x.var(stats_dimensions, unbiased=True)
             if running_mean is not None and running_var is not None:
                 running_var.set(running_var * (1.0 - momentum) + variance * momentum)
                 running_mean.set(running_mean * (1.0 - momentum) + mean * momentum)

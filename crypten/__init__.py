@@ -96,10 +96,6 @@ def reset_communication_stats():
 
 
 # set tensor type to be used for CrypTensors:
-__CRYPTENSOR_TYPES__ = {"mpc": crypten.mpc.MPCTensor}
-__DEFAULT_CRYPTENSOR_TYPE__ = "mpc"
-
-
 def register_cryptensor(name):
     """Registers a custom :class:`CrypTensor` subclass.
 
@@ -109,43 +105,23 @@ def register_cryptensor(name):
 
     .. code-block:: python
 
-        @crypten.register_cryptensor('my_cryptensor')
-        class MyCrypTensor(crypten.CrypTensor):
+        @CrypTensor.register_cryptensor('my_cryptensor')
+        class MyCrypTensor(CrypTensor):
             ...
     """
-
-    def register_cryptensor_cls(cls):
-        if name in __CRYPTENSOR_TYPES__:
-            raise ValueError(
-                "Cannot register duplicate CrypTensor type: \
-                tensor type {} already exists.".format(
-                    name
-                )
-            )
-        if not issubclass(cls, CrypTensor):
-            raise ValueError(
-                "Registered tensor ({}: {}) must extend \
-                CrypTensor".format(
-                    name, cls.__name__
-                )
-            )
-        __CRYPTENSOR_TYPES__[name] = cls
-        return cls
-
-    return register_cryptensor_cls
+    return CrypTensor.register_cryptensor(name)
 
 
 def set_default_cryptensor_type(cryptensor_type):
     """Sets the default type used to create `CrypTensor`s."""
-    global __DEFAULT_CRYPTENSOR_TYPE__
-    if cryptensor_type not in __CRYPTENSOR_TYPES__:
+    if cryptensor_type not in CrypTensor.__CRYPTENSOR_TYPES__.keys():
         raise ValueError("CrypTensor type %s does not exist." % cryptensor_type)
-    __DEFAULT_CRYPTENSOR_TYPE__ = cryptensor_type
+    CrypTensor.__DEFAULT_CRYPTENSOR_TYPE__ = cryptensor_type
 
 
 def get_default_cryptensor_type():
     """Gets the default type used to create `CrypTensor`s."""
-    return __DEFAULT_CRYPTENSOR_TYPE__
+    return CrypTensor.__DEFAULT_CRYPTENSOR_TYPE__
 
 
 def get_cryptensor_type(tensor):
@@ -154,7 +130,7 @@ def get_cryptensor_type(tensor):
         raise ValueError(
             "Specified tensor is not a CrypTensor: {}".format(type(tensor))
         )
-    for name, cls in __CRYPTENSOR_TYPES__.items():
+    for name, cls in CrypTensor.__CRYPTENSOR_TYPES__.items():
         if isinstance(tensor, cls):
             return name
     raise ValueError("Unregistered CrypTensor type: {}".format(type(tensor)))
@@ -169,11 +145,11 @@ def cryptensor(*args, cryptensor_type=None, **kwargs):
     # determine CrypTensor type to use:
     if cryptensor_type is None:
         cryptensor_type = get_default_cryptensor_type()
-    if cryptensor_type not in __CRYPTENSOR_TYPES__:
+    if cryptensor_type not in CrypTensor.__CRYPTENSOR_TYPES__:
         raise ValueError("CrypTensor type %s does not exist." % cryptensor_type)
 
     # create CrypTensor:
-    return __CRYPTENSOR_TYPES__[cryptensor_type](*args, **kwargs)
+    return CrypTensor.__CRYPTENSOR_TYPES__[cryptensor_type](*args, **kwargs)
 
 
 def is_encrypted_tensor(obj):
@@ -472,7 +448,9 @@ def rand(*sizes, device=None, cryptensor_type=None):
     with no_grad():
         if cryptensor_type is None:
             cryptensor_type = get_default_cryptensor_type()
-        return __CRYPTENSOR_TYPES__[cryptensor_type].rand(*sizes, device=device)
+        return CrypTensor.__CRYPTENSOR_TYPES__[cryptensor_type].rand(
+            *sizes, device=device
+        )
 
 
 def randn(*sizes, cryptensor_type=None):
@@ -482,7 +460,7 @@ def randn(*sizes, cryptensor_type=None):
     with no_grad():
         if cryptensor_type is None:
             cryptensor_type = get_default_cryptensor_type()
-        return __CRYPTENSOR_TYPES__[cryptensor_type].randn(*sizes)
+        return CrypTensor.__CRYPTENSOR_TYPES__[cryptensor_type].randn(*sizes)
 
 
 def bernoulli(tensor, cryptensor_type=None):

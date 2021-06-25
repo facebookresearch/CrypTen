@@ -8,6 +8,8 @@
 import logging
 import os
 import pickle
+import random
+import string
 
 import numpy
 import torch
@@ -80,9 +82,12 @@ class DistributedCommunicator(Communicator):
             )
 
         # set default arguments for communicator:
+        randomized_path = "crypten-".join(
+            random.choice(string.ascii_letters) for i in range(10)
+        )
         default_args = {
             "DISTRIBUTED_BACKEND": "gloo",
-            "RENDEZVOUS": "file:///tmp/sharedfile",
+            "RENDEZVOUS": f"file:///tmp/{randomized_path}",
             "WORLD_SIZE": world_size,
             "RANK": rank,
         }

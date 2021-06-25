@@ -52,6 +52,7 @@ class ConfigManager(ConfigBase):
         super().__init__(config, *args)
 
 
+@CrypTensor.register_cryptensor("mpc")
 class MPCTensor(CrypTensor):
     def __init__(self, tensor, ptype=Ptype.arithmetic, device=None, *args, **kwargs):
         """
@@ -234,16 +235,6 @@ class MPCTensor(CrypTensor):
     def share(self, value):
         """Sets share to value"""
         self._tensor.share = value
-
-    @property
-    def data(self):
-        """Returns share data"""
-        return self.share.data
-
-    @data.setter
-    def data(self, value):
-        """Sets data to value"""
-        self.share.data = value
 
     @property
     def encoder(self):

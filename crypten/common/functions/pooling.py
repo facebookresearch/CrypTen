@@ -30,8 +30,8 @@ def max_pool2d(
     input planes.
     """
     max_input = self.clone()
-    max_input.share, output_size = _pool2d_reshape(
-        self.share,
+    max_input.data, output_size = _pool2d_reshape(
+        self.data,
         kernel_size,
         padding=padding,
         stride=stride,

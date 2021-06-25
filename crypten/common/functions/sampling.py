@@ -82,7 +82,7 @@ def weighted_index(self, dim=None):
 
     gt = x.gt(r)
     shifted = gt.roll(1, dims=dim)
-    shifted.share.index_fill_(dim, torch.tensor(0, device=self.device), 0)
+    shifted.data.index_fill_(dim, torch.tensor(0, device=self.device), 0)
 
     return gt - shifted
 

@@ -459,10 +459,10 @@ def softmax(self, dim, **kwargs):
     # 0-d case
     if self.dim() == 0:
         assert dim == 0, "Improper dim argument"
-        return self.new(torch.ones_like((self.share)))
+        return self.new(torch.ones_like((self.data)))
 
     if self.size(dim) == 1:
-        return self.new(torch.ones_like(self.share))
+        return self.new(torch.ones_like(self.data))
 
     maximum_value = self.max(dim, keepdim=True)[0]
     logits = self - maximum_value
@@ -484,7 +484,7 @@ def log_softmax(self, dim, **kwargs):
         return self.new(torch.zeros((), device=self.device))
 
     if self.size(dim) == 1:
-        return self.new(torch.zeros_like(self.share))
+        return self.new(torch.zeros_like(self.data))
 
     maximum_value = self.max(dim, keepdim=True)[0]
     logits = self - maximum_value

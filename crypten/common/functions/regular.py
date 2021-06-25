@@ -163,12 +163,39 @@ def mean(self, *args, **kwargs):
 
 def var(self, *args, **kwargs):
     """Computes variance of tensor along specified dimensions."""
-    if len(args) > 0:  # dimension is specified
-        mean = self.mean(*args, **{"keepdim": True})
-    else:
+    # preprocess inputs:
+    if len(args) == 0:
+        dim = None
+        unbiased = kwargs.get("unbiased", False)
         mean = self.mean()
-    result = (self - mean).square().sum(*args, **kwargs)
+    elif len(args) == 1:
+        dim = args[0]
+        unbiased = kwargs.get("unbiased", False)
+        keepdim = kwargs.get("keepdim", False)
+    elif len(args) == 2:
+        dim, unbiased = args[0], args[1]
+        keepdim = kwargs.get("keepdim", False)
+    else:
+        dim, unbiased, keepdim = args[0], args[1], args[2]
+
+    if dim is not None:  # dimension is specified
+        mean = self.mean(dim, keepdim=True)
+
+    # Compute square error
+    result = (self - mean).square()
+    if dim is None:
+        result = result.sum()
+    else:
+        result = result.sum(dim, keepdim=keepdim)
+
+    # Determine divisor
     divisor = self.nelement() // result.nelement()
+    if not unbiased:
+        divisor -= 1
+
+    # Compute mean square error
+    if divisor in [0, 1]:
+        return result
     return result.div(divisor)
 
 

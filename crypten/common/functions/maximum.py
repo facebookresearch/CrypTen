@@ -109,8 +109,6 @@ def _argmax_helper_pairwise(enc_tensor, dim=None):
     if row_length - 1 < torch.iinfo(torch.long).bits * 2:
         pairwise_comparisons = a.ge(b)
         result = pairwise_comparisons.prod(0)
-        result.share *= enc_tensor.encoder._scale
-        result.encoder = enc_tensor.encoder
     else:
         # Sum of columns with all 1s will have value equal to (length - 1).
         # Using ge() since it is slightly faster than eq()

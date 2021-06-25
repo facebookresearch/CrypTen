@@ -174,7 +174,6 @@ class TestGradients:
         """Tests arithmetic functions with broadcasting."""
         arithmetic_functions = ["add", "sub", "mul"]
         for func in arithmetic_functions:
-
             # Test on operator
             ofunc = "__" + func + "__"
 
@@ -562,7 +561,8 @@ class TestGradients:
         paddings = [1, (0, 0)]
         strides = [1, (2, 2)]
         dilations = [1, 2]
-        ceil_modes = [False, True]
+
+        ceil_modes = [False, True] if func == "max_pool2d" else [False]
 
         for image_size, channels, batches, kernel_size in itertools.product(
             image_sizes, nchannels, nbatches, kernel_sizes
@@ -820,6 +820,7 @@ class TestGradients:
         """
         tolerance = 0.1
         sizes = [(8, 5), (16, 3), (32, 5), (8, 6, 4), (8, 4, 3, 5)]
+        torch.autograd.set_detect_anomaly(True)
         for size in sizes:
             for is_training in (False, True):
 
@@ -878,9 +879,13 @@ class TestGradients:
                 )
 
                 # check backward (input, weight, and bias gradients):
-                reference.backward(reference)
+                grad_input = get_random_test_tensor(
+                    size=reference.size(), is_float=True
+                )
+                reference.backward(grad_input)
                 with crypten.no_grad():
-                    encrypted_grad = batch_norm_fn.backward(ctx, encrypted_out)
+                    enc_grad_input = crypten.cryptensor(grad_input)
+                    encrypted_grad = batch_norm_fn.backward(ctx, enc_grad_input)
                 TorchGrad = namedtuple("TorchGrad", ["name", "value"])
                 torch_gradients = [
                     TorchGrad("input gradient", tensor.grad),
@@ -1078,10 +1083,20 @@ class TestGradients:
     def test_var(self):
         """Tests var gradient"""
         sizes = [(10,), (1, 10), (5, 10), (2, 5, 10)]
+        import crypten
 
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
             self._check_forward_backward("var", tensor)
+            for unbiased in [False, True]:
+                self._check_forward_backward("var", tensor, unbiased=unbiased)
+                for dim, keepdim in itertools.product(range(len(size)), [False, True]):
+                    # skip dimensions with 1 element
+                    if size[dim] == 1:
+                        continue
+                    self._check_forward_backward(
+                        "var", tensor, dim, unbiased=unbiased, keepdim=keepdim
+                    )
 
     def test_getitem(self):
         """Tests getitem gradient"""
@@ -1171,6 +1186,19 @@ class TestTTP(MultiProcessTestCase, TestGradients):
     def tearDown(self):
         crypten.mpc.set_default_provider(self._original_provider)
         super(TestTTP, self).tearDown()
+
+
+class TestPTT(unittest.TestCase, TestGradients):
+    def setUp(self):
+        self.default_tolerance = 0.5
+        self._original_backend = crypten.get_default_cryptensor_type()
+        crypten.set_default_cryptensor_type("ptt")
+        super(TestPTT, self).setUp()
+        crypten.init()
+
+    def tearDown(self):
+        crypten.set_default_cryptensor_type(self._original_backend)
+        super(TestPTT, self).setUp()
 
 
 # This code only runs when executing the file outside the test harness

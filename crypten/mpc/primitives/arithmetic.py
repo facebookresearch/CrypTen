@@ -669,6 +669,14 @@ class ArithmeticSharedTensor(object):
         """Subtracts self from tensor."""
         return -self + tensor
 
+    @property
+    def data(self):
+        return self._tensor.data
+
+    @data.setter
+    def data(self, value):
+        self._tensor.data = value
+
 
 # Register regular functions
 for func in regular.__all__:

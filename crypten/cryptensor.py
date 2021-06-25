@@ -60,6 +60,44 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
     provides a full autograd implementation to the user.
     """
 
+    __CRYPTENSOR_TYPES__ = {}
+    __DEFAULT_CRYPTENSOR_TYPE__ = "mpc"
+
+    @staticmethod
+    def register_cryptensor(name):
+        """Registers a custom :class:`CrypTensor` subclass.
+
+        This decorator allows the user to instantiate a subclass of `CrypTensor`
+        from Python cpde, even if the class itself is not  part of CrypTen. To use
+        it, apply this decorator to a `CrypTensor` subclass, like this:
+
+        .. code-block:: python
+
+            @CrypTensor.register_cryptensor('my_cryptensor')
+            class MyCrypTensor(CrypTensor):
+                ...
+        """
+
+        def register_cryptensor_cls(cls):
+            if name in CrypTensor.__CRYPTENSOR_TYPES__:
+                raise ValueError(
+                    "Cannot register duplicate CrypTensor type: \
+                    tensor type {} already exists.".format(
+                        name
+                    )
+                )
+            if not issubclass(cls, CrypTensor):
+                raise ValueError(
+                    "Registered tensor ({}: {}) must extend \
+                    CrypTensor".format(
+                        name, cls.__name__
+                    )
+                )
+            CrypTensor.__CRYPTENSOR_TYPES__[name] = cls
+            return cls
+
+        return register_cryptensor_cls
+
     # attributes that should be dispatched to underlying tensor:
     PROTECTED_ATTRIBUTES = [
         "__dict__",
@@ -165,13 +203,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             raise TypeError("CrypTensor class cannot be instantiated directly.")
         return object.__new__(cls)
 
-    @staticmethod
-    def new(*args, **kwargs):
-        """
-        Static method that creates a new `CrypTensor` of same type.
-        """
-        raise NotImplementedError("new is not implemented")
-
     def _reset_gradients(self):
         """Resets gradient information in tensor."""
         self.grad = None  # gradient itself
@@ -203,7 +234,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
                 # if undefined, set gradient input to one:
                 if grad_input is None:
                     if self.nelement() == 1:
-                        grad_input = self.new(torch.ones_like(self.share))
+                        grad_input = self.new(torch.ones_like(self.data))
                     else:
                         raise RuntimeError(
                             "grad can be implicitly created only for scalar outputs"
@@ -377,7 +408,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         inplace = name.endswith("_") and not name.endswith("__")
         if inplace:
             if CrypTensor.AUTOGRAD_ENABLED and self.requires_grad:
-                raise RuntimeError(f"Autograd is not supported for in-place functions.")
+                raise RuntimeError("Autograd is not supported for in-place functions.")
 
             # Note: native in-place support is now deprecated
             # Instead, CrypTensors now compute out-of-place and
@@ -425,6 +456,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             return self._get_forward_function_no_ctx(grad_fn)
 
     # Common functions:
+    @classmethod
+    def new(cls, *args, **kwargs):
+        return cls(*args, **kwargs)
+
     def __abs__(self):
         return self.abs()
 
@@ -509,6 +544,18 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
     @property
     def shape(self):
         return self.size()
+
+    @property
+    def device(self):
+        return self._tensor.device
+
+    @property
+    def data(self):
+        return self._tensor.data
+
+    @data.setter
+    def data(self, value):
+        self._tensor.data = value
 
     def __bool__(self):
         """Override bool operator since encrypted tensors cannot evaluate"""
@@ -642,11 +689,11 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         raise NotImplementedError("matmul is not implemented")
 
-    def conv1d(self, *args, **kwargs):
+    def conv1d(self, kernel, *args, **kwargs):
         """1D convolution."""
         raise NotImplementedError("conv1d is not implemented")
 
-    def conv2d(self, *args, **kwargs):
+    def conv2d(self, kernel, *args, **kwargs):
         """2D convolution."""
         raise NotImplementedError("conv2d is not implemented")
 
@@ -665,6 +712,10 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             kernel_size (int or tuple): pooling kernel size.
         """
         raise NotImplementedError("avg_pool2d is not implemented")
+
+    def _ltz(self):
+        """Returns 1 for elements that are < 0 and 0 otherwise"""
+        raise NotImplementedError("_ltz is not implemented")
 
     @staticmethod
     def rand(*sizes, device=None):
