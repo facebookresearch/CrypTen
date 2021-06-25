@@ -9,7 +9,7 @@ from contextlib import contextmanager
 
 import torch
 
-from .debug import validation_mode, validate_correctness
+from .debug import register_validation
 from .gradients import (
     AutogradContext,
     BaseAutogradContext,
@@ -375,6 +375,7 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
 
         return autograd_forward
 
+    @register_validation
     def __getattribute__(self, name):
         """
         Makes sure that any function call on the tensor gets recorded in order

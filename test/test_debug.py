@@ -5,8 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import unittest
-
 import crypten
 from crypten.debug import configure_logging, pdb, set_debug_mode, set_validation_mode
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
@@ -37,8 +35,8 @@ class TestDebug(MultiProcessTestCase):
         with self.assertRaises(ValueError):
             encrypted_tensor.div(2)
 
-    @unittest.skip("Temporary")
     def test_correctness_validation(self):
+        set_validation_mode()
         for grad_enabled in [False, True]:
             crypten.set_grad_enabled(grad_enabled)
 

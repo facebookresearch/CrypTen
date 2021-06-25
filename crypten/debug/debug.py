@@ -89,13 +89,11 @@ def validate_correctness(self, func, func_name, tolerance=0.05):
     import crypten
     import torch
 
+    if not hasattr(torch.tensor([]), func_name):
+        return func
+
     def validation_function(*args, **kwargs):
         crypten.debug.set_validation_mode(False)
-
-        # skip if no reference to validate
-        if not hasattr(torch.tensor([]), func_name):
-            crypten_log(f"Skipping validation for {func_name}()")
-            return func(*args, **kwargs)
 
         # Compute crypten result
         result_enc = func(*args, **kwargs)
