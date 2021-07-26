@@ -28,7 +28,7 @@ __import_list = {
         "InceptionAux",
     ],
     "mnasnet": ["_InvertedResidual"],
-    "mobilenet": ["ConvBNReLU", "InvertedResidual"],
+    "mobilenet": ["InvertedResidual"],
     "resnet": ["BasicBlock", "Bottleneck"],
     "shufflenetv2": ["InvertedResidual"],
     "squeezenet": ["Fire"],
@@ -176,3 +176,10 @@ if models is not None:
         except (RuntimeError, AttributeError) as e:
             # Log that module produced an error
             logging.warning(e)
+
+
+raise DeprecationWarning(
+    "crypten.models is being deprecated. To import models from torchvision, ",
+    "please import them directly and use crypten.nn.from_pytorch() to convert",
+    " to CrypTen models.",
+)
