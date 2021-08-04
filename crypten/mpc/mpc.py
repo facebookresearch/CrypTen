@@ -13,7 +13,7 @@ from crypten.common.tensor_types import is_tensor
 from crypten.common.util import ConfigBase, torch_stack
 from crypten.cuda import CUDALongTensor
 
-from ..cryptensor import CrypTensor
+from ..cryptensor import CrypTensor, InnerCrypTensor
 from ..encoder import FixedPointEncoder
 from .primitives.binary import BinarySharedTensor
 from .primitives.converters import convert
@@ -53,7 +53,7 @@ class ConfigManager(ConfigBase):
 
 
 @CrypTensor.register_cryptensor("mpc")
-class MPCTensor(CrypTensor):
+class MPCTensor(InnerCrypTensor):
     def __init__(self, tensor, ptype=Ptype.arithmetic, device=None, *args, **kwargs):
         """
         Creates the shared tensor from the input `tensor` provided by party `src`.
@@ -326,7 +326,7 @@ class MPCTensor(CrypTensor):
         .. _broadcastable:
             https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
         result = self.clone()
-        if isinstance(y, CrypTensor):
+        if isinstance(y, InnerCrypTensor):
             result.share = torch.broadcast_tensors(result.share, y.share)[0].clone()
         elif is_tensor(y):
             result.share = torch.broadcast_tensors(result.share, y)[0].clone()

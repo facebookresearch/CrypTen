@@ -40,7 +40,7 @@ class _Loss(Module):
             ):
                 args = list(args)
                 for idx, arg in enumerate(args):
-                    if torch.is_tensor(arg):
+                    if type(arg) == torch.Tensor:
                         args[idx] = crypten.cryptensor(arg)
             return object.__getattribute__(self, name)(*tuple(args), **kwargs)
 

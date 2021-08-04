@@ -22,13 +22,13 @@ import torch
 
 # other imports:
 from . import debug
-from .cryptensor import CrypTensor
+from .cryptensor import CrypTensor, InnerCrypTensor
 
 
 # functions controlling autograd:
-no_grad = CrypTensor.no_grad
-enable_grad = CrypTensor.enable_grad
-set_grad_enabled = CrypTensor.set_grad_enabled
+no_grad = torch.no_grad
+enable_grad = torch.enable_grad
+set_grad_enabled = torch.set_grad_enabled
 
 # Setup RNG generators
 generators = {
@@ -125,7 +125,7 @@ def get_default_cryptensor_type():
 
 def get_cryptensor_type(tensor):
     """Gets the type name of the specified `tensor` `CrypTensor`."""
-    if not isinstance(tensor, CrypTensor):
+    if not isinstance(tensor, InnerCrypTensor):
         raise ValueError(
             "Specified tensor is not a CrypTensor: {}".format(type(tensor))
         )
@@ -148,7 +148,7 @@ def cryptensor(*args, cryptensor_type=None, **kwargs):
         raise ValueError("CrypTensor type %s does not exist." % cryptensor_type)
 
     # create CrypTensor:
-    return CrypTensor.__CRYPTENSOR_TYPES__[cryptensor_type](*args, **kwargs)
+    return CrypTensor(CrypTensor.__CRYPTENSOR_TYPES__[cryptensor_type](*args, **kwargs))
 
 
 def is_encrypted_tensor(obj):
@@ -414,11 +414,11 @@ def cat(tensors, dim=0):
     if all(torch.is_tensor(t) for t in tensors):
         return torch.cat(tensors)
 
-    assert all(isinstance(t, CrypTensor) for t in tensors), "inputs must be CrypTensors"
+    assert all(isinstance(t, InnerCrypTensor) for t in tensors), "inputs must be CrypTensors"
     tensor_types = [get_cryptensor_type(t) for t in tensors]
     assert all(
         ttype == tensor_types[0] for ttype in tensor_types
-    ), "cannot concatenate CrypTensors with different underlying types"
+    ), "cannot concatenate InnerCrypTensors with different underlying types"
     if len(tensors) == 1:
         return tensors[0]
     return type(tensors[0]).cat(tensors, dim=dim)
@@ -430,11 +430,11 @@ def stack(tensors, dim=0):
     `crypten.cat`, this adds a dimension to the result tensor.
     """
     assert isinstance(tensors, list), "input to stack must be a list"
-    assert all(isinstance(t, CrypTensor) for t in tensors), "inputs must be CrypTensors"
+    assert all(isinstance(t, InnerCrypTensor) for t in tensors), "inputs must be InnerCrypTensors"
     tensor_types = [get_cryptensor_type(t) for t in tensors]
     assert all(
         ttype == tensor_types[0] for ttype in tensor_types
-    ), "cannot stack CrypTensors with different underlying types"
+    ), "cannot stack InnerCrypTensors with different underlying types"
     if len(tensors) == 1:
         return tensors[0].unsqueeze(dim)
     return type(tensors[0]).stack(tensors, dim=dim)

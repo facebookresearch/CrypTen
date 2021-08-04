@@ -1882,7 +1882,7 @@ class Conv(Module):
         }
 
         # identify correct convolution function to use:
-        if torch.is_tensor(x):
+        if not isinstance(x, crypten.CrypTensor):
             func = getattr(torch.nn.functional, f"conv{dim}d", None)
             args = [x] + args + bias  # torch function takes different inputs
         else:
@@ -1892,7 +1892,7 @@ class Conv(Module):
         x = func(*args, **kwargs)
 
         # add the bias term if it is specified, and wasn;t already added:
-        if not torch.is_tensor(x) and bias is not None:
+        if isinstance(x, crypten.CrypTensor) and bias is not None:
             bias = bias.unsqueeze(0)
             while bias.dim() < x.dim():
                 bias = bias.unsqueeze(-1)
