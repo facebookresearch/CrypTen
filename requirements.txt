@@ -1,7 +1,9 @@
 torch>=1.7.0
 torchvision>=0.9.1
+omegaconf>=2.0.6
 onnx>=1.7.0
 pandas>=1.2.2
+pyyaml>=5.3.1
 tensorboard
 future
 scipy>=1.6.0

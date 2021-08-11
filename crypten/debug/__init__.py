@@ -8,6 +8,8 @@
 
 from functools import wraps
 
+from crypten.config import cfg
+
 from .debug import MultiprocessingPdb, configure_logging, validate_correctness
 
 
@@ -16,38 +18,13 @@ pdb = MultiprocessingPdb()
 __all__ = ["pdb", "configure_logging", "validate_correctness", "validate_decorator"]
 
 
-# debug mode handling
-_crypten_debug_mode = False
-_crypten_validation_mode = False
-
-
-def debug_mode():
-    return _crypten_debug_mode
-
-
-def set_debug_mode(mode=True):
-    assert isinstance(mode, bool)
-    global _crypten_debug_mode
-    _crypten_debug_mode = mode
-
-
-def validation_mode():
-    return _crypten_validation_mode
-
-
-def set_validation_mode(mode=True):
-    assert isinstance(mode, bool)
-    global _crypten_validation_mode
-    _crypten_validation_mode = mode
-
-
 def register_validation(getattr_function):
     @wraps(getattr_function)
     def validate_attribute(self, name):
         # Get dispatched function call
         function = getattr_function(self, name)
 
-        if not _crypten_validation_mode:
+        if not cfg.debug.validation_mode:
             return function
 
         # Run validation

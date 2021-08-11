@@ -11,6 +11,7 @@ import unittest
 import crypten
 import torch
 from crypten.common.util import chebyshev_series
+from crypten.config import cfg
 from crypten.encoder import FixedPointEncoder, nearest_integer_division
 
 
@@ -47,7 +48,7 @@ class TestCommon(unittest.TestCase):
             )
 
         # Make sure encoding a subclass of CrypTensor is a no-op
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        cfg.mpc.provider = "TFP"
         crypten.init()
 
         tensor = get_test_tensor(float=True)
@@ -98,32 +99,24 @@ class TestCommon(unittest.TestCase):
             self.assertTrue(result[0] < 1e-4)
             self.assertTrue(torch.isclose(result[-1], torch.tensor(3.5e-2), atol=1e-1))
 
-    def test_config_managers(self):
+    def test_config(self):
         """Checks setting configuartion with config manager works"""
         # Set the config directly
+        crypten.init()
+
         cfgs = [
-            (crypten.common.functions.approximations, "exp_iterations", "ApproxConfig"),
-            (crypten.mpc, "max_method", "MPCConfig"),
+            "functions.exp_iterations",
+            "functions.max_method",
         ]
 
-        for cfg in cfgs:
-            base = cfg[0]
-            arg_name = cfg[1]
-            cfg_name = cfg[2]
-
-            setattr(base.config, arg_name, 8)
-            self.assertTrue(getattr(base.config, arg_name) == 8)
+        for _cfg in cfgs:
+            cfg[_cfg] = 10
+            self.assertTrue(cfg[_cfg] == 10, "cfg.set failed")
 
             # Set with a context manager
-            with base.ConfigManager(arg_name, 3):
-                self.assertTrue(getattr(base.config, arg_name) == 3)
-            self.assertTrue(getattr(base.config, arg_name) == 8)
-
-            kwargs = {arg_name: 5}
-            new_config = getattr(base, cfg_name)(**kwargs)
-
-            base.set_config(new_config)
-            self.assertTrue(getattr(base.config, arg_name) == 5)
+            with cfg.temp_override({_cfg: 3}):
+                self.assertTrue(cfg[_cfg] == 3, "temp_override failed to set values")
+            self.assertTrue(cfg[_cfg] == 10, "temp_override values persist")
 
 
 if __name__ == "__main__":

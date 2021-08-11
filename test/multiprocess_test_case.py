@@ -18,6 +18,7 @@ import crypten.communicator as comm
 import crypten.debug
 import torch
 import torch.distributed as dist
+from crypten.config import cfg
 
 
 def get_random_test_tensor(
@@ -146,6 +147,12 @@ class MultiProcessTestCase(unittest.TestCase):
         # self.id() == e.g. '__main__.TestDistributed.TestAdditive.test_get_rank'
         return self.id().split(".")[-1]
 
+    @staticmethod
+    def _spawn_ttp_process_with_config(config):
+        """Runs TTPServer with config copied from parent"""
+        cfg.set_config(config)
+        crypten.mpc.provider.TTPServer()
+
     def _spawn_ttp(self):
         communicator_args = {
             "WORLD_SIZE": self.world_size,
@@ -155,8 +162,9 @@ class MultiProcessTestCase(unittest.TestCase):
         }
         for key, val in communicator_args.items():
             os.environ[key] = str(val)
+
         process = self.mp_context.Process(
-            target=crypten.mpc.provider.TTPServer, name="TTP", args=()
+            target=self._spawn_ttp_process_with_config, name="TTP", args=(cfg.config,)
         )
         process.start()
         return process
@@ -167,17 +175,20 @@ class MultiProcessTestCase(unittest.TestCase):
         process = self.mp_context.Process(
             target=self.__class__._run,
             name=name,
-            args=(test_name, rank, self.file, self.queue),
+            args=(test_name, cfg.config, rank, self.file, self.queue),
         )
         process.start()
         return process
 
     @classmethod
-    def _run(cls, test_name, rank, file, exception_queue):
+    def _run(cls, test_name, config, rank, file, exception_queue):
         self = cls(test_name)
 
         self.file = file
         self.rank = int(rank)
+
+        # Copy config to child processes.
+        cfg.set_config(config)
 
         # set environment variables:
         communicator_args = {
@@ -191,10 +202,14 @@ class MultiProcessTestCase(unittest.TestCase):
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            crypten.init()
+            try:
+                crypten.init()
+            except BaseException:
+                tb_string = traceback.format_exc()
+                exception_queue.put(tb_string)
+                sys.exit(0)
         self.setUp()
 
-        # We're retrieving a corresponding test and executing it.
         try:
             getattr(self, test_name)()
             exception_queue.put(None)

@@ -13,9 +13,9 @@ from crypten.common.functions import regular
 from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor, is_int_tensor, is_tensor
 from crypten.common.util import torch_stack
+from crypten.config import cfg
 from crypten.cryptensor import CrypTensor
 from crypten.cuda import CUDALongTensor
-from crypten.debug import validation_mode
 from crypten.encoder import FixedPointEncoder
 
 from . import beaver
@@ -453,7 +453,9 @@ class ArithmeticSharedTensor(object):
             y = y.long()
 
         if isinstance(y, int) or is_int_tensor(y):
-            if validation_mode():
+            validate = cfg.debug.validation_mode
+
+            if validate:
                 tolerance = 1.0
                 tensor = self.get_plain_text()
 
@@ -469,7 +471,7 @@ class ArithmeticSharedTensor(object):
                 self.share = self.share.div_(y, rounding_mode="trunc")
 
             # Validate
-            if validation_mode():
+            if validate:
                 if not torch.lt(
                     torch.abs(self.get_plain_text() * y - tensor), tolerance
                 ).all():

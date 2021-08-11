@@ -9,6 +9,7 @@ import crypten
 import crypten.communicator as comm
 import torch
 from crypten.common.util import count_wraps
+from crypten.config import cfg
 
 
 class IgnoreEncodings:
@@ -53,7 +54,7 @@ def __beaver_protocol(op, x, y, *args, **kwargs):
 
     from .arithmetic import ArithmeticSharedTensor
 
-    if crypten.mpc.config.active_security:
+    if cfg.mpc.active_security:
         """
         Reference: "Multiparty Computation from Somewhat Homomorphic Encryption"
         Link: https://eprint.iacr.org/2011/535.pdf

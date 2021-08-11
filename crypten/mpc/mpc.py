@@ -5,12 +5,11 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from dataclasses import dataclass
-
 import torch
 from crypten import communicator as comm
 from crypten.common.tensor_types import is_tensor
-from crypten.common.util import ConfigBase, torch_stack
+from crypten.common.util import torch_stack
+from crypten.config import cfg
 from crypten.cuda import CUDALongTensor
 
 from ..cryptensor import CrypTensor
@@ -18,38 +17,6 @@ from ..encoder import FixedPointEncoder
 from .primitives.binary import BinarySharedTensor
 from .primitives.converters import convert
 from .ptype import ptype as Ptype
-
-
-@dataclass
-class MPCConfig:
-    """
-    A configuration object for use by the MPCTensor.
-    """
-
-    # Used by max / argmax / min / argmin
-    max_method: str = "log_reduction"
-
-    # Used (for the moment) when generating the Beaver Triples
-    active_security: bool = False
-
-
-# Global config
-config = MPCConfig()
-
-
-class ConfigManager(ConfigBase):
-    r"""
-    Use this to temporarily change a value in the `mpc.config` object. The
-    following sets `config.exp_iterations` to `10` for one function
-    invocation and then sets it back to the previous value::
-
-        with ConfigManager("exp_iterations", 10):
-            tensor.exp()
-
-    """
-
-    def __init__(self, *args):
-        super().__init__(config, *args)
 
 
 @CrypTensor.register_cryptensor("mpc")
@@ -213,10 +180,10 @@ class MPCTensor(CrypTensor):
 
     def __repr__(self):
         """Returns a representation of the tensor useful for debugging."""
-        from crypten.debug import debug_mode
+        debug_mode = cfg.debug.debug_mode
 
         share = self.share
-        plain_text = self._tensor.get_plain_text() if debug_mode() else "HIDDEN"
+        plain_text = self._tensor.get_plain_text() if debug_mode else "HIDDEN"
         ptype = self.ptype
         return (
             f"MPCTensor(\n\t_tensor={share}\n"

@@ -9,6 +9,8 @@ import logging
 import pdb as pythondebugger
 import sys
 
+from crypten.config import cfg
+
 
 class MultiprocessingPdb(pythondebugger.Pdb):
     """A Pdb subclass that may be used
@@ -93,42 +95,37 @@ def validate_correctness(self, func, func_name, tolerance=0.05):
         return func
 
     def validation_function(*args, **kwargs):
-        crypten.debug.set_validation_mode(False)
+        with cfg.temp_override({"debug.validation_mode": False}):
+            # Compute crypten result
+            result_enc = func(*args, **kwargs)
+            result = result_enc.get_plain_text()
 
-        # Compute crypten result
-        result_enc = func(*args, **kwargs)
-        result = result_enc.get_plain_text()
+            # Compute torch result for corresponding function
+            for i, arg in enumerate(args):
+                if crypten.is_encrypted_tensor(arg):
+                    args[i] = args[i].get_plain_text()
+            for key, value in kwargs.items():
+                if crypten.is_encrypted_tensor(value):
+                    kwargs[key] = value.get_plain_text()
+            reference = getattr(self.get_plain_text(), func_name)(*args, **kwargs)
 
-        # Compute torch result for corresponding function
-        for i, arg in enumerate(args):
-            if crypten.is_encrypted_tensor(arg):
-                args[i] = args[i].get_plain_text()
-        for key, value in kwargs.items():
-            if crypten.is_encrypted_tensor(value):
-                kwargs[key] = value.get_plain_text()
-        reference = getattr(self.get_plain_text(), func_name)(*args, **kwargs)
+            # Check sizes match
+            if result.size() != reference.size():
+                crypten_log(
+                    f"Size mismatch: Expected {reference.size()} but got {result.size()}"
+                )
+                raise ValueError(f"Function {func_name} returned incorrect size")
 
-        # Check sizes match
-        if result.size() != reference.size():
-            crypten_log(
-                f"Size mismatch: Expected {reference.size()} but got {result.size()}"
-            )
-            crypten.debug.set_validation_mode(True)
-            raise ValueError(f"Function {func_name} returned incorrect size")
-
-        # Check that results match
-        diff = (result - reference).abs_()
-        norm_diff = diff.div(result.abs() + reference.abs()).abs_()
-        test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.1)
-        test_passed = test_passed.gt(0).all().item() == 1
-        if not test_passed:
-            crypten_log(f"Function {func_name} returned incorrect values")
-            crypten_log("Result %s" % result)
-            crypten_log("Result - Reference = %s" % (result - reference))
-            crypten.debug.set_validation_mode(True)
-            raise ValueError(f"Function {func_name} returned incorrect values")
-
-        crypten.debug.set_validation_mode(True)
+            # Check that results match
+            diff = (result - reference).abs_()
+            norm_diff = diff.div(result.abs() + reference.abs()).abs_()
+            test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.1)
+            test_passed = test_passed.gt(0).all().item() == 1
+            if not test_passed:
+                crypten_log(f"Function {func_name} returned incorrect values")
+                crypten_log("Result %s" % result)
+                crypten_log("Result - Reference = %s" % (result - reference))
+                raise ValueError(f"Function {func_name} returned incorrect values")
 
         return result_enc
 

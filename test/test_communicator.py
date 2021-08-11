@@ -15,6 +15,7 @@ import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 from crypten.common import serial
+from crypten.config import cfg
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
 
@@ -316,7 +317,7 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
         self.assertEqual(comm.get().comm_bytes, 0)
 
         # Test verbosity True setting and logging
-        comm.get().set_verbosity(True)
+        cfg.communicator.verbose = True
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
 
         # Test send / recv:
@@ -376,7 +377,7 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
             self.assertEqual(stats[key], 0)
 
         # Test verbosity False setting and no logging
-        comm.get().set_verbosity(False)
+        cfg.communicator.verbose = False
         tensor = get_random_test_tensor(size=size, is_float=False)
         tensor = comm.get().broadcast(tensor, 0)
         self.assertEqual(comm.get().comm_rounds, 0)

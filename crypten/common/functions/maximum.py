@@ -9,6 +9,7 @@ import math
 
 import crypten
 import torch
+from crypten.config import cfg
 
 
 __all__ = [
@@ -23,7 +24,7 @@ def argmax(self, dim=None, keepdim=False, one_hot=True):
     """Returns the indices of the maximum value of all elements in the
     `input` tensor.
     """
-    method = crypten.mpc.config.max_method
+    method = cfg.functions.max_method
 
     if self.dim() == 0:
         result = (
@@ -49,14 +50,14 @@ def argmin(self, dim=None, keepdim=False, one_hot=True):
 
 def max(self, dim=None, keepdim=False, one_hot=True):
     """Returns the maximum value of all elements in the input tensor."""
-    method = crypten.mpc.config.max_method
+    method = cfg.functions.max_method
     if dim is None:
         if method in ["log_reduction", "double_log_reduction"]:
             # max_result can be obtained directly
             max_result = _max_helper_all_tree_reductions(self, method=method)
         else:
             # max_result needs to be obtained through argmax
-            with crypten.mpc.ConfigManager("max_method", method):
+            with cfg.temp_override({"functions.max_method": method}):
                 argmax_result = self.argmax(one_hot=True)
             max_result = self.mul(argmax_result).sum()
         return max_result
@@ -146,7 +147,7 @@ def _max_helper_log_reduction(enc_tensor, dim=None):
     # compute max over the resulting reduced tensor with n^2 algorithm
     # note that the resulting one-hot vector we get here finds maxes only
     # over the reduced vector in enc_tensor_reduced, so we won't use it
-    with crypten.mpc.ConfigManager("max_method", "pairwise"):
+    with cfg.temp_override({"functions.max_method": "pairwise"}):
         enc_max_vec, enc_one_hot_reduced = enc_tensor_reduced.max(dim=dim_used)
     return enc_max_vec
 
@@ -183,7 +184,7 @@ def _max_helper_double_log_recursive(enc_tensor, dim):
         full_max_tensor = crypten.cat([enc_max_tensor, remainder], dim=dim)
 
         # call the max function on dimension dim
-        with crypten.mpc.ConfigManager("max_method", "pairwise"):
+        with cfg.temp_override({"functions.max_method": "pairwise"}):
             enc_max, enc_arg_max = full_max_tensor.max(dim=dim, keepdim=True)
         # compute max over the resulting reduced tensor with n^2 algorithm
         # note that the resulting one-hot vector we get here finds maxes only
@@ -221,7 +222,7 @@ def _max_helper_accelerated_cascade(enc_tensor, dim=None):
         input = enc_tensor.flatten()
     n = input.size(dim_used)  # number of items in the dimension
     if n < 3:
-        with crypten.mpc.ConfigManager("max_method", "pairwise"):
+        with cfg.temp_override({"functions.max_method": "pairwise"}):
             enc_max, enc_argmax = enc_tensor.max(dim=dim_used)
             return enc_max
     steps = int(math.log(math.log(math.log(n)))) + 1

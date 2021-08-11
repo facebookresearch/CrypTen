@@ -16,6 +16,7 @@ import crypten
 import torch
 import torch.nn.functional as F
 from crypten.common.tensor_types import is_float_tensor
+from crypten.config import cfg
 from crypten.gradients import AutogradContext
 from test.multiprocess_test_case import (
     MultiProcessTestCase,
@@ -251,7 +252,7 @@ class TestGradients:
                 if method is None:
                     self._check_forward_backward(reduction, tensor)
                 else:
-                    with crypten.mpc.ConfigManager("max_method", method):
+                    with cfg.temp_override({"functions.max_method": method}):
                         self._check_forward_backward(reduction, tensor)
 
                 # Check dim 0 if tensor is 0-dimensional
@@ -262,7 +263,7 @@ class TestGradients:
                     if method is None:
                         self._check_forward_backward(reduction, tensor, dim=dim)
                     else:
-                        with crypten.mpc.ConfigManager("max_method", method):
+                        with cfg.temp_override({"functions.max_method": method}):
                             self._check_forward_backward(reduction, tensor, dim=dim)
 
                     # check when keepdim is provided as a kwarg
@@ -275,7 +276,7 @@ class TestGradients:
                                 reduction, tensor, dim=dim, keepdim=keepdim
                             )
                         else:
-                            with crypten.mpc.ConfigManager("max_method", method):
+                            with cfg.temp_override({"functions.max_method": method}):
                                 self._check_forward_backward(
                                     reduction, tensor, dim, keepdim=keepdim
                                 )
@@ -1168,23 +1169,23 @@ class TestGradients:
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestGradients):
     def setUp(self):
-        self._original_provider = crypten.mpc.get_default_provider()
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        self._original_provider = cfg.mpc.provider
+        cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
     def tearDown(self):
-        crypten.mpc.set_default_provider(self._original_provider)
+        cfg.mpc.provider = self._original_provider
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestGradients):
     def setUp(self):
-        self._original_provider = crypten.mpc.get_default_provider()
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
+        self._original_provider = cfg.mpc.provider
+        cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
     def tearDown(self):
-        crypten.mpc.set_default_provider(self._original_provider)
+        cfg.mpc.provider = self._original_provider
         super(TestTTP, self).tearDown()
 
 

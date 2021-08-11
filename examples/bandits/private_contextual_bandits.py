@@ -10,10 +10,11 @@ import time
 
 import crypten
 import torch
+from crypten.config import cfg
 
 
 def set_precision(bits):
-    crypten.encoder.set_default_precision(bits)
+    cfg.encoder.precision_bits = bits
 
 
 def online_learner(

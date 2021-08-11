@@ -6,7 +6,8 @@
 # LICENSE file in the root directory of this source tree.
 
 import crypten
-from crypten.debug import configure_logging, pdb, set_debug_mode, set_validation_mode
+from crypten.config import cfg
+from crypten.debug import configure_logging, pdb
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 from torch import tensor
 
@@ -18,9 +19,9 @@ class TestDebug(MultiProcessTestCase):
         if self.rank >= 0:
             crypten.init()
 
-        # Testing debug mode
-        set_debug_mode()
-        set_validation_mode()
+            # Testing debug mode
+            cfg.debug.debug_mode = True
+            cfg.debug.validation_mode = True
 
     def testLogging(self):
         configure_logging()
@@ -36,7 +37,6 @@ class TestDebug(MultiProcessTestCase):
             encrypted_tensor.div(2)
 
     def test_correctness_validation(self):
-        set_validation_mode()
         for grad_enabled in [False, True]:
             crypten.set_grad_enabled(grad_enabled)
 

@@ -13,6 +13,7 @@ import crypten
 import crypten.gradients as gradients
 import torch
 from crypten.common.tensor_types import is_float_tensor
+from crypten.config import cfg
 from crypten.gradients import AutogradContext, AutogradFunction
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
@@ -23,8 +24,6 @@ class TestAutograd(object):
     """
 
     def setUp(self):
-        super().setUp()
-
         # we do not want main process (rank -1) initializing the communicator:
         if self.rank >= 0:
             crypten.init()
@@ -489,23 +488,23 @@ class TestAutograd(object):
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestAutograd):
     def setUp(self):
-        self._original_provider = crypten.mpc.get_default_provider()
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        self._original_provider = cfg.mpc.provider
+        cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
     def tearDown(self):
-        crypten.mpc.set_default_provider(self._original_provider)
+        cfg.mpc.provider = self._original_provider
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestAutograd):
     def setUp(self):
-        self._original_provider = crypten.mpc.get_default_provider()
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
+        self._original_provider = cfg.mpc.provider
+        cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
     def tearDown(self):
-        crypten.mpc.set_default_provider(self._original_provider)
+        cfg.mpc.provider = self._original_provider
         super(TestTTP, self).tearDown()
 
 

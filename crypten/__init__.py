@@ -15,6 +15,7 @@ import warnings
 
 import crypten.common  # noqa: F401
 import crypten.communicator as comm
+import crypten.config  # noqa: F401
 import crypten.mpc  # noqa: F401
 import crypten.nn  # noqa: F401
 import crypten.optim  # noqa: F401
@@ -22,6 +23,7 @@ import torch
 
 # other imports:
 from . import debug
+from .config import cfg
 from .cryptensor import CrypTensor
 
 
@@ -39,7 +41,7 @@ generators = {
 }
 
 
-def init(party_name=None, device=None):
+def init(config_file=None, party_name=None, device=None):
     """
     Initialize CrypTen. It will initialize communicator, setup party
     name for file save / load, and setup seeds for Random Number Generatiion.
@@ -53,6 +55,10 @@ def init(party_name=None, device=None):
         device (int, str, torch.device): Specify device for RNG generators on
         GPU. Must be a GPU device.
     """
+    # Load config file
+    if config_file is not None:
+        cfg.load_config(config_file)
+
     # Return and raise warning if initialized
     if comm.is_initialized():
         warnings.warn("CrypTen is already initialized.", RuntimeWarning)

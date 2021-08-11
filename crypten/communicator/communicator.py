@@ -8,23 +8,13 @@
 import sys
 import timeit
 
+from crypten.config import cfg
+
 
 class Communicator:
     """
     Abstract class defining the functions that a Communicator should implement.
     """
-
-    # Determines whether communicators log communication stats
-    __verbosity = False
-
-    @classmethod
-    def is_verbose(cls):
-        return cls.__verbosity
-
-    @classmethod
-    def set_verbosity(cls, verbosity):
-        assert isinstance(verbosity, bool), "Verbosity must be a boolean value"
-        cls.__verbosity = verbosity
 
     @classmethod
     def is_initialized(cls):
@@ -183,7 +173,7 @@ def _logging(func):
                 return args[0]
 
         # only log communication if needed:
-        if self.is_verbose():
+        if cfg.communicator.verbose:
             rank = self.get_rank()
             _log = self._log_communication
 

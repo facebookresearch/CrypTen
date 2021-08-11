@@ -6,12 +6,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-from dataclasses import dataclass
 
 import crypten
 import torch
-
-from ..util import ConfigBase
+from crypten.config import cfg
 
 
 __all__ = [
@@ -32,69 +30,9 @@ __all__ = [
 ]
 
 
-@dataclass
-class ApproxConfig:
-    """
-    A configuration object for use by the MPCTensor.
-    """
-
-    # exponential function
-    exp_iterations: int = 8
-
-    # reciprocal configuration
-    reciprocal_method: str = "NR"
-    reciprocal_nr_iters: int = 10
-    reciprocal_log_iters: int = 1
-    reciprocal_all_pos: bool = False
-    reciprocal_initial: any = None
-
-    # sqrt configuration
-    sqrt_nr_iters: int = 3
-    sqrt_nr_initial: any = None
-
-    # sigmoid / tanh configuration
-    sigmoid_tanh_method: str = "reciprocal"
-    sigmoid_tanh_terms: int = 32
-
-    # log configuration
-    log_iterations: int = 2
-    log_exp_iterations: int = 8
-    log_order: int = 8
-
-    # trigonometry configuration
-    trig_iterations: int = 10
-
-    # error function configuration:
-    erf_iterations: int = 8
-
-
-# Global config
-config = ApproxConfig()
-
-
-def set_config(new_config):
-    global config
-    config = new_config
-
-
-class ConfigManager(ConfigBase):
-    r"""
-    Use this to temporarily change a value in the `approximations.config` object. The
-    following sets `config.exp_iterations` to `10` for one function
-    invocation and then sets it back to the previous value::
-
-        with ConfigManager("exp_iterations", 10):
-            tensor.exp()
-
-    """
-
-    def __init__(self, *args):
-        super().__init__(config, *args)
-
-
 # Iterative methods:
 def exp(self):
-    """Approximates the exponential function using a limit approximation:
+    r"""Approximates the exponential function using a limit approximation:
 
     .. math::
 
@@ -106,8 +44,10 @@ def exp(self):
     Set the number of iterations for the limit approximation with
     config.exp_iterations.
     """  # noqa: W605
-    result = 1 + self.div(2 ** config.exp_iterations)
-    for _ in range(config.exp_iterations):
+    iters = cfg.functions.exp_iterations
+
+    result = 1 + self.div(2 ** iters)
+    for _ in range(iters):
         result = result.square()
     return result
 
@@ -148,16 +88,16 @@ def log(self, input_in_01=False):
 
     # Initialization to a decent estimate (found by qualitative inspection):
     #                ln(x) = x/120 - 20exp(-2x - 1.0) + 3.0
-    iterations = config.log_iterations
-    exp_iterations = config.log_exp_iterations
-    order = config.log_order
+    iterations = cfg.functions.log_iterations
+    exp_iterations = cfg.functions.log_exp_iterations
+    order = cfg.functions.log_order
 
     term1 = self.div(120)
     term2 = exp(self.mul(2).add(1.0).neg()).mul(20)
     y = term1 - term2 + 3.0
 
     # 8th order Householder iterations
-    with ConfigManager("exp_iterations", exp_iterations):
+    with cfg.temp_override({"functions.exp_iterations": exp_iterations}):
         for _ in range(iterations):
             h = 1 - self * exp(-y)
             y -= h.polynomial([1 / (i + 1) for i in range(order)])
@@ -165,7 +105,7 @@ def log(self, input_in_01=False):
 
 
 def reciprocal(self, input_in_01=False):
-    """
+    r"""
     Args:
         input_in_01 (bool) : Allows a user to indicate that the input is in the range [0, 1],
                     causing the function optimize for this range. This is useful for improving
@@ -196,40 +136,47 @@ def reciprocal(self, input_in_01=False):
     .. _Newton-Raphson:
         https://en.wikipedia.org/wiki/Newton%27s_method
     """
+    pos_override = {"functions.reciprocal_all_pos": True}
     if input_in_01:
-        with ConfigManager("reciprocal_all_pos", True):
+        with cfg.temp_override(pos_override):
             rec = reciprocal(self.mul(64)).mul(64)
         return rec
 
-    method = config.reciprocal_method
-    if not config.reciprocal_all_pos:
+    # Get config options
+    method = cfg.functions.reciprocal_method
+    all_pos = cfg.functions.reciprocal_all_pos
+    initial = cfg.functions.reciprocal_initial
+
+    if not all_pos:
         sgn = self.sign()
         pos = sgn * self
-        with ConfigManager("reciprocal_all_pos", True):
+        with cfg.temp_override(pos_override):
             return sgn * reciprocal(pos)
 
     if method == "NR":
-        if config.reciprocal_initial is None:
+        nr_iters = cfg.functions.reciprocal_nr_iters
+        if initial is None:
             # Initialization to a decent estimate (found by qualitative inspection):
             #                1/x = 3exp(1 - 2x) + 0.003
             result = 3 * (1 - 2 * self).exp() + 0.003
         else:
-            result = config.reciprocal_initial
-        for _ in range(config.reciprocal_nr_iters):
+            result = initial
+        for _ in range(nr_iters):
             if hasattr(result, "square"):
                 result += result - result.square().mul_(self)
             else:
                 result = 2 * result - result * result * self
         return result
     elif method == "log":
-        with ConfigManager("log_iters", config.reciprocal_log_iters):
+        log_iters = cfg.functions.reciprocal_log_iters
+        with cfg.temp_override({"functions.log_iters": log_iters}):
             return exp(-log(self))
     else:
         raise ValueError(f"Invalid method {method} given for reciprocal function")
 
 
 def inv_sqrt(self):
-    """
+    r"""
     Computes the inverse square root of the input using the Newton-Raphson method.
 
     Configuration params:
@@ -241,21 +188,24 @@ def inv_sqrt(self):
     .. _Newton-Raphson:
         https://en.wikipedia.org/wiki/Fast_inverse_square_root#Newton's_method
     """
+    initial = cfg.functions.sqrt_nr_initial
+    iters = cfg.functions.sqrt_nr_iters
+
     # Initialize using decent approximation
-    if config.sqrt_nr_initial is None:
+    if initial is None:
         y = exp(self.div(2).add(0.2).neg()).mul(2.2).add(0.2)
         y -= self.div(1024)
     else:
-        y = config.sqrt_nr_initial
+        y = initial
 
     # Newton Raphson iterations for inverse square root
-    for _ in range(config.sqrt_nr_iters):
+    for _ in range(iters):
         y = y.mul_(3 - self * y.square()).div_(2)
     return y
 
 
 def sqrt(self):
-    """
+    r"""
     Computes the square root of the input by computing its inverse square root using
     the Newton-Raphson method and multiplying by the input.
 
@@ -272,10 +222,10 @@ def sqrt(self):
 
 
 def _eix(self):
-    """Computes e^(i * self) where i is the imaginary unit.
+    r"""Computes e^(i * self) where i is the imaginary unit.
     Returns (Re{e^(i * self)}, Im{e^(i * self)} = cos(self), sin(self)
     """
-    iterations = config.trig_iterations
+    iterations = cfg.functions.trig_iterations
 
     re = 1
     im = self.div(2 ** iterations)
@@ -296,7 +246,7 @@ def _eix(self):
 
 
 def cossin(self):
-    """Computes cosine and sine of input via exp(i * x).
+    r"""Computes cosine and sine of input via exp(i * x).
 
     Args:
         iterations (int): for approximating exp(i * x)
@@ -305,7 +255,7 @@ def cossin(self):
 
 
 def cos(self):
-    """Computes the cosine of the input using cos(x) = Re{exp(i * x)}
+    r"""Computes the cosine of the input using cos(x) = Re{exp(i * x)}
 
     Args:
         iterations (int): for approximating exp(i * x)
@@ -314,7 +264,7 @@ def cos(self):
 
 
 def sin(self):
-    """Computes the sine of the input using sin(x) = Im{exp(i * x)}
+    r"""Computes the sine of the input using sin(x) = Im{exp(i * x)}
 
     Args:
         iterations (int): for approximating exp(i * x)
@@ -324,7 +274,7 @@ def sin(self):
 
 # Logistic Functions
 def sigmoid(self):
-    """Computes the sigmoid function using the following definition
+    r"""Computes the sigmoid function using the following definition
 
     .. math::
         \sigma(x) = (1 + e^{-x})^{-1}
@@ -342,7 +292,7 @@ def sigmoid(self):
         the reciprocal
 
     """  # noqa: W605
-    method = config.sigmoid_tanh_method
+    method = cfg.functions.sigmoid_tanh_method
 
     if method == "chebyshev":
         tanh_approx = tanh(self.div(2))
@@ -353,15 +303,15 @@ def sigmoid(self):
 
         pos_input = self.mul(sign)
         denominator = pos_input.neg().exp().add(1)
-        with ConfigManager(
-            "exp_iterations",
-            9,
-            "reciprocal_nr_iters",
-            3,
-            "reciprocal_all_pos",
-            True,
-            "reciprocal_initial",
-            0.75,
+
+        # TODO: Set these with configurable parameters
+        with cfg.temp_override(
+            {
+                "functions.exp_iterations": 9,
+                "functions.reciprocal_nr_iters": 3,
+                "functions.reciprocal_all_pos": True,
+                "functions.reciprocal_initial": 0.75,
+            }
         ):
             pos_output = denominator.reciprocal()
 
@@ -393,12 +343,12 @@ def tanh(self):
         terms (int): highest degree of Chebyshev polynomials.
                         Must be even and at least 6.
     """
-    method = config.sigmoid_tanh_method
-    terms = config.sigmoid_tanh_terms
+    method = cfg.functions.sigmoid_tanh_method
 
     if method == "reciprocal":
         return self.mul(2).sigmoid().mul(2).sub(1)
     elif method == "chebyshev":
+        terms = cfg.functions.sigmoid_tanh_terms
         coeffs = crypten.common.util.chebyshev_series(torch.tanh, 1, terms)[1::2]
         tanh_polys = _chebyshev_polynomials(self, terms)
         tanh_polys_flipped = (
@@ -443,11 +393,13 @@ def _chebyshev_polynomials(self, terms):
 
 
 def erf(tensor):
-    """
+    r"""
     Approximates the error function of the input tensor using a Taylor approximation.
     """
+    iters = cfg.functions.erf_iterations
+
     output = tensor.clone()
-    for n in range(1, config.erf_iterations + 1):
+    for n in range(1, iters + 1):
         multiplier = ((-1) ** n) / (math.factorial(n) * (2 * n + 1))
         output = output.add(tensor.pos_pow(2 * n + 1).mul(multiplier))
     return output.mul(2.0 / math.sqrt(math.pi))
@@ -455,7 +407,7 @@ def erf(tensor):
 
 
 def softmax(self, dim, **kwargs):
-    """Compute the softmax of a tensor's elements along a given dimension"""
+    r"""Compute the softmax of a tensor's elements along a given dimension"""
     # 0-d case
     if self.dim() == 0:
         assert dim == 0, "Improper dim argument"
@@ -467,13 +419,13 @@ def softmax(self, dim, **kwargs):
     maximum_value = self.max(dim, keepdim=True)[0]
     logits = self - maximum_value
     numerator = logits.exp()
-    with ConfigManager("reciprocal_all_pos", True):
+    with cfg.temp_override({"functions.reciprocal_all_pos": True}):
         inv_denominator = numerator.sum(dim, keepdim=True).reciprocal()
     return numerator * inv_denominator
 
 
 def log_softmax(self, dim, **kwargs):
-    """Applies a softmax followed by a logarithm.
+    r"""Applies a softmax followed by a logarithm.
     While mathematically equivalent to log(softmax(x)), doing these two
     operations separately is slower, and numerically unstable. This function
     uses an alternative formulation to compute the output and gradient correctly.

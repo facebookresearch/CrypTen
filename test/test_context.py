@@ -12,6 +12,7 @@ import crypten
 import crypten.communicator as comm
 import crypten.mpc as mpc
 import torch
+from crypten.config import cfg
 
 
 @mpc.run_multiprocess(world_size=2)
@@ -74,7 +75,7 @@ class TestContext(unittest.TestCase):
 
     def test_in_first(self):
         # TODO: Make this work with TTP provider
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        cfg.mpc.provider = "TFP"
 
         # This will cause the parent process to init with world-size 1
         crypten.init()

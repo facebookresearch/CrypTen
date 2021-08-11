@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from crypten.common.functions.pooling import _pool2d_reshape
 from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
+from crypten.config import cfg
 from crypten.mpc import MPCTensor, ptype as Ptype
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
@@ -841,7 +842,7 @@ class TestMPC(object):
             encrypted_tensor = MPCTensor(tensor)
             for comp in ["max", "min"]:
                 reference = getattr(tensor, comp)()
-                with crypten.mpc.ConfigManager("max_method", method):
+                with cfg.temp_override({"functions.max_method": method}):
                     encrypted_out = getattr(encrypted_tensor, comp)()
                 self._check(encrypted_out, reference, "%s reduction failed" % comp)
 
@@ -850,7 +851,7 @@ class TestMPC(object):
                         reference = getattr(tensor, comp)(dim, keepdim=keepdim)
 
                         # Test with one_hot = False
-                        with crypten.mpc.ConfigManager("max_method", method):
+                        with cfg.temp_override({"functions.max_method": method}):
                             encrypted_out = getattr(encrypted_tensor, comp)(
                                 dim, keepdim=keepdim, one_hot=False
                             )
@@ -879,7 +880,7 @@ class TestMPC(object):
                         )
 
                         # Test indices with one_hot = True
-                        with crypten.mpc.ConfigManager("max_method", method):
+                        with cfg.temp_override({"functions.max_method": method}):
                             encrypted_out = getattr(encrypted_tensor, comp)(
                                 dim, keepdim=keepdim, one_hot=True
                             )
@@ -940,7 +941,7 @@ class TestMPC(object):
                 value = getattr(tensor, cmp)()
 
                 # test with one_hot = False
-                with crypten.mpc.ConfigManager("max_method", method):
+                with cfg.temp_override({"functions.max_method": method}):
                     encrypted_out = getattr(encrypted_tensor, comp)(one_hot=False)
 
                 # Must index into tensor since ties are broken randomly
@@ -954,7 +955,7 @@ class TestMPC(object):
                     self.assertTrue(decrypted_val.eq(value).all().item())
 
                 # test with one_hot = False
-                with crypten.mpc.ConfigManager("max_method", method):
+                with cfg.temp_override({"functions.max_method": method}):
                     encrypted_out = getattr(encrypted_tensor, comp)(one_hot=True)
                 one_hot_indices = (tensor == value).float()
                 decrypted_out = encrypted_out.get_plain_text()
@@ -967,7 +968,7 @@ class TestMPC(object):
                         values, indices = getattr(tensor, cmp)(dim, keepdim=keepdim)
 
                         # test with one_hot = False
-                        with crypten.mpc.ConfigManager("max_method", method):
+                        with cfg.temp_override({"functions.max_method": method}):
                             encrypted_out = getattr(encrypted_tensor, comp)(
                                 dim, keepdim=keepdim, one_hot=False
                             )
@@ -984,7 +985,7 @@ class TestMPC(object):
                         self.assertTrue(decrypted_val.eq(reference).all().item())
 
                         # test with one_hot = True
-                        with crypten.mpc.ConfigManager("max_method", method):
+                        with cfg.temp_override({"functions.max_method": method}):
                             encrypted_out = getattr(encrypted_tensor, comp)(
                                 dim, keepdim=keepdim, one_hot=True
                             )
@@ -2075,26 +2076,26 @@ class TestMPC(object):
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestMPC):
     def setUp(self):
-        self._original_provider = crypten.mpc.get_default_provider()
+        self._original_provider = cfg.mpc.provider
         crypten.CrypTensor.set_grad_enabled(False)
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
     def tearDown(self):
-        crypten.mpc.set_default_provider(self._original_provider)
+        cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestMPC):
     def setUp(self):
-        self._original_provider = crypten.mpc.get_default_provider()
+        self._original_provider = cfg.mpc.provider
         crypten.CrypTensor.set_grad_enabled(False)
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
+        cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
     def tearDown(self):
-        crypten.mpc.set_default_provider(self._original_provider)
+        cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTTP, self).tearDown()
 

@@ -10,6 +10,7 @@ import math
 
 import crypten
 import torch
+from crypten.config import cfg
 from test.multiprocess_test_case import MultiProcessTestCase
 
 
@@ -87,25 +88,25 @@ class TestDistributions(object):
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestDistributions):
     def setUp(self):
-        self._original_provider = crypten.mpc.get_default_provider()
+        self._original_provider = cfg.mpc.provider
         crypten.CrypTensor.set_grad_enabled(False)
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedFirstParty)
+        cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
     def tearDown(self):
-        crypten.mpc.set_default_provider(self._original_provider)
+        cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestDistributions):
     def setUp(self):
-        self._original_provider = crypten.mpc.get_default_provider()
+        self._original_provider = cfg.mpc.provider
         crypten.CrypTensor.set_grad_enabled(False)
-        crypten.mpc.set_default_provider(crypten.mpc.provider.TrustedThirdParty)
+        cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
     def tearDown(self):
-        crypten.mpc.set_default_provider(self._original_provider)
+        cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTTP, self).tearDown()
