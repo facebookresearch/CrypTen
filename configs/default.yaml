@@ -39,3 +39,4 @@ functions:
 mpc:
   active_security: False
   provider: "TFP"
+  protocol: "beaver"

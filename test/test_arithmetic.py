@@ -239,31 +239,6 @@ class TestArithmetic(MultiProcessTestCase):
             encrypted_out = encrypted.mean(dim)
             self._check(encrypted_out, reference, "mean failed")
 
-    def test_wraps(self):
-        num_parties = int(self.world_size)
-
-        size = (5, 5)
-
-        # Generate random sharing with internal value get_random_test_tensor()
-        zero_shares = generate_random_ring_element((num_parties, *size))
-        zero_shares = zero_shares - zero_shares.roll(1, dims=0)
-        shares = list(zero_shares.unbind(0))
-        shares[0] += get_random_test_tensor(size=size, is_float=False)
-
-        # Note: This test relies on count_wraps function being correct
-        reference = count_wraps(shares)
-
-        # Sync shares between parties
-        share = comm.get().scatter(shares, 0)
-
-        encrypted_tensor = ArithmeticSharedTensor.from_shares(share)
-        encrypted_wraps = encrypted_tensor.wraps()
-
-        test_passed = (
-            encrypted_wraps.reveal() == reference
-        ).sum() == reference.nelement()
-        self.assertTrue(test_passed, "%d-party wraps failed" % num_parties)
-
     def test_matmul(self):
         """Test matrix multiplication."""
         for tensor_type in [lambda x: x, ArithmeticSharedTensor]:

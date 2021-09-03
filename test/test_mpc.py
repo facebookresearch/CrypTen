@@ -2100,6 +2100,17 @@ class TestTTP(MultiProcessTestCase, TestMPC):
         super(TestTTP, self).tearDown()
 
 
+class TestRSS(MultiProcessTestCase, TestMPC):
+    def setUp(self):
+        self._original_protocol = cfg.mpc.protocol
+        cfg.mpc.protocol = "replicated"
+        super(TestRSS, self).setUp(world_size=3)
+
+    def tearDown(self):
+        cfg.mpc.protocol = self._original_protocol
+        super(TestRSS, self).tearDown()
+
+
 # This code only runs when executing the file outside the test harness (e.g.
 # via the buck target of another test)
 if __name__ == "__main__":

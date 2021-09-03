@@ -156,6 +156,17 @@ def wraps(x):
     return theta_x
 
 
+def truncate(x, y):
+    """Protocol to divide an ArithmeticSharedTensor `x` by a constant integer `y`"""
+    wrap_count = wraps(x)
+    x.share = x.share.div_(y, rounding_mode="trunc")
+    # NOTE: The multiplication here must be split into two parts
+    # to avoid long out-of-bounds when y <= 2 since (2 ** 63) is
+    # larger than the largest long integer.
+    x -= wrap_count * 4 * (int(2 ** 62) // y)
+    return x
+
+
 def AND(x, y):
     """
     Performs Beaver protocol for binary secret-shared tensors x and y

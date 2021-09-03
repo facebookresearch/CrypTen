@@ -18,7 +18,7 @@ from crypten.cryptensor import CrypTensor
 from crypten.cuda import CUDALongTensor
 from crypten.encoder import FixedPointEncoder
 
-from . import beaver
+from . import beaver, replicated  # noqa: F401
 
 
 SENTINEL = -1
@@ -379,10 +379,9 @@ class ArithmeticSharedTensor(object):
                     result.encode_as_(y)
                 result.share = getattr(result.share, op)(y.share)
             else:  # ['mul', 'matmul', 'convNd', 'conv_transposeNd']
-                # NOTE: 'mul_' calls 'mul' here
-                # Must copy share.data here to support 'mul_' being inplace
+                protocol = globals()[cfg.mpc.protocol]
                 result.share.set_(
-                    getattr(beaver, op)(result, y, *args, **kwargs).share.data
+                    getattr(protocol, op)(result, y, *args, **kwargs).share.data
                 )
         else:
             raise TypeError("Cannot %s %s with %s" % (op, type(y), type(self)))
@@ -461,12 +460,8 @@ class ArithmeticSharedTensor(object):
 
             # Truncate protocol for dividing by public integers:
             if comm.get().get_world_size() > 2:
-                wraps = self.wraps()
-                self.share = self.share.div_(y, rounding_mode="trunc")
-                # NOTE: The multiplication here must be split into two parts
-                # to avoid long out-of-bounds when y <= 2 since (2 ** 63) is
-                # larger than the largest long integer.
-                self -= wraps * 4 * (int(2 ** 62) // y)
+                protocol = globals()[cfg.mpc.protocol]
+                protocol.truncate(self, y)
             else:
                 self.share = self.share.div_(y, rounding_mode="trunc")
 
@@ -485,10 +480,6 @@ class ArithmeticSharedTensor(object):
 
         assert is_float_tensor(y), "Unsupported type for div_: %s" % type(y)
         return self.mul_(y.reciprocal())
-
-    def wraps(self):
-        """Privately computes the number of wraparounds for a set a shares"""
-        return beaver.wraps(self)
 
     def matmul(self, y):
         """Perform matrix multiplication using some tensor"""
@@ -604,7 +595,8 @@ class ArithmeticSharedTensor(object):
         return self.clone().neg_()
 
     def square_(self):
-        self.share = beaver.square(self).div_(self.encoder.scale).share
+        protocol = globals()[cfg.mpc.protocol]
+        self.share = protocol.square(self).div_(self.encoder.scale).share
         return self
 
     def square(self):
