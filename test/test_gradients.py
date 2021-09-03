@@ -136,7 +136,6 @@ class TestGradients:
             grad_output_encr = crypten.cryptensor(grad_output)
             reference.backward(grad_output)
             encrypted_out.backward(grad_output_encr)
-
             self._check(input_encr.grad, input.grad, msg + " in backward")
             for i, arg_encr in enumerate(args_encr):
                 if crypten.is_encrypted_tensor(arg_encr):
@@ -955,6 +954,19 @@ class TestGradients:
                     tensor_encr.grad, tensor.grad, f"{loss} backward failed with"
                 )
 
+    def test_cosine_similarity(self):
+        """Tests cosine_similarity"""
+        for size in SIZES:
+            tensor0 = get_random_test_tensor(size=size, is_float=True)
+            tensor1 = get_random_test_tensor(size=size, is_float=True)
+
+            # Check dim 0 if tensor is 0-dimensional
+            dims = 1 if len(size) == 0 else len(size)
+            for dim in range(dims):
+                self._check_forward_backward(
+                    "cosine_similarity", tensor0, tensor1, dim=dim
+                )
+
     def test_view_reshape(self):
         """Tests view and reshape gradients"""
         size_to_views = {
@@ -1084,7 +1096,6 @@ class TestGradients:
     def test_var(self):
         """Tests var gradient"""
         sizes = [(10,), (1, 10), (5, 10), (2, 5, 10)]
-        import crypten
 
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)

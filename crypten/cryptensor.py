@@ -558,6 +558,9 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
     def data(self, value):
         self._tensor.data = value
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self._tensor})"
+
     def __bool__(self):
         """Override bool operator since encrypted tensors cannot evaluate"""
         raise RuntimeError("Cannot evaluate CrypTensors to boolean values")

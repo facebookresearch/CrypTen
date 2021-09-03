@@ -530,7 +530,6 @@ class TestNN(object):
         for module_name, from_pytorch, compute_gradients in itertools.product(
             module_args.keys(), [False, True], [False, True]
         ):
-
             # some modules cannot be produced by the ONNX exporter:
             if from_pytorch and module_name in not_produced_by_onnx:
                 continue
@@ -950,36 +949,47 @@ class TestNN(object):
         encrypted_input = crypten.cryptensor(input)
         encrypted_target = crypten.cryptensor(target)
 
+        losses = [
+            "BCELoss",
+            "BCEWithLogitsLoss",
+            "L1Loss",
+            "MSELoss",
+        ]
+
         # test forward() function of all simple losses:
-        for loss_name in ["BCELoss", "BCEWithLogitsLoss", "L1Loss", "MSELoss"]:
+        for loss_name in losses:
             for skip_forward in [False, True]:
-                enc_loss_object = getattr(torch.nn, loss_name)()
+                enc_loss_object = getattr(crypten.nn, loss_name)(
+                    skip_forward=skip_forward
+                )
                 self.assertEqual(
                     enc_loss_object.reduction, "mean", "Reduction used is not 'mean'"
                 )
 
                 input.requires_grad = True
                 input.grad = None
+
                 loss = getattr(torch.nn, loss_name)()(input, target)
+                encrypted_loss = enc_loss_object(encrypted_input, encrypted_target)
                 if not skip_forward:
-                    encrypted_loss = getattr(crypten.nn, loss_name)()(
-                        encrypted_input, encrypted_target
+                    self._check(
+                        encrypted_loss, loss, f"{loss_name} failed forward w/o grad"
                     )
-                    self._check(encrypted_loss, loss, "%s failed" % loss_name)
 
                 encrypted_input.requires_grad = True
                 encrypted_input.grad = None
-                encrypted_loss = getattr(crypten.nn, loss_name)(
-                    skip_forward=skip_forward
-                )(encrypted_input, encrypted_target)
+
+                encrypted_loss = enc_loss_object(encrypted_input, encrypted_target)
                 if not skip_forward:
-                    self._check(encrypted_loss, loss, "%s failed" % loss_name)
+                    self._check(
+                        encrypted_loss, loss, f"{loss_name} failed forward with grad"
+                    )
 
                 # Check backward
                 loss.backward()
                 encrypted_loss.backward()
                 self._check(
-                    encrypted_input.grad, input.grad, "%s grad failed" % loss_name
+                    encrypted_input.grad, input.grad, f"{loss_name} grad failed"
                 )
 
         # test forward() function of cross-entropy loss:
@@ -1006,6 +1016,37 @@ class TestNN(object):
             encrypted_input, encrypted_target
         )
         self._check(encrypted_loss, loss, "cross-entropy loss failed")
+
+    def test_distances(self):
+        distances = ["CosineSimilarity"]
+
+        for distance in distances:
+            x1 = get_random_test_tensor(is_float=True)
+            x2 = get_random_test_tensor(is_float=True)
+            x1.requires_grad = True
+            x2.requires_grad = True
+
+            x1_enc = crypten.cryptensor(x1, requires_grad=True)
+            x2_enc = crypten.cryptensor(x2, requires_grad=True)
+
+            dist_fn = getattr(torch.nn, distance)()
+            enc_dist_fn = getattr(crypten.nn, distance)()
+
+            # Forward Pass
+            dist = dist_fn(x1, x2)
+            dist_enc = enc_dist_fn(x1_enc, x2_enc)
+
+            self._check(dist_enc, dist, f"{distance} failed in forward")
+
+            # Backward Pass
+            grad_output = get_random_test_tensor(size=dist.size(), is_float=True).abs()
+            grad_output_enc = crypten.cryptensor(grad_output)
+
+            dist.backward(grad_output)
+            dist_enc.backward(grad_output_enc)
+
+            self._check(x1_enc.grad, x1.grad, f"{distance} 1st arg grad failed")
+            self._check(x2_enc.grad, x2.grad, f"{distance} 2nd arg grad failed")
 
     def test_getattr_setattr(self):
         """Tests the __getattr__ and __setattr__ functions"""
