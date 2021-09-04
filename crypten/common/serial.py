@@ -8,6 +8,7 @@
 import builtins
 import collections
 import difflib
+import inspect
 import io
 import logging
 import os
@@ -21,7 +22,6 @@ import warnings
 from contextlib import closing, contextmanager
 
 import torch
-from torch._utils_internal import get_source_lines_and_file
 from torch.serialization import (
     _check_seekable,
     _get_restore_location,
@@ -34,6 +34,26 @@ from torch.serialization import (
 
 def _safe_load_from_bytes(b):
     return _safe_legacy_load(io.BytesIO(b))
+
+
+# Legacy code from torch._utils_internal
+def get_source_lines_and_file(obj, error_msg=None):
+    """
+    Wrapper around inspect.getsourcelines and inspect.getsourcefile.
+
+    Returns: (sourcelines, file_lino, filename)
+    """
+    filename = None  # in case getsourcefile throws
+    try:
+        filename = inspect.getsourcefile(obj)
+        sourcelines, file_lineno = inspect.getsourcelines(obj)
+    except OSError as e:
+        msg = f"Can't get source for {obj}."
+        if error_msg:
+            msg += "\n" + error_msg
+        raise OSError(msg) from e
+
+    return sourcelines, file_lineno, filename
 
 
 class RestrictedUnpickler(pickle.Unpickler):
