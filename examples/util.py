@@ -113,7 +113,7 @@ def process_mnist_files(raw_dir, processed_dir):
     """
     from torchvision import datasets
 
-    datasets.utils.makedir_exist_ok(processed_dir)
+    os.makedirs(processed_dir, exist_ok=True)
 
     def extract_mnist_archive(data_file_name):
         """
