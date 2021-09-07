@@ -4,11 +4,11 @@ setup_venv: &setup_venv
   name: Sets up the virtualenv
   no_output_timeout: 1h
   command: |
+    pwd
     python3 -m venv ~/crypten-test
     . ~/crypten-test/bin/activate
     pip3 install --upgrade pip
-    pip3 install onnx==1.7.0 tensorboard pandas sklearn
-    pip3 install torch>=1.7.0 torchvision>=0.8.1
+    pip3 install -r requirements.txt
     pip3 install tensorflow
     pip3 install tf2onnx
 
