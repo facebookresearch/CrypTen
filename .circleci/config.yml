@@ -4,7 +4,6 @@ setup_venv: &setup_venv
   name: Sets up the virtualenv
   no_output_timeout: 1h
   command: |
-    pwd
     python3 -m venv ~/crypten-test
     . ~/crypten-test/bin/activate
     pip3 install --upgrade pip
