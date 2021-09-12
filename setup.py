@@ -53,5 +53,5 @@ if __name__ == "__main__":
         license=LICENSE,
         setup_requires=["pytest-runner"],
         tests_require=["pytest"],
-        data_files=[('/configs', ['configs/default.yaml'])],
+        data_files=[("/configs", ["configs/default.yaml"])],
     )
