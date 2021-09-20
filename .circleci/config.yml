@@ -198,7 +198,7 @@ workflows:
           filters:
             branches:
               only:
-                - master
+                - main
     jobs:
       - runcifartests0
 # Commenting out due to 5 hour limit
