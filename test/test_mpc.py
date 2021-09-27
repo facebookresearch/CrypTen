@@ -2100,6 +2100,11 @@ class TestTTP(MultiProcessTestCase, TestMPC):
         super(TestTTP, self).tearDown()
 
 
+class Test3PC(MultiProcessTestCase, TestMPC):
+    def setUp(self):
+        super(Test3PC, self).setUp(world_size=3)
+
+
 class TestRSS(MultiProcessTestCase, TestMPC):
     def setUp(self):
         self._original_protocol = cfg.mpc.protocol
