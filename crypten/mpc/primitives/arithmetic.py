@@ -669,7 +669,7 @@ class ArithmeticSharedTensor(object):
 
     @data.setter
     def data(self, value):
-        self._tensor.data = value
+        self._tensor.set_(value)
 
 
 # Register regular functions
