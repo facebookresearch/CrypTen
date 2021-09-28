@@ -1971,31 +1971,28 @@ class TestMPC(object):
         unencrypted versions to generate identical random output. Also confirms
         that the number of zeros in the encrypted dropout function is as expected.
         """
-        all_prob_values = [x * 0.2 for x in range(0, 5)]
+        all_prob_values = [x * 0.2 for x in range(5)]
+
+        def get_first_nonzero_value(x):
+            x = x.flatten()
+            x = x[x.abs().ge(1e-4)]
+            x = x.take(torch.tensor(0))
+            return x
 
         # check that the encrypted and plaintext versions scale
         # identically, by testing on all-ones tensor
         for prob in all_prob_values:
             tensor = torch.ones([10, 10, 10], device=self.device).float()
             encr_tensor = MPCTensor(tensor)
-            dropout_encr_tensor = encr_tensor.dropout(prob, training=True)
-            dropout_plaintext_tensor = F.dropout(tensor, prob, training=True)
+            dropout_encr = encr_tensor.dropout(prob, training=True)
+            dropout_decr = dropout_encr.get_plain_text()
+            dropout_plain = F.dropout(tensor, prob, training=True)
 
             # All non-zero values should be identical in both tensors, so
             # compare any one of them
-            dropout_decrypt_tensor = dropout_encr_tensor.get_plain_text()
-            dropout_decrypt_nonzero_index = torch.nonzero(dropout_decrypt_tensor)[
-                0
-            ].tolist()
-            dropout_plaintext_nonzero_index = torch.nonzero(dropout_plaintext_tensor)[
-                0
-            ].tolist()
-            decr_nonzero_value = dropout_decrypt_tensor[
-                tuple(dropout_decrypt_nonzero_index)
-            ]
-            plaintext_nonzero_value = dropout_plaintext_tensor[
-                tuple(dropout_plaintext_nonzero_index)
-            ]
+            decr_nonzero_value = get_first_nonzero_value(dropout_decr)
+            plaintext_nonzero_value = get_first_nonzero_value(dropout_plain)
+
             self.assertTrue(
                 math.isclose(
                     decr_nonzero_value,
@@ -2014,20 +2011,20 @@ class TestMPC(object):
                                 size=size, ex_zero=True, min_value=1.0, is_float=True
                             )
                             encr_tensor = MPCTensor(tensor)
-                            dropout_encr_tensor = getattr(encr_tensor, dropout_fn)(
+                            dropout_encr = getattr(encr_tensor, dropout_fn)(
                                 prob, inplace=inplace, training=training
                             )
                             if training:
                                 # Check the scaling for non-zero elements
-                                dropout_tensor = dropout_encr_tensor.get_plain_text()
+                                dropout_decr = dropout_encr.get_plain_text()
                                 scaled_tensor = tensor / (1 - prob)
-                                reference = dropout_tensor.where(
-                                    dropout_tensor == 0, scaled_tensor
+                                reference = dropout_decr.where(
+                                    dropout_decr == 0, scaled_tensor
                                 )
                             else:
                                 reference = tensor
                             self._check(
-                                dropout_encr_tensor,
+                                dropout_encr,
                                 reference,
                                 f"dropout failed with size {size} and probability "
                                 f"{prob}",
@@ -2051,7 +2048,7 @@ class TestMPC(object):
                                 "dropout3d",
                                 "feature_dropout",
                             ]:
-                                dropout_encr_flat = dropout_encr_tensor.flatten(
+                                dropout_encr_flat = dropout_encr.flatten(
                                     start_dim=0, end_dim=1
                                 )
                                 dropout_flat = dropout_encr_flat.get_plain_text()
@@ -2067,8 +2064,8 @@ class TestMPC(object):
         # Check the expected number of zero elements
         # For speed, restrict test to single p = 0.4
         encr_tensor = MPCTensor(torch.empty((int(1e5), 2, 2)).fill_(1).to(self.device))
-        dropout_encr_tensor = encr_tensor.dropout(0.4)
-        dropout_tensor = dropout_encr_tensor.get_plain_text()
+        dropout_encr = encr_tensor.dropout(0.4)
+        dropout_tensor = dropout_encr.get_plain_text()
         frac_zero = float((dropout_tensor == 0).sum()) / dropout_tensor.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.4, rel_tol=1e-2, abs_tol=1e-2))
 
@@ -2098,6 +2095,11 @@ class TestTTP(MultiProcessTestCase, TestMPC):
         cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTTP, self).tearDown()
+
+
+class Test3PC(MultiProcessTestCase, TestMPC):
+    def setUp(self):
+        super(Test3PC, self).setUp(world_size=3)
 
 
 class TestRSS(MultiProcessTestCase, TestMPC):

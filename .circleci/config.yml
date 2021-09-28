@@ -11,6 +11,7 @@ setup_venv: &setup_venv
     pip3 install torch>=1.7.0 torchvision>=0.8.1
     pip3 install tensorflow
     pip3 install tf2onnx
+    pip3 install pyyaml
 
 
 # -------------------------------------------------------------------------------------
