@@ -93,13 +93,10 @@ class RestrictedUnpickler(pickle.Unpickler):
         "torch.ComplexDoubleStorage": torch.ComplexDoubleStorage,
         "torch.ComplexFloatStorage": torch.ComplexFloatStorage,
         "torch.HalfStorage": torch.HalfStorage,
-        "torch._C.HalfStorageBase": torch._C.HalfStorageBase,
         "torch.IntStorage": torch.HalfStorage,
         "torch.LongStorage": torch.LongStorage,
         "torch.QInt32Storage": torch.QInt32Storage,
-        "torch._C.QInt32StorageBase": torch._C.QInt32StorageBase,
         "torch.QInt8Storage": torch.QInt8Storage,
-        "torch._C.QInt8StorageBase": torch._C.QInt8StorageBase,
         "torch.QUInt8Storage": torch.QUInt8Storage,
         "torch.ShortStorage": torch.ShortStorage,
         "torch.storage._StorageBase": torch.storage._StorageBase,
@@ -107,6 +104,22 @@ class RestrictedUnpickler(pickle.Unpickler):
         "torch.DoubleStorage": torch.DoubleStorage,
         "torch.FloatStorage": torch.FloatStorage,
     }
+
+    # See https://github.com/pytorch/pytorch/pull/62030
+    if hasattr(torch._C, "HalfStorageBase"):
+        __SAFE_CLASSES.update(
+            {
+                "torch._C.HalfStorageBase": torch._C.HalfStorageBase,
+                "torch._C.QInt32StorageBase": torch._C.QInt32StorageBase,
+                "torch._C.QInt8StorageBase": torch._C.QInt8StorageBase,
+            }
+        )
+    else:
+        __SAFE_CLASSES.update(
+            {
+                "torch.storage.TypedStorage": torch.storage.TypedStorage,
+            }
+        )
 
     @classmethod
     def register_safe_class(cls, input_class):
