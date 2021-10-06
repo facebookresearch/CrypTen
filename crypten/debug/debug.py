@@ -98,7 +98,13 @@ def validate_correctness(self, func, func_name, tolerance=0.05):
         with cfg.temp_override({"debug.validation_mode": False}):
             # Compute crypten result
             result_enc = func(*args, **kwargs)
-            result = result_enc.get_plain_text()
+            result = (
+                result_enc.get_plain_text()
+                if crypten.is_encrypted_tensor(result_enc)
+                else result_enc
+            )
+
+            args = list(args)
 
             # Compute torch result for corresponding function
             for i, arg in enumerate(args):
@@ -108,6 +114,13 @@ def validate_correctness(self, func, func_name, tolerance=0.05):
                 if crypten.is_encrypted_tensor(value):
                     kwargs[key] = value.get_plain_text()
             reference = getattr(self.get_plain_text(), func_name)(*args, **kwargs)
+
+            if not torch.is_tensor(reference):
+                if result_enc != reference:
+                    raise ValueError(
+                        f"Function {func_name} returned incorrect property value"
+                    )
+                return result_enc
 
             # Check sizes match
             if result.size() != reference.size():
