@@ -1968,7 +1968,12 @@ class AutogradCrossEntropy(AutogradFunction):
     @staticmethod
     def forward(ctx, pred, target, skip_forward=False):
         # NOTE: target is assumed to be one-hot vector.
-        softmax = pred.softmax(1)
+        assert pred.size() == target.size()
+
+        # Ignore batch dimension
+        dim = 1 if pred.dim() > 1 else 0
+        softmax = pred.softmax(dim)
+
         ctx.save_multiple_for_backward([softmax, target])
         ctx.mark_non_differentiable(target)
         if skip_forward:
