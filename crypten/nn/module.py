@@ -778,6 +778,69 @@ class Sequential(Graph):
                 self.output_names = [module_name]
 
 
+class ModuleList(Module):
+    r"""Holds submodules in a list.
+
+    :class:`~crypten.nn.ModuleList` can be indexed like a regular Python list, but
+    modules it contains are properly registered, and will be visible by all
+    :class:`~crypten.nn.Module` methods.
+
+    Args:
+        modules (iterable, optional): an iterable of modules to add
+
+    Example::
+
+        class MyModule(nn.Module):
+            def __init__(self):
+                super(MyModule, self).__init__()
+                self.linears = nn.ModuleList([nn.Linear(10, 10) for i in range(10)])
+
+            def forward(self, x):
+                # ModuleList can act as an iterable, or be indexed using ints
+                for i, l in enumerate(self.linears):
+                    x = self.linears[i // 2](x) + l(x)
+                return x
+    """
+
+    def __init__(self, modules=None):
+        super(ModuleList, self).__init__()
+        if modules is not None:
+            self += modules
+
+    def __dir__(self):
+        keys = super(ModuleList, self).__dir__()
+        keys = [key for key in keys if not key.isdigit()]
+        return keys
+
+    def __delitem__(self, idx):
+        if isinstance(idx, slice):
+            for k in range(len(self._modules))[idx]:
+                del self._modules[str(k)]
+        else:
+            del self._modules[self._get_abs_string_index(idx)]
+        # To preserve numbering, self._modules is being reconstructed with modules after deletion
+        str_indices = [str(i) for i in range(len(self._modules))]
+        self._modules = OrderedDict(list(zip(str_indices, self._modules.values())))
+
+
+__module_list_func_names = [
+    "_get_abs_string_index",
+    "__getitem__",
+    "__setitem__",
+    "__len__",
+    "__iter__",
+    "__iadd__",
+    "insert",
+    "append",
+    "extend",
+]
+
+
+for func_name in __module_list_func_names:
+    func = getattr(torch.nn.ModuleList, func_name)
+    setattr(ModuleList, func_name, func)
+
+
 class ModuleDict(Module):
     r"""Holds submodules in a dictionary.
 

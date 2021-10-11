@@ -1625,6 +1625,59 @@ class TestNN(object):
         module_dict.clear()
         self.assertEqual(len(module_dict), 0, "ModuleDict clear failed")
 
+    def test_module_list(self):
+        """Test ModuleDict module"""
+        module_list = crypten.nn.ModuleList()
+        self.assertEqual(len(module_list), 0, "ModuleList initialized incorrect size")
+
+        # Test initialization
+        module_list = crypten.nn.ModuleList(
+            [crypten.nn.Conv2d(10, 10, 3), crypten.nn.MaxPool2d(3)]
+        )
+        self.assertEqual(len(module_list), 2, "ModuleList initialized incorrect size")
+        self.assertTrue(
+            isinstance(module_list[0], crypten.nn.Conv2d),
+            "ModuleList init failed",
+        )
+        self.assertTrue(
+            isinstance(module_list[1], crypten.nn.MaxPool2d),
+            "ModuleList init failed",
+        )
+
+        # Test append
+        module_list.append(crypten.nn.ReLU())
+        self.assertEqual(len(module_list), 3, "ModuleList append failed")
+        self.assertTrue(
+            isinstance(module_list[2], crypten.nn.ReLU),
+            "ModuleList append failed",
+        )
+
+        # Test extend
+        module_list.extend([crypten.nn.Linear(10, 5), crypten.nn.ReLU()])
+        msg = "ModuleList append failed"
+        self.assertEqual(len(module_list), 5, msg)
+        self.assertTrue(isinstance(module_list[3], crypten.nn.Linear), msg)
+        self.assertTrue(isinstance(module_list[4], crypten.nn.ReLU), msg)
+
+        # Test insert
+        module_list.insert(1, crypten.nn.Sigmoid())
+        msg = "ModuleList append failed"
+        self.assertEqual(len(module_list), 6, msg)
+        self.assertTrue(isinstance(module_list[1], crypten.nn.Sigmoid), msg)
+
+        # Test __delitem__
+        del module_list[1]
+        msg = "ModuleList delitem failed"
+        self.assertEqual(len(module_list), 5, msg)
+        self.assertTrue(isinstance(module_list[1], crypten.nn.MaxPool2d), msg)
+
+        # Test __delitem__ with slice
+        del module_list[1:3]
+        msg = "ModuleList delitem failed with slice input"
+        self.assertEqual(len(module_list), 3, msg)
+        self.assertTrue(isinstance(module_list[0], crypten.nn.Conv2d), msg)
+        self.assertTrue(isinstance(module_list[1], crypten.nn.Linear), msg)
+
     def test_parameter_initializations(self):
         """Test crypten.nn.init initializations"""
         sizes = [
