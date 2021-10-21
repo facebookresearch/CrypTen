@@ -521,82 +521,98 @@ class TestMPC(object):
                     self._check(encrypted_conv, reference, f"{func_name} failed")
 
     def test_conv2d_square_image_one_channel(self):
-        self._conv2d((5, 5), 1)
+        self._conv2d((5, 5), 1, "conv2d")
+
+    def test_conv_transpose2d_square_image_one_channel(self):
+        self._conv2d((5, 5), 1, "conv_transpose2d")
 
     def test_conv2d_square_image_many_channels(self):
-        self._conv2d((5, 5), 5)
+        self._conv2d((5, 5), 5, "conv2d")
+
+    def test_conv_transpose2d_square_image_many_channels(self):
+        self._conv2d((5, 5), 5, "conv_transpose2d")
 
     def test_conv2d_rectangular_image_one_channel(self):
-        self._conv2d((16, 7), 1)
+        self._conv2d((16, 7), 1, "conv2d")
+
+    def test_conv_transpose2d_rectangular_image_one_channel(self):
+        self._conv2d((16, 7), 1, "conv_transpose2d")
 
     def test_conv2d_rectangular_image_many_channels(self):
-        self._conv2d((16, 7), 5)
+        self._conv2d((16, 7), 5, "conv2d")
 
-    def _conv2d(self, image_size, in_channels):
+    def test_conv_transpose2d_rectangular_image_many_channels(self):
+        self._conv2d((16, 7), 5, "conv_transpose2d")
+
+    def _conv2d(self, image_size, in_channels, func_name):
         """Test convolution of encrypted tensor with public/private tensors."""
         nbatches = [1, 3]
         kernel_sizes = [(1, 1), (2, 2), (2, 3)]
-        ochannels = [1, 3, 6]
+        ochannels = [1, 3]
         paddings = [0, 1, (0, 1)]
         strides = [1, 2, (1, 2)]
         dilations = [1, 2]
         groupings = [1, 2]
 
-        for func_name in ["conv2d", "conv_transpose2d"]:
-            for kernel_type in [lambda x: x, MPCTensor]:
-                for (
-                    batches,
-                    kernel_size,
-                    out_channels,
-                    padding,
-                    stride,
-                    dilation,
-                    groups,
-                ) in itertools.product(
-                    nbatches,
-                    kernel_sizes,
-                    ochannels,
-                    paddings,
-                    strides,
-                    dilations,
-                    groupings,
-                ):
-                    # group convolution is not supported on GPU
-                    if self.device.type == "cuda" and groups > 1:
-                        continue
+        assert func_name in [
+            "conv2d",
+            "conv_transpose2d",
+        ], f"Invalid func_name: {func_name}"
 
-                    # sample input:
-                    input_size = (batches, in_channels * groups, *image_size)
-                    input = self._get_random_test_tensor(size=input_size, is_float=True)
+        for kernel_type in [lambda x: x, MPCTensor]:
+            for (
+                batches,
+                kernel_size,
+                out_channels,
+                padding,
+                stride,
+                dilation,
+                groups,
+            ) in itertools.product(
+                nbatches,
+                kernel_sizes,
+                ochannels,
+                paddings,
+                strides,
+                dilations,
+                groupings,
+            ):
+                # group convolution is not supported on GPU
+                if self.device.type == "cuda" and groups > 1:
+                    continue
 
-                    # sample filtering kernel:
-                    if func_name == "conv2d":
-                        k_size = (out_channels * groups, in_channels, *kernel_size)
-                    else:
-                        k_size = (in_channels * groups, out_channels, *kernel_size)
-                    kernel = self._get_random_test_tensor(size=k_size, is_float=True)
+                # sample input:
+                input_size = (batches, in_channels * groups, *image_size)
+                input = self._get_random_test_tensor(size=input_size, is_float=True)
 
-                    # perform filtering:
-                    encr_matrix = MPCTensor(input)
-                    encr_kernel = kernel_type(kernel)
-                    encr_conv = getattr(encr_matrix, func_name)(
-                        encr_kernel,
-                        padding=padding,
-                        stride=stride,
-                        dilation=dilation,
-                        groups=groups,
-                    )
+                # sample filtering kernel:
+                if func_name == "conv2d":
+                    k_size = (out_channels * groups, in_channels, *kernel_size)
+                else:
+                    k_size = (in_channels * groups, out_channels, *kernel_size)
+                kernel = self._get_random_test_tensor(size=k_size, is_float=True)
 
-                    # check that result is correct:
-                    reference = getattr(F, func_name)(
-                        input,
-                        kernel,
-                        padding=padding,
-                        stride=stride,
-                        dilation=dilation,
-                        groups=groups,
-                    )
-                    self._check(encr_conv, reference, "%s failed" % func_name)
+                # perform filtering:
+                encr_matrix = MPCTensor(input)
+                encr_kernel = kernel_type(kernel)
+                encr_conv = getattr(encr_matrix, func_name)(
+                    encr_kernel,
+                    padding=padding,
+                    stride=stride,
+                    dilation=dilation,
+                    groups=groups,
+                )
+
+                # check that result is correct:
+                reference = getattr(F, func_name)(
+                    input,
+                    kernel,
+                    padding=padding,
+                    stride=stride,
+                    dilation=dilation,
+                    groups=groups,
+                )
+                self._check(encr_conv, reference, "%s failed" % func_name)
 
     def test_max_pooling(self):
         """Test max_pool of encrypted tensor."""
