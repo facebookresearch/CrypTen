@@ -50,12 +50,13 @@ class DPSplitModel(nn.Module):
         self,
         pytorch_model,
         crypten_loss,
-        noise_magnitude,
         feature_src,
         label_src,
+        noise_magnitude,
         noise_src=None,
         skip_loss_forward=True,
         cache_pred_size=True,
+        randomized_response_prob=None,
     ):
         assert isinstance(
             pytorch_model, torch.nn.Module
@@ -72,6 +73,12 @@ class DPSplitModel(nn.Module):
         self.label_src = label_src
         self.noise_src = noise_src
         self.cache_pred_size = cache_pred_size
+
+        if randomized_response_prob is not None:
+            assert (
+                0 < randomized_response_prob < 0.5
+            ), "randomized_response_prob must be in the interval [0, 0.5)"
+        self.rr_prob = randomized_response_prob
 
         # Cache predictions size
         self.preds_size = None
@@ -125,14 +132,31 @@ class DPSplitModel(nn.Module):
 
         return self.preds
 
+    @property
+    def rank(self):
+        return comm.get().get_rank()
+
     def compute_loss(self, preds, targets):
         self.preds_enc = crypten.cryptensor(
             self.preds, src=self.feature_src, requires_grad=True
         )
-        # Encrypt targets if necessary:
+
+        # Apply appropriate RR-protocol and encrypt targets if necessary
+        if self.rr_prob is not None:
+            flip_probs = torch.tensor(self.rr_prob).expand(targets.size())
+
         if crypten.is_encrypted_tensor(targets):
             targets_enc = targets
+            if self.rr_prob is not None:
+                flip_mask = crypten.bernoulli(flip_probs)
+                targets_enc += flip_probs - 2 * targets * flip_mask
         else:
+            # Flip targets based on Randomized Response algorithm
+            if self.rr_prob is not None and self.rank == self.label_src:
+                flip_mask = flip_probs.bernoulli()
+                targets += flip_mask - 2 * targets * flip_mask
+
+            # Encrypt targets:
             targets_enc = crypten.cryptensor(targets, src=self.label_src)
 
         self.loss = self.loss_fn(self.preds_enc, targets_enc)
@@ -178,8 +202,14 @@ class DPSplitModel(nn.Module):
         return jacobians
 
     def backward(self, grad_output=None):
-        rank = comm.get().get_rank()
+        """Computes backward for non-RR variant.
 
+        To add DP noise at the aggregated gradient level,
+        we compute the jacobians for dP/dW in plaintext
+        so we can matrix multiply by dL/dP to compute our
+        gradients without performing a full backward pass in
+        crypten.
+        """
         # Compute dL/dP_j
         self.loss.backward(grad_output)
         dLdP = self.preds_enc.grad
@@ -188,19 +218,12 @@ class DPSplitModel(nn.Module):
         dLdP = dLdP.unsqueeze(-1)
 
         # Compute Jacobians wrt model weights
-        if rank == self.feature_src:
+        if self.rank == self.feature_src:
             jacobians = self._compute_model_jacobians()
-
-        # Determine noise generation function
-        generate_noise = (
-            self._generate_noise_from_src
-            if self.noise_src
-            else self._generate_noise_no_src
-        )
 
         # Populate parameter grad fields using Jacobians
         params = torch.nn.utils.parameters_to_vector(self.model.parameters())
-        if rank == self.feature_src:
+        if self.rank == self.feature_src:
             jacobian = torch.cat(
                 [jacobians[param] for param in self.model.parameters()], dim=0
             )
@@ -217,8 +240,15 @@ class DPSplitModel(nn.Module):
         grad = grad.view(-1, *(params.size()))
 
         # Compute DP noise
-        noise = generate_noise(params.size())
-        grad += noise
+        if not self.rr_prob:
+            # Determine noise generation function
+            generate_noise = (
+                self._generate_noise_from_src
+                if self.noise_src
+                else self._generate_noise_no_src
+            )
+            noise = generate_noise(params.size())
+            grad += noise
 
         # Sum over batch dimension
         while grad.size() != params.size():
@@ -228,7 +258,7 @@ class DPSplitModel(nn.Module):
         grads = grad.flatten().get_plain_text(dst=self.feature_src)
 
         # Populate grad fields of parameters:
-        if rank == self.feature_src:
+        if self.rank == self.feature_src:
             ind = 0
             for param in self.model.parameters():
                 numel = param.numel()

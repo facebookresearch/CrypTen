@@ -92,47 +92,55 @@ class TestPrivacyModels(MultiProcessTestCase):
 
         # TODO: Run multiple batches
         for model_tuple in TEST_MODELS:
-            model, size, loss_name = model_tuple
-            model = TestNet(model)
+            # TODO: ensure this works with other rr_prob values
+            for rr_prob in [None, 0.00001]:
+                model, size, loss_name = model_tuple
+                model = TestNet(model)
 
-            loss_pt = getattr(torch.nn, loss_name)()
-            loss_ct = getattr(crypten.nn, loss_name)()
+                loss_pt = getattr(torch.nn, loss_name)()
+                loss_ct = getattr(crypten.nn, loss_name)()
 
-            # Compute model gradients without DP
-            features = get_random_test_tensor(size=size, is_float=True)
-            features.requires_grad = True
-            preds = model(features)
+                # Compute model gradients without DP
+                features = get_random_test_tensor(size=size, is_float=True)
+                features.requires_grad = True
+                preds = model(features)
 
-            # TODO: Write code to generate labels for other losses
-            if loss_name == "BCELoss":
-                labels = get_random_test_tensor(1, 0, preds.size(), is_float=False)
-                labels = labels.float()
-            else:
-                labels = None
-                raise NotImplementedError(f"Loss {loss_name} Not Supported Yet")
-            loss = loss_pt(preds, labels)
+                # TODO: Write code to generate labels for other losses
+                if loss_name == "BCELoss":
+                    labels = get_random_test_tensor(1, 0, preds.size(), is_float=False)
+                    labels = labels.float()
+                else:
+                    labels = None
+                    raise NotImplementedError(f"Loss {loss_name} Not Supported Yet")
+                loss = loss_pt(preds, labels)
 
-            model.zero_grad()
-            loss.backward()
+                model.zero_grad()
+                loss.backward()
 
-            for noise_src in [None, 0, 1]:
+                for noise_src in [None, 0, 1]:
 
-                # Copy model so gradients do not overwrite original model for comparison
-                model_ = copy.deepcopy(model)
-                dp_model = DPSplitModel(
-                    model_, loss_ct, NOISE_MAGNITUDE, FEATURE_SRC, LABEL_SRC, noise_src
-                )
+                    # Copy model so gradients do not overwrite original model for comparison
+                    model_ = copy.deepcopy(model)
+                    dp_model = DPSplitModel(
+                        model_,
+                        loss_ct,
+                        NOISE_MAGNITUDE,
+                        FEATURE_SRC,
+                        LABEL_SRC,
+                        noise_src=noise_src,
+                        randomized_response_prob=rr_prob,
+                    )
 
-                dp_preds = dp_model(features)
-                dp_model.compute_loss(dp_preds, labels)
+                    dp_preds = dp_model(features)
+                    dp_model.compute_loss(dp_preds, labels)
 
-                # Test zero_grad()
-                dp_model.zero_grad()
-                for p in dp_model.parameters():
-                    self.assertIsNone(p.grad)
+                    # Test zero_grad()
+                    dp_model.zero_grad()
+                    for p in dp_model.parameters():
+                        self.assertIsNone(p.grad)
 
-                # Test backward()
-                dp_model.backward()
+                    # Test backward()
+                    dp_model.backward()
 
-                if self.rank == FEATURE_SRC:
-                    self._check_gradients_with_dp(model, dp_model, NOISE_MAGNITUDE)
+                    if self.rank == FEATURE_SRC:
+                        self._check_gradients_with_dp(model, dp_model, NOISE_MAGNITUDE)
