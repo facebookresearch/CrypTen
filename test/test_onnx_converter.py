@@ -217,6 +217,8 @@ class TestOnnxConverter(object):
 
             self._check_training(model, x_train, y_train, loss_name)
 
+        self._check_model_export(model, x_train)
+
     def test_from_pytorch_training_regression(self):
         """Tests from_pytorch CrypTen training for regression models"""
         import torch.nn as nn
@@ -251,6 +253,7 @@ class TestOnnxConverter(object):
         model.encrypt()
 
         self._check_training(model, x_train, y_train, "MSELoss")
+        self._check_model_export(model, x_train)
 
     def _check_training(
         self, model, x_train, y_train, loss_name, num_epochs=2, learning_rate=0.001
@@ -307,6 +310,17 @@ class TestOnnxConverter(object):
             curr_loss.item() < orig_loss.item(),
             f"{loss_name} has not decreased after training",
         )
+
+    def _check_model_export(self, crypten_model, x_enc):
+        """Checks that exported model returns the same results as crypten model"""
+        pytorch_model = crypten_model.decrypt().to_pytorch()
+        x_plain = x_enc.get_plain_text()
+
+        y_plain = pytorch_model(x_plain)
+        crypten_model.encrypt()
+        y_enc = crypten_model(x_enc)
+
+        self._check(y_enc, y_plain, msg="Model export failed.")
 
     def test_get_operator_class(self):
         """Checks operator is a valid crypten module"""

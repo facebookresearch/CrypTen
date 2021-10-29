@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import copy
 import io
 
 import onnx
@@ -45,6 +46,9 @@ def from_pytorch(pytorch_model, dummy_input):
     f = _from_pytorch_to_bytes(pytorch_model, dummy_input)
     crypten_model = from_onnx(f)
     f.close()
+
+    # set model architecture to export model back to pytorch model
+    crypten_model.pytorch_model = copy.deepcopy(pytorch_model)
 
     # make sure training / eval setting is copied:
     crypten_model.train(mode=pytorch_model.training)

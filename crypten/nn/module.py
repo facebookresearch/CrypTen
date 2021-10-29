@@ -747,6 +747,18 @@ class Graph(Container):
         # this should never happen:
         raise ValueError("nn.Graph.forward() failed. Is graph unconnected?")
 
+    def to_pytorch(self):
+        if not hasattr(self, "pytorch_model"):
+            raise AttributeError("CrypTen Graph detached from PyTorch model.")
+        if self.encrypted:
+            raise ValueError(
+                "CrypTen model must be decrypted before calling to_pytorch()"
+            )
+        with torch.no_grad():
+            for name, param in self.pytorch_model.named_parameters():
+                param.set_(self._modules[name].data)
+        return self.pytorch_model
+
 
 class Sequential(Graph):
     """
