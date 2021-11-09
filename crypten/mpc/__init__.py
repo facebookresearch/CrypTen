@@ -28,9 +28,9 @@ binary = ptype.binary
 
 # Set provider
 __SUPPORTED_PROVIDERS = {
-    "TFP": provider.TrustedFirstParty,
-    "TTP": provider.TrustedThirdParty,
-    "HE": provider.HomomorphicProvider,
+    "TFP": provider.TrustedFirstParty(),
+    "TTP": provider.TrustedThirdParty(),
+    "HE": provider.HomomorphicProvider(),
 }
 
 
