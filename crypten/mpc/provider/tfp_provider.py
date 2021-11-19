@@ -11,12 +11,13 @@ from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring
 from crypten.common.util import count_wraps, torch_stack
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
+from .provider import TupleProvider
 
-class TrustedFirstParty:
+
+class TrustedFirstParty(TupleProvider):
     NAME = "TFP"
 
-    @staticmethod
-    def generate_additive_triple(size0, size1, op, device=None, *args, **kwargs):
+    def generate_additive_triple(self, size0, size1, op, device=None, *args, **kwargs):
         """Generate multiplicative triples of given sizes"""
         a = generate_random_ring_element(size0, device=device)
         b = generate_random_ring_element(size1, device=device)
@@ -29,8 +30,7 @@ class TrustedFirstParty:
 
         return a, b, c
 
-    @staticmethod
-    def square(size, device=None):
+    def square(self, size, device=None):
         """Generate square double of given size"""
         r = generate_random_ring_element(size, device=device)
         r2 = r.mul(r)
@@ -40,8 +40,7 @@ class TrustedFirstParty:
         stacked = ArithmeticSharedTensor(stacked, precision=0, src=0)
         return stacked[0], stacked[1]
 
-    @staticmethod
-    def generate_binary_triple(size0, size1, device=None):
+    def generate_binary_triple(self, size0, size1, device=None):
         """Generate xor triples of given size"""
         a = generate_kbit_random_tensor(size0, device=device)
         b = generate_kbit_random_tensor(size1, device=device)
@@ -53,8 +52,7 @@ class TrustedFirstParty:
 
         return a, b, c
 
-    @staticmethod
-    def wrap_rng(size, device=None):
+    def wrap_rng(self, size, device=None):
         """Generate random shared tensor of given size and sharing of its wraps"""
         num_parties = comm.get().get_world_size()
         r = [
@@ -69,8 +67,7 @@ class TrustedFirstParty:
 
         return r, theta_r
 
-    @staticmethod
-    def B2A_rng(size, device=None):
+    def B2A_rng(self, size, device=None):
         """Generate random bit tensor as arithmetic and binary shared tensors"""
         # generate random bit
         r = generate_kbit_random_tensor(size, bitlength=1, device=device)

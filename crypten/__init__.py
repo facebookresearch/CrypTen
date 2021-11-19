@@ -542,6 +542,19 @@ def log(*args, in_order=False, dst=0, **kwargs):
     )
 
 
+# TupleProvider tracing functions
+def trace(tracing=True):
+    crypten.mpc.get_default_provider().trace(tracing=tracing)
+
+
+def trace_once():
+    crypten.mpc.get_default_provider().trace_once()
+
+
+def fill_cache():
+    crypten.mpc.get_default_provider().fill_cache()
+
+
 # expose classes and functions in package:
 __all__ = [
     "CrypTensor",
@@ -549,6 +562,7 @@ __all__ = [
     "enable_grad",
     "set_grad_enabled",
     "debug",
+    "fill_cache",
     "generators",
     "init",
     "init_thread",
@@ -556,5 +570,7 @@ __all__ = [
     "mpc",
     "nn",
     "print",
+    "trace",
+    "trace_once",
     "uninit",
 ]

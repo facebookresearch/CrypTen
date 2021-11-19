@@ -2106,6 +2106,90 @@ class TestMPC(object):
         frac_zero = float((dropout_tensor == 0).sum()) / dropout_tensor.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.4, rel_tol=1e-2, abs_tol=1e-2))
 
+    def test_tuple_cache(self):
+        # Skip RSS setting since it does not generate tuples
+        if cfg.mpc.protocol == "replicated":
+            return
+
+        # TODO: encorporate wrap_rng for 3PC+ settings
+        if comm.get().get_world_size() > 2:
+            return
+
+        provider = crypten.mpc.get_default_provider()
+
+        # Test tracing attribute
+        crypten.trace()
+        self.assertTrue(provider.tracing)
+
+        x = get_random_test_tensor(is_float=True)
+        x = crypten.cryptensor(x)
+
+        _ = x.square()
+        _ = x * x
+        _ = x.matmul(x.t())
+        _ = x.relu()
+        y = x.unsqueeze(0)
+        _ = y.conv1d(y, stride=2)
+
+        # Populate reference requests
+        ref_names = ["square"]
+        ref_names += ["generate_additive_triple"] * 2
+        ref_names += ["generate_binary_triple"] * 7 + ["B2A_rng"]
+        ref_names += ["generate_additive_triple"] * 2
+
+        ref_args = [
+            (torch.Size([1, 5]),),
+            (torch.Size([1, 5]), torch.Size([1, 5]), "mul"),
+            (torch.Size([1, 5]), torch.Size([5, 1]), "matmul"),
+            (torch.Size([1, 1, 5]), torch.Size([1, 1, 5])),
+        ]
+        ref_args += [(torch.Size([2, 1, 1, 5]), torch.Size([2, 1, 1, 5]))] * 6
+        ref_args += [(torch.Size([1, 5]),)]
+        ref_args += [(torch.Size([1, 5]), torch.Size([1, 5]), "mul")]
+        ref_args += [(torch.Size([1, 1, 5]), torch.Size([1, 1, 5]), "conv1d")]
+
+        kwargs = {"device": torch.device("cpu")}
+        conv_kwargs = {"device": torch.device("cpu"), "stride": 2}
+        requests = [(ref_names[i], ref_args[i], kwargs) for i in range(12)]
+        requests += [(ref_names[12], ref_args[12], conv_kwargs)]
+
+        self.assertEqual(
+            provider.request_cache,
+            requests,
+            "TupleProvider request cache incorrect",
+        )
+
+        crypten.trace(False)
+        self.assertFalse(provider.tracing)
+
+        # Check that cache populates as expected
+        crypten.fill_cache()
+        kwargs = frozenset(kwargs.items())
+        conv_kwargs = frozenset(conv_kwargs.items())
+
+        keys = [(ref_names[i], ref_args[i], kwargs) for i in range(12)]
+        keys += [(ref_names[12], ref_args[12], conv_kwargs)]
+
+        self.assertEqual(
+            set(provider.tuple_cache.keys()),
+            set(keys),
+            "TupleProvider tuple_cache populated incorrectly",
+        )
+
+        # Test that function calls return from cache when trace is off
+        crypten.trace(False)
+        _ = x.square()
+        _ = x * x
+        _ = x.matmul(x.t())
+        _ = x.relu()
+        y = x.unsqueeze(0)
+        _ = y.conv1d(y, stride=2)
+
+        for v in provider.tuple_cache.values():
+            self.assertEqual(
+                len(v), 0, msg="TupleProvider is not popping tuples properly from cache"
+            )
+
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestMPC):
