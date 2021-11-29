@@ -9,6 +9,7 @@
 import itertools
 import logging
 import math
+import os
 import unittest
 
 import crypten
@@ -2106,6 +2107,83 @@ class TestMPC(object):
         frac_zero = float((dropout_tensor == 0).sum()) / dropout_tensor.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.4, rel_tol=1e-2, abs_tol=1e-2))
 
+    def _test_cache_save_load(self):
+        # Determine expected filepaths
+        provider = crypten.mpc.get_default_provider()
+        request_path = provider._DEFAULT_CACHE_PATH + f"/request_cache-{self.rank}"
+        tuple_path = provider._DEFAULT_CACHE_PATH + f"/tuple_cache-{self.rank}"
+
+        # Clear any existing files in the cache location
+        if os.path.exists(request_path):
+            os.remove(request_path)
+        if os.path.exists(tuple_path):
+            os.remove(tuple_path)
+
+        # Store cache values for reference
+        requests = provider.request_cache
+        tuple_cache = provider.tuple_cache
+
+        # Save cache to file
+        provider.save_cache()
+
+        # Assert cache files exist
+        self.assertTrue(
+            os.path.exists(request_path), "request_cache file not found after save"
+        )
+        self.assertTrue(
+            os.path.exists(tuple_path), "tuple_cache file not found after save"
+        )
+
+        # Assert cache empty
+        self.assertEqual(
+            len(provider.request_cache), 0, "cache save did not clear request cache"
+        )
+        self.assertEqual(
+            len(provider.tuple_cache), 0, "cache save did not clear tuple cache"
+        )
+
+        # Ensure test is working properly by not clearing references
+        self.assertTrue(len(requests) > 0, "reference requests cleared during save")
+        self.assertTrue(len(tuple_cache) > 0, "reference tuples cleared during save")
+
+        # Load cache from file
+        provider.load_cache()
+
+        # Assert files are deleted
+        self.assertFalse(
+            os.path.exists(request_path), "request_cache filepath exists after load"
+        )
+        self.assertFalse(
+            os.path.exists(tuple_path), "tuple_cache filepath exists after load"
+        )
+
+        # Assert request cache is loaded as expected
+        self.assertEqual(
+            provider.request_cache, requests, "loaded request_cache is incorrect"
+        )
+
+        # Assert loaded tuple dict is as expected
+        tc = [(k, v) for k, v in provider.tuple_cache.items()]
+        ref = [(k, v) for k, v in tuple_cache.items()]
+        for i in range(len(tc)):
+            t, r = tc[i], ref[i]
+            t_key, r_key = t[0], r[0]
+            t_tuples, r_tuples = t[1], r[1]
+
+            # Check keys
+            self.assertEqual(t_key, r_key, "Loaded tuple_cache key is incorrect")
+
+            # Check tuple values
+            for j in range(len(t_tuples)):
+                t_tuple, r_tuple = t_tuples[j], r_tuples[j]
+                for k in range(len(t_tuple)):
+                    t_tensor = t_tuple[k]._tensor
+                    r_tensor = r_tuple[k]._tensor
+                    self.assertTrue(
+                        t_tensor.eq(r_tensor).all(),
+                        "Loaded tuple_cache tuple tensor incorrect",
+                    )
+
     def test_tuple_cache(self):
         # Skip RSS setting since it does not generate tuples
         if cfg.mpc.protocol == "replicated":
@@ -2175,6 +2253,9 @@ class TestMPC(object):
             set(keys),
             "TupleProvider tuple_cache populated incorrectly",
         )
+
+        # Test saving from / loading to cache
+        self._test_cache_save_load()
 
         # Test that function calls return from cache when trace is off
         crypten.trace(False)

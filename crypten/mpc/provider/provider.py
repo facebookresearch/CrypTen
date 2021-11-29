@@ -5,6 +5,12 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import os
+
+import crypten
+import crypten.communicator as comm
+import torch
+
 
 class TupleProvider:
     TRACEABLE_FUNCTIONS = [
@@ -15,19 +21,96 @@ class TupleProvider:
         "B2A_rng",
     ]
 
+    _DEFAULT_CACHE_PATH = os.path.normpath(os.path.join(__file__, "../tuple_cache/"))
+
     def __init__(self):
         self.tracing = False
         self.request_cache = []
         self.tuple_cache = {}
 
+    @property
+    def rank(self):
+        return comm.get().get_rank()
+
+    def _get_request_path(self, prefix=None):
+        if prefix is None:
+            prefix = self._DEFAULT_CACHE_PATH
+        return prefix + f"/request_cache-{self.rank}"
+
+    def _get_tuple_path(self, prefix=None):
+        if prefix is None:
+            prefix = self._DEFAULT_CACHE_PATH
+        return prefix + f"/tuple_cache-{self.rank}"
+
     def trace(self, tracing=True):
+        """Sets tracing attribute.
+
+        When tracing is True, provider caches all tuple requests.
+        When tracing is False, provider attempts to load tuples from cache.
+        """
         self.tracing = tracing
 
     def trace_once(self):
+        """Sets tracing attribute True only if the request cache is empty.
+        If `trace_once()` is called again, it sets tracing attribute to False
+        """
         untraced = self.request_cache.empty()
         self.trace(tracing=untraced)
 
+    def _save_requests(self, filepath=None):
+        # TODO: Deal with any overwrite issues
+        if len(self.request_cache) == 0:
+            crypten.log("Request cache not saved - cache is empty")
+            return
+        filepath = self._get_request_path(prefix=filepath)
+        torch.save(self.request_cache, filepath)
+        self.request_cache = []
+
+    def _load_requests(self, filepath=None):
+        filepath = self._get_request_path(prefix=filepath)
+        if os.path.exists(filepath):
+            self.request_cache = torch.load(filepath)
+            os.remove(filepath)
+        else:
+            crypten.log(f"Cache requests not loaded - File `{filepath}` not found")
+
+    def _save_tuples(self, filepath=None):
+        # TODO: Deal with any overwrite issues
+        if len(self.tuple_cache) == 0:
+            crypten.log("Tuple cache not saved - cache is empty")
+            return
+        filepath = self._get_tuple_path(prefix=filepath)
+        torch.save(self.tuple_cache, filepath)
+        self.tuple_cache = {}
+
+    def _load_tuples(self, filepath=None):
+        filepath = self._get_tuple_path(prefix=filepath)
+        if os.path.exists(filepath):
+            self.tuple_cache = torch.load(filepath)
+            os.remove(filepath)
+        else:
+            crypten.log(f"Tuple cache not loaded - File `{filepath}` not found")
+
+    def save_cache(self, filepath=None):
+        """Saves request and tuple cache to a file.
+
+        args:
+            filepath - base filepath for cache folder (default: "provider/tuple_cache/")
+        """
+        self._save_requests(filepath=filepath)
+        self._save_tuples(filepath=filepath)
+
+    def load_cache(self, filepath=None):
+        """Loads request and tuple cache from a file.
+
+        args:
+            filepath - base filepath for cache folder (default: "provider/tuple_cache/")
+        """
+        self._load_requests(filepath=filepath)
+        self._load_tuples(filepath=filepath)
+
     def __getattribute__(self, func_name):
+        """Deals with caching logic"""
         if func_name not in TupleProvider.TRACEABLE_FUNCTIONS:
             return object.__getattribute__(self, func_name)
 
@@ -58,6 +141,7 @@ class TupleProvider:
         return func_from_cache
 
     def fill_cache(self):
+        """Fills tuple_cache with tuples requested in the request_cache"""
         # TODO: parallelize / async this
         for request in self.request_cache:
             func_name, args, kwargs = request
