@@ -6,21 +6,13 @@
 # LICENSE file in the root directory of this source tree.
 
 import copy
+import itertools
 
 import crypten
 import torch
+from crypten.config import cfg
 from crypten.nn.privacy import DPSplitModel
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
-
-
-class TestNet(torch.nn.Module):
-    def __init__(self, input_model):
-        super().__init__()
-        self.input_model = input_model
-        self.softmax = torch.nn.Softmax(-1)
-
-    def forward(self, x):
-        return self.softmax(self.input_model(x))
 
 
 class TestMLP(torch.nn.Module):
@@ -57,10 +49,11 @@ class TestMLPBN(torch.nn.Module):
 
 # TODO: Add more model types
 TEST_MODELS = [
-    # (model, size, loss_name)
-    (torch.nn.Linear(100, 10), (20, 100), "BCELoss"),
-    (TestMLP(100, 10), (20, 100), "BCELoss"),
-    (TestMLPBN(100, 10), (20, 100), "BCELoss"),
+    # (model, size)
+    (torch.nn.Linear(100, 10), (150, 100)),
+    (torch.nn.Linear(50, 5), (20, 50)),
+    (TestMLP(100, 10), (20, 100)),
+    (TestMLPBN(100, 10), (20, 100)),
 ]
 
 
@@ -90,40 +83,50 @@ class TestPrivacyModels(MultiProcessTestCase):
         FEATURE_SRC = 0
         LABEL_SRC = 1
 
+        PROTOCOLS = ["full_jacobian", "layer_estimation"]
+
         # TODO: Run multiple batches
-        for model_tuple in TEST_MODELS:
+        for model_tuple, protocol in itertools.product(TEST_MODELS, PROTOCOLS):
+            cfg.nn.dpsmpc.protocol = protocol
+
             # TODO: ensure this works with other rr_prob values
             for rr_prob in [None, 0.00001]:
-                model, size, loss_name = model_tuple
-                model = TestNet(model)
+                model, size = model_tuple
 
-                loss_pt = getattr(torch.nn, loss_name)()
-                loss_ct = getattr(crypten.nn, loss_name)()
+                # TODO test multiclass using CrossEntropyLoss()
+                loss_pt = torch.nn.BCEWithLogitsLoss()
 
                 # Compute model gradients without DP
                 features = get_random_test_tensor(size=size, is_float=True)
                 features.requires_grad = True
-                preds = model(features)
 
-                # TODO: Write code to generate labels for other losses
-                if loss_name == "BCELoss":
-                    labels = get_random_test_tensor(1, 0, preds.size(), is_float=False)
-                    labels = labels.float()
-                else:
-                    labels = None
-                    raise NotImplementedError(f"Loss {loss_name} Not Supported Yet")
-                loss = loss_pt(preds, labels)
+                # Get reference logits from plaintext model
+                logits = model(features)
 
+                # TODO: Write code to generate labels for CrossEntropyLoss
+                labels = get_random_test_tensor(1, 0, logits.size(), is_float=False)
+                labels = labels.float()
+                labels_enc = crypten.cryptensor(labels, src=LABEL_SRC)
+
+                # Compute reference loss
+                loss = loss_pt(logits, labels)
+
+                # Run reference backward pass
                 model.zero_grad()
                 loss.backward()
 
-                for noise_src in [None, 0, 1]:
+                # Delete plaintext model and features and labels for parties without access
+                labels = None
+                if self.rank != FEATURE_SRC:
+                    model = None
+                    features = None
 
+                # Run split models
+                for noise_src in [None, 0, 1]:
                     # Copy model so gradients do not overwrite original model for comparison
                     model_ = copy.deepcopy(model)
                     dp_model = DPSplitModel(
                         model_,
-                        loss_ct,
                         NOISE_MAGNITUDE,
                         FEATURE_SRC,
                         LABEL_SRC,
@@ -131,8 +134,15 @@ class TestPrivacyModels(MultiProcessTestCase):
                         randomized_response_prob=rr_prob,
                     )
 
-                    dp_preds = dp_model(features)
-                    dp_model.compute_loss(dp_preds, labels)
+                    dp_logits = dp_model(features)
+
+                    # Check forward pass
+                    if self.rank == FEATURE_SRC:
+                        self.assertTrue(
+                            dp_logits.eq(logits).all(), "model outputs do not match"
+                        )
+
+                    dp_model.compute_loss(labels_enc)
 
                     # Test zero_grad()
                     dp_model.zero_grad()
@@ -141,6 +151,9 @@ class TestPrivacyModels(MultiProcessTestCase):
 
                     # Test backward()
                     dp_model.backward()
+
+                    if hasattr(dp_model, "dLdW") and self.rank == FEATURE_SRC:
+                        crypten.debug.pdb.set_trace()
 
                     if self.rank == FEATURE_SRC:
                         self._check_gradients_with_dp(model, dp_model, NOISE_MAGNITUDE)

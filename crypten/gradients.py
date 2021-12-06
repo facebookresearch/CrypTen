@@ -738,7 +738,7 @@ class AutogradMatMul(AutogradFunction):
     def backward(ctx, grad_output):
         self_, other = ctx.saved_tensors
 
-        # Cache sizes for invers_broadcast
+        # Cache sizes for inverse_broadcast
         self_size = self_.size()
         other_size = other.size()
 
