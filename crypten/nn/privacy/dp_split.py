@@ -32,7 +32,7 @@ def _matmul_backward(input, weight, grad_output):
     Only returns gradient w.r.t. weight since that is all we need in this context.
     """
     # Cache sizes for inverse_broadcast
-    weight_size = weight.size()
+    weight_size = weight.t().size()
 
     # Deal with vectors that are represented by a
     # < 2 dimensional tensor

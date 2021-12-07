@@ -52,6 +52,9 @@ TEST_MODELS = [
     # (model, size)
     (torch.nn.Linear(100, 10), (150, 100)),
     (torch.nn.Linear(50, 5), (20, 50)),
+    (torch.nn.Linear(30, 1), (50, 30)),
+    (torch.nn.Linear(1, 10), (30, 1)),
+    (torch.nn.Linear(1, 1), (20, 1)),
     (TestMLP(100, 10), (20, 100)),
     (TestMLPBN(100, 10), (20, 100)),
 ]
