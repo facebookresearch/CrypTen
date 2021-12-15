@@ -28,6 +28,7 @@ class LogisticRegression(crypten.nn.Module):
         self.linear = crypten.nn.Linear(28 * 28, 10)
 
     def forward(self, x):
+        x = x.view(-1, 28 * 28)
         return self.linear(x)
 
 
@@ -40,8 +41,8 @@ def encrypt_digits():
         download=True,
     )
     images, labels = take_samples(digits)
-    crypten.save(images, "/tmp/data/alice_images.pth", src=ALICE)
-    crypten.save(labels, "/tmp/data/bob_labels.pth", src=BOB)
+    crypten.save_from_party(images, "/tmp/data/alice_images.pth", src=ALICE)
+    crypten.save_from_party(labels, "/tmp/data/bob_labels.pth", src=BOB)
 
 
 def take_samples(digits, n_samples=100):
@@ -76,8 +77,8 @@ def train_model(model, X, y, epochs=10, learning_rate=0.05):
 
 def jointly_train():
     encrypt_digits()
-    alice_images_enc = crypten.load("/tmp/data/alice_images.pth", src=ALICE)
-    bob_labels_enc = crypten.load("/tmp/data/bob_labels.pth", src=BOB)
+    alice_images_enc = crypten.load_from_party("/tmp/data/alice_images.pth", src=ALICE)
+    bob_labels_enc = crypten.load_from_party("/tmp/data/bob_labels.pth", src=BOB)
 
     model = LogisticRegression().encrypt()
     model = train_model(model, alice_images_enc, bob_labels_enc)
