@@ -131,6 +131,7 @@ class DPSplitModel(nn.Module):
             ), "pytorch_model must be a torch Module"
 
         self.model = pytorch_model
+        self.train()
 
         # Process Randomized Response parameters
         if randomized_response_prob is not None:
@@ -147,23 +148,32 @@ class DPSplitModel(nn.Module):
 
     @property
     def training(self):
-        if hasattr(self, "model"):
+        if hasattr(self, "model") and self.model is not None:
             return self.model.training
-        return None
+        return self._training
 
     @training.setter
     def training(self, mode):
-        if hasattr(self, "model"):
-            self.train(mode)
+        self.train(mode)
 
     def train(self, mode=True):
-        self.model.train(mode=mode)
+        if hasattr(self, "model") and self.model is not None:
+            self.model.train(mode=mode)
+        else:
+            self._training = mode
 
     def zero_grad(self):
         if self.is_feature_src():
             self.model.zero_grad()
 
     def forward(self, input):
+        # During eval mode, just conduct forward pass.
+        if not self.training:
+            if self.is_feature_src():
+                return self.model(input)
+            # Parties without model should return None
+            return None
+
         if self.is_feature_src():
             self.logits = self.model(input)
             self.preds = self.logits.sigmoid()
