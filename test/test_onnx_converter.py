@@ -74,6 +74,7 @@ class TestOnnxConverter(object):
         if self.rank >= 0:
             crypten.init()
 
+    """
     @unittest.skip("CrypTen no longer supports from_tensorflow")
     def test_tensorflow_model_conversion(self):
         import tensorflow as tf
@@ -172,6 +173,7 @@ class TestOnnxConverter(object):
             # compare the results
             result = torch.tensor(result_tf.numpy())
             self._check(result_enc, result, "nn.from_tensorflow failed")
+    """
 
     def test_from_pytorch_training_classification(self):
         """Tests from_pytorch CrypTen training for classification models"""
