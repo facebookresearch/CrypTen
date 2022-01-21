@@ -12,6 +12,7 @@ setup_venv: &setup_venv
     pip3 install tensorflow
     pip3 install tf2onnx
     pip3 install pyyaml
+    pip3 install omegaconf
 
 
 # -------------------------------------------------------------------------------------
