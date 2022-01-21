@@ -11,12 +11,9 @@ import logging
 import unittest
 
 import crypten
-import crypten.communicator as comm
 import torch
 import torch.nn.functional as F
-from crypten.common.rng import generate_random_ring_element
 from crypten.common.tensor_types import is_float_tensor
-from crypten.common.util import count_wraps
 from crypten.mpc.primitives import ArithmeticSharedTensor
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 
