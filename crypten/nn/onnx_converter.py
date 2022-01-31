@@ -127,7 +127,6 @@ def _export_pytorch_model(f, pytorch_model, dummy_input):
     kwargs = {
         "do_constant_folding": False,
         "export_params": True,
-        "enable_onnx_checker": True,
         "input_names": ["input"],
         "operator_export_type": OperatorExportTypes.ONNX,
         "output_names": ["output"],
