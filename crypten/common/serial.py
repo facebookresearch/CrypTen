@@ -117,7 +117,7 @@ class RestrictedUnpickler(pickle.Unpickler):
     else:
         __SAFE_CLASSES.update(
             {
-                "torch.storage.TypedStorage": torch.storage.TypedStorage,
+                "torch.storage._TypedStorage": torch.storage._TypedStorage,
             }
         )
 
