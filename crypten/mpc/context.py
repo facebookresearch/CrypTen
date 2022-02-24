@@ -33,18 +33,24 @@ def _launch(func, rank, world_size, rendezvous_file, queue, func_args, func_kwar
     queue.put((rank, return_value))
 
 
-def run_multiprocess(world_size):
+def run_multiprocess(world_size, maxsize=None):
     """Defines decorator to run function across multiple processes
 
     Args:
         world_size (int): number of parties / processes to initiate.
+        maxsize: Enables the user to increase the size of returnable values
+            (See https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Queue)
     """
 
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             rendezvous_file = tempfile.NamedTemporaryFile(delete=True).name
-            queue = multiprocessing.Queue()
+
+            if maxsize is None:
+                queue = multiprocessing.Queue()
+            else:
+                queue = multiprocessing.Queue(maxsize)
 
             processes = [
                 multiprocessing.Process(
