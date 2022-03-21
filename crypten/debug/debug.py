@@ -87,7 +87,7 @@ def crypten_print_in_order(*args, **kwargs):
         comm.get().barrier()
 
 
-def validate_correctness(self, func, func_name, tolerance=0.05):
+def validate_correctness(self, func, func_name, tolerance=0.5):
     import crypten
     import torch
 
@@ -110,16 +110,15 @@ def validate_correctness(self, func, func_name, tolerance=0.05):
             for i, arg in enumerate(args):
                 if crypten.is_encrypted_tensor(arg):
                     args[i] = args[i].get_plain_text()
+
+            kwargs.pop("input_in_01", None)
             for key, value in kwargs.items():
                 if crypten.is_encrypted_tensor(value):
                     kwargs[key] = value.get_plain_text()
             reference = getattr(self.get_plain_text(), func_name)(*args, **kwargs)
 
+            # TODO: Validate properties - Issue is tuples can contain encrypted tensors
             if not torch.is_tensor(reference):
-                if result_enc != reference:
-                    raise ValueError(
-                        f"Function {func_name} returned incorrect property value"
-                    )
                 return result_enc
 
             # Check sizes match

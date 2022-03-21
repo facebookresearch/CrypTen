@@ -13,6 +13,7 @@ from crypten.config import cfg
 from crypten.gradients import _inverse_broadcast
 
 
+# TODO: Move SkippedLoss elsewhere
 class SkippedLoss(object):
     """Placeholder for output of a skipped loss function"""
 
@@ -117,8 +118,11 @@ class DPSplitModel(nn.Module):
         noise_magnitude,
         noise_src=None,
         randomized_response_prob=None,
+        rappor_prob=None,
     ):
         super().__init__()
+
+        # TODO: Compute noise magnitude based on jacobian.
         self.noise_magnitude = noise_magnitude
         self.feature_src = feature_src
         self.label_src = label_src
@@ -139,6 +143,15 @@ class DPSplitModel(nn.Module):
                 0 < randomized_response_prob < 0.5
             ), "randomized_response_prob must be in the interval [0, 0.5)"
         self.rr_prob = randomized_response_prob
+
+        # Apply RAPPOR correction:
+        if rappor_prob is not None:
+            assert 0 <= rappor_prob <= 1, "rappor_prob must be in [0, 1]"
+
+        self.alpha = rappor_prob
+
+        # TODO: Add support for multi-class predictions
+        self.multiclass = False
 
         # Cache for tensor sizes
         self.cache = {}
@@ -190,17 +203,23 @@ class DPSplitModel(nn.Module):
                     raise ValueError(
                         f"Logit size does not match cached size: {preds_size} vs. {cache_size}"
                     )
+
+            # Cache predictions size - Note batch size must match here
+            # TODO: Handle batch dimension here
+            if self.cache_pred_size:
+                preds_size = self._communicate_and_cache("preds_size", preds_size)
+            else:
+                preds_size = comm.get().broadcast_obj(preds_size, src=self.feature_src)
         else:
-            self.logits = None
-            self.preds = None
-            preds_size = None
+            # Cache predictions size - Note batch size must match here
+            # TODO: Handle batch dimension here
+            if self.cache_pred_size:
+                preds_size = self._communicate_and_cache("preds_size", None)
+            else:
+                preds_size = comm.get().broadcast_obj(None, src=self.feature_src)
+            self.logits = torch.empty(preds_size)
+            self.preds = torch.empty(preds_size)
 
-        # Cache predictions size - Note batch size must match here
-        # TODO: Handle batch dimension here
-        if self.cache_pred_size:
-            preds_size = self._communicate_and_cache("preds_size", preds_size)
-
-        self.preds = torch.empty(preds_size) if self.preds is None else self.preds
         return self.logits
 
     def _communicate_and_cache(self, name, value):
@@ -265,23 +284,47 @@ class DPSplitModel(nn.Module):
 
     def compute_loss(self, targets):
         # Process predictions and targets
-        self.preds_enc = crypten.cryptensor(
-            self.preds, src=self.feature_src, requires_grad=True
-        )
+
+        # Apply RAPPOR correction
+        if self.alpha is not None:
+            self.preds_rappor = self.alpha * self.preds
+            self.preds_rappor += (1 - self.alpha) * (1 - self.preds)
+            self.preds_enc = crypten.cryptensor(
+                self.preds_rappor, src=self.feature_src, requires_grad=True
+            )
+        else:
+            self.preds_enc = crypten.cryptensor(
+                self.preds, src=self.feature_src, requires_grad=True
+            )
+
         self.targets_enc = self._process_targets(targets)
 
         # Compute BCE loss or CrossEntropy loss depending on single or multiclass
         if self.skip_loss_forward:
             self.loss = SkippedLoss("Skipped CrossEntropy function")
         else:
+            logits_enc = crypten.cryptensor(self.logits, src=self.feature_src)
             # BCEWithLogitsLoss
-            if self.preds_enc.dim() == 1:
-                self.loss = self.logits.binary_cross_entropy_with_logits(
-                    self.targets_enc
-                )
+            if not self.multiclass:
+                if self.alpha is None:
+                    self.loss = logits_enc.binary_cross_entropy_with_logits(
+                        self.targets_enc
+                    )
+                else:
+                    self.loss = logits_enc.rappor_loss(self.targets_enc, self.alpha)
             # CrossEntropyLoss
+            # TODO: Support Multi-class DPS-MPC
             else:
-                self.loss = self.logits.cross_entropy(self.targets_enc)
+                raise NotImplementedError("Multi-class DPS-MPC is not supported")
+                """
+                if self.alpha is not None:
+                    raise NotImplementedError("Multi-class RAPPOR Loss not supported")
+                if self.is_feature_src:
+                    logits_enc = crypten.cryptensor(self.logits, src=self.feature_src)
+                else:
+                    logits_enc = crypten.cryptensor(self.preds, src=self.features_src)
+                self.loss = logits_enc.cross_entropy(self.targets_enc)
+                """
 
         # Overwrite loss backward to call model's backward function:
         def backward_(self_, grad_output=None):
@@ -401,6 +444,13 @@ class DPSplitModel(nn.Module):
         # Compute dL/dP_j
         dLdZ = self.preds_enc.sub(self.targets_enc).div(self.preds_enc.size(0))
 
+        # Correct for RAPPOR Loss
+        if self.alpha is not None:
+            dLdZ = dLdZ * (2 * self.alpha - 1)
+            correction = self.preds * (1 - self.preds)
+            correction /= self.preds_rappor * (1 - self.preds_rappor)
+            dLdZ = dLdZ * correction
+
         # Turn batched vector into batched matrix for matmul
         dLdZ = dLdZ.unsqueeze(-1)
 
@@ -431,6 +481,13 @@ class DPSplitModel(nn.Module):
     def _compute_last_layer_grad(self, grad_output=None):
         # Compute dL/dP_j
         dLdZ_enc = self.preds_enc.sub(self.targets_enc).div(self.preds_enc.size(0))
+
+        # Correct for RAPPOR Loss
+        if self.alpha is not None:
+            dLdZ_enc *= 2 * self.alpha - 1
+            dLdZ_enc *= (self.preds * (1 - self.preds)) / (
+                self.preds_rappor * (1 - self.preds_rappor)
+            )
 
         # Communicate / cache last layer input / weight sizes
         if self.is_feature_src():
@@ -468,9 +525,12 @@ class DPSplitModel(nn.Module):
 
     def backward(self, grad_output=None):
         protocol = cfg.nn.dpsmpc.protocol
-        if protocol == "full_jacobian":
-            self._backward_full_jacobian(grad_output=grad_output)
-        elif protocol == "layer_estimation":
-            self._backward_layer_estimation(grad_output=grad_output)
-        else:
-            raise ValueError(f"Unrecognized DPSplitMPC backward protocol: {protocol}")
+        with crypten.no_grad():
+            if protocol == "full_jacobian":
+                self._backward_full_jacobian(grad_output=grad_output)
+            elif protocol == "layer_estimation":
+                self._backward_layer_estimation(grad_output=grad_output)
+            else:
+                raise ValueError(
+                    f"Unrecognized DPSplitMPC backward protocol: {protocol}"
+                )
