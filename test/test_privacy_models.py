@@ -51,7 +51,7 @@ class TestMLPBN(torch.nn.Module):
 
 # TODO: Add more model types
 TEST_MODELS = [
-    # (model, size)
+    # (model, input_size)
     (torch.nn.Linear(100, 10), (150, 100)),
     (torch.nn.Linear(30, 1), (50, 30)),
     (torch.nn.Linear(1, 10), (30, 1)),
@@ -194,6 +194,9 @@ class TestPrivacyModels(MultiProcessTestCase):
                 if skip_forward:
                     self.assertTrue(isinstance(dp_model.loss, SkippedLoss))
                 else:
+                    # communicate loss from feature_src party since other parties will
+                    # have different losses.
+                    torch.distributed.broadcast(loss, src=FEATURE_SRC)
                     self._check(
                         dp_model.loss,
                         loss,
