@@ -51,7 +51,6 @@ if __name__ == "__main__":
         url="https://github.com/facebookresearch/CrypTen",
         author=AUTHOR,
         license=LICENSE,
-        setup_requires=["pytest-runner"],
         tests_require=["pytest"],
         data_files=[("/configs", ["configs/default.yaml"])],
     )
