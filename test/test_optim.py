@@ -98,6 +98,11 @@ class TestOptim(object):
                     crypten_params[i], torch_params[i], "Parameter update mismatch"
                 )
 
+            torch_optimizer.zero_grad()
+            crypten_optimizer.zero_grad()
+            for i in range(len(crypten_params)):
+                self.assertIsNone(crypten_params[i].grad, "Optimizer zero_grad failed")
+
 
 class TestTFP(MultiProcessTestCase, TestOptim):
     def setUp(self):
