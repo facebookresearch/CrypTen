@@ -9,7 +9,9 @@
 import itertools
 import logging
 import math
+import random
 import unittest
+from collections import defaultdict
 
 import crypten
 import crypten.communicator as comm
@@ -17,6 +19,7 @@ import torch
 import torch.nn.functional as F
 from crypten.common import serial
 from crypten.common.tensor_types import is_float_tensor
+from crypten.config import cfg
 from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
 from torch import nn
 
@@ -90,6 +93,54 @@ class TestCrypten(MultiProcessTestCase):
             this_generator = crypten.generators["global"][device].initial_seed()
             generator0 = comm.get().broadcast_obj(this_generator, 0)
             self.assertEqual(this_generator, generator0)
+
+    def test_manual_seeds(self):
+        """
+        Tests that user-supplied seeds replaces auto-generated seeds
+        and tests that the seed values match the expected values
+        """
+
+        # Store auto-generated seeds
+        orig_seeds = defaultdict(dict)
+        seed_names = ["prev", "next", "local", "global"]
+        for seed_name in seed_names:
+            for device in crypten.generators[seed_name].keys():
+                orig_seeds[seed_name][device] = crypten.generators[seed_name][
+                    device
+                ].initial_seed()
+
+        # User-generated seeds
+        next_seed = random.randint(0, 2 ** 63 - 1)
+        local_seed = random.randint(0, 2 ** 63 - 1)
+        global_seed = random.randint(0, 2 ** 63 - 1)
+
+        # Store expected seeds
+        expected_seeds = {}
+        expected_seeds["next"] = next_seed
+        expected_seeds["local"] = local_seed
+
+        # Set user-generated seeds in crypten
+        cfg.debug.debug_mode = True
+        crypten.manual_seed(next_seed, local_seed, global_seed)
+
+        # Check that user-generated seeds are not equal to the auto-generated ones
+        for seed_name in seed_names:
+            for device in crypten.generators[seed_name].keys():
+                self.assertNotEqual(
+                    crypten.generators[seed_name][device].initial_seed(),
+                    orig_seeds[seed_name][device],
+                )
+
+                # Check if seeds match the expected seeds
+                if seed_name in expected_seeds.keys():
+                    self.assertEqual(
+                        crypten.generators[seed_name][device].initial_seed(),
+                        expected_seeds[seed_name],
+                    )
+
+        # Run the tests to validate prev and global are intialized correctly
+        self.test_przs_generators()
+        self.test_global_generator()
 
     def test_cat_stack(self):
         """Tests concatenation and stacking of tensors"""
