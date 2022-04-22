@@ -115,7 +115,7 @@ class DPSplitModel(nn.Module):
         pytorch_model,
         feature_src,
         label_src,
-        noise_magnitude,
+        noise_magnitude=None,
         noise_src=None,
         randomized_response_prob=None,
         rappor_prob=None,
@@ -345,7 +345,7 @@ class DPSplitModel(nn.Module):
         return noise
 
     def _add_dp_if_necessary(self, grad):
-        if self.rr_prob:
+        if self.noise_magnitude is None or self.noise_magnitude == 0.0:
             return grad
 
         # Determine noise generation function
@@ -442,14 +442,19 @@ class DPSplitModel(nn.Module):
         crypten.
         """
         # Compute dL/dP_j
-        dLdZ = self.preds_enc.sub(self.targets_enc).div(self.preds_enc.size(0))
+        dLdZ = self.preds_enc.sub(self.targets_enc).div(self.preds_enc.nelement())
 
         # Correct for RAPPOR Loss
         if self.alpha is not None:
-            dLdZ = dLdZ * (2 * self.alpha - 1)
-            correction = self.preds * (1 - self.preds)
-            correction /= self.preds_rappor * (1 - self.preds_rappor)
-            dLdZ = dLdZ * correction
+            if self.is_feature_src:
+                correction = 2 * self.alpha - 1
+                correction *= self.preds * (1 - self.preds)
+                correction /= self.preds_rappor * (1 - self.preds_rappor)
+            else:
+                correction = torch.empty(self.preds.size())
+
+            correction_enc = crypten.cryptensor(correction, src=self.feature_src)
+            dLdZ *= correction_enc
 
         # Turn batched vector into batched matrix for matmul
         dLdZ = dLdZ.unsqueeze(-1)
@@ -474,20 +479,25 @@ class DPSplitModel(nn.Module):
         B = dLdW
 
         # Apply pseudoinverse
-        dLdZ = torch.linalg.lstsq(A.t(), B.t())
+        dLdZ = torch.linalg.lstsq(A.t(), B.t()).solution
         # dLdZ = B.matmul(A.pinverse()).t()
         return dLdZ
 
     def _compute_last_layer_grad(self, grad_output=None):
         # Compute dL/dP_j
-        dLdZ_enc = self.preds_enc.sub(self.targets_enc).div(self.preds_enc.size(0))
+        dLdZ_enc = self.preds_enc.sub(self.targets_enc).div(self.preds_enc.nelement())
 
         # Correct for RAPPOR Loss
         if self.alpha is not None:
-            dLdZ_enc *= 2 * self.alpha - 1
-            dLdZ_enc *= (self.preds * (1 - self.preds)) / (
-                self.preds_rappor * (1 - self.preds_rappor)
-            )
+            if self.is_feature_src:
+                correction = 2 * self.alpha - 1
+                correction *= self.preds * (1 - self.preds)
+                correction /= self.preds_rappor * (1 - self.preds_rappor)
+            else:
+                correction = torch.empty(self.preds.size())
+
+            correction_enc = crypten.cryptensor(correction, src=self.feature_src)
+            dLdZ_enc *= correction_enc
 
         # Communicate / cache last layer input / weight sizes
         if self.is_feature_src():
@@ -504,10 +514,9 @@ class DPSplitModel(nn.Module):
         # Encrypt last layer values
         # TODO: make this optional?
         last_input_enc = crypten.cryptensor(self.last_input, src=self.feature_src)
-        last_weight_enc = crypten.cryptensor(last_weight, src=self.feature_src)
 
         # Compute last layer gradients (dLdW) and add DP if necessary
-        dLdW_enc = _matmul_backward(last_input_enc, last_weight_enc, dLdZ_enc)
+        dLdW_enc = dLdZ_enc.t().matmul(last_input_enc)
         dLdW_enc = self._add_dp_if_necessary(dLdW_enc)
 
         # return dLdW
@@ -528,8 +537,12 @@ class DPSplitModel(nn.Module):
         with crypten.no_grad():
             if protocol == "full_jacobian":
                 self._backward_full_jacobian(grad_output=grad_output)
+                raise NotImplementedError(
+                    "DPS protocol full_jacobian must be fixed before use."
+                )
             elif protocol == "layer_estimation":
-                self._backward_layer_estimation(grad_output=grad_output)
+                with torch.no_grad():
+                    self._backward_layer_estimation(grad_output=grad_output)
             else:
                 raise ValueError(
                     f"Unrecognized DPSplitMPC backward protocol: {protocol}"
