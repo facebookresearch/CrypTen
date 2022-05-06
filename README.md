@@ -42,8 +42,8 @@ It is currently not production ready and its main use is as a research framework
 ## Installing CrypTen
 
 CrypTen currently runs on Linux and Mac with Python 3.7.
-Windows **is not** supported. We also do not currently support computation on GPUs.
-
+We also support computation on GPUs.
+Windows **is not** supported.
 
 _For Linux or Mac_
 ```bash
