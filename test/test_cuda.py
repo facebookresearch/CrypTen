@@ -107,10 +107,10 @@ class TestCUDA(TestMPC):
         ]
 
         for x_size, y_size in zip(input_sizes, other_sizes):
-            x = get_random_test_tensor(size=x_size, max_value=2 ** 62, is_float=False)
+            x = get_random_test_tensor(size=x_size, max_value=2**62, is_float=False)
             x_cuda = CUDALongTensor(x)
 
-            y = get_random_test_tensor(size=y_size, max_value=2 ** 62, is_float=False)
+            y = get_random_test_tensor(size=y_size, max_value=2**62, is_float=False)
             y_cuda = CUDALongTensor(y)
 
             z = torch.matmul(x_cuda, y_cuda)

@@ -32,7 +32,7 @@ class TestDebug(MultiProcessTestCase):
     def test_wrap_error_detection(self):
         """Force a wrap error and test whether it raises in debug mode."""
         encrypted_tensor = crypten.cryptensor(0)
-        encrypted_tensor.share = torch.tensor(2 ** 63 - 1)
+        encrypted_tensor.share = torch.tensor(2**63 - 1)
         with self.assertRaises(ValueError):
             encrypted_tensor.div(2)
 

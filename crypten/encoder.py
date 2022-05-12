@@ -36,7 +36,7 @@ class FixedPointEncoder:
         if precision_bits is None:
             precision_bits = cfg.encoder.precision_bits
         self._precision_bits = precision_bits
-        self._scale = int(2 ** precision_bits)
+        self._scale = int(2**precision_bits)
 
     def encode(self, x, device=None):
         """Helper function to wrap data if needed"""
@@ -84,7 +84,7 @@ class FixedPointEncoder:
 
     def __setattr__(self, name, value):
         if name == "_precision_bits":
-            dict.__setattr__(self, "_scale", int(2 ** value))
+            dict.__setattr__(self, "_scale", int(2**value))
         elif name == "_scale":
             dict.__setattr__(self, "_precision_bits", int(math.log2(value)))
         dict.__setattr__(self, name, value)

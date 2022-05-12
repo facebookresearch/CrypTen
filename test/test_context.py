@@ -34,10 +34,10 @@ def test_worldsize_func():
 def test_generator_func():
     device = torch.device("cpu")
     t0 = torch.randint(
-        -(2 ** 63), 2 ** 63 - 1, (1,), generator=crypten.generators["prev"][device]
+        -(2**63), 2**63 - 1, (1,), generator=crypten.generators["prev"][device]
     ).item()
     t1 = torch.randint(
-        -(2 ** 63), 2 ** 63 - 1, (1,), generator=crypten.generators["next"][device]
+        -(2**63), 2**63 - 1, (1,), generator=crypten.generators["next"][device]
     ).item()
     return (t0, t1)
 

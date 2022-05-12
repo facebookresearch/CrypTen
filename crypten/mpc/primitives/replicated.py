@@ -95,7 +95,7 @@ def square(x):
     (x_shares,) = replicate_shares([x.share])
     x1, x2 = x_shares
 
-    x_square = x1 ** 2 + 2 * x1 * x2
+    x_square = x1**2 + 2 * x1 * x2
 
     z = x.shallow_copy()
     z.share = x_square

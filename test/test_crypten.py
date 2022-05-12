@@ -59,15 +59,15 @@ class TestCrypten(MultiProcessTestCase):
         # Check that each party has two unique generators for next and prev seeds
         for device in crypten.generators["prev"].keys():
             t0 = torch.randint(
-                -(2 ** 63),
-                2 ** 63 - 1,
+                -(2**63),
+                2**63 - 1,
                 (1,),
                 device=device,
                 generator=crypten.generators["prev"][device],
             )
             t1 = torch.randint(
-                -(2 ** 63),
-                2 ** 63 - 1,
+                -(2**63),
+                2**63 - 1,
                 (1,),
                 device=device,
                 generator=crypten.generators["next"][device],
@@ -110,9 +110,9 @@ class TestCrypten(MultiProcessTestCase):
                 ].initial_seed()
 
         # User-generated seeds
-        next_seed = random.randint(0, 2 ** 63 - 1)
-        local_seed = random.randint(0, 2 ** 63 - 1)
-        global_seed = random.randint(0, 2 ** 63 - 1)
+        next_seed = random.randint(0, 2**63 - 1)
+        local_seed = random.randint(0, 2**63 - 1)
+        global_seed = random.randint(0, 2**63 - 1)
 
         # Store expected seeds
         expected_seeds = {}

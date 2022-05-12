@@ -40,7 +40,7 @@ def __SPK_circuit_constants(device):
     )
 
     __MULTIPLIERS = torch.tensor(
-        [(1 << (2 ** iter + 1)) - 2 for iter in range(__LOG_BITS)], device=device
+        [(1 << (2**iter + 1)) - 2 for iter in range(__LOG_BITS)], device=device
     )
     __OUT_MASKS = __MASKS * __MULTIPLIERS
 
@@ -106,7 +106,7 @@ def __P_circuit(P):
 
 
 def __flip_sign_bit(x):
-    return x ^ -(2 ** 63)
+    return x ^ -(2**63)
 
 
 def __get_sign_bit(x):

@@ -207,14 +207,14 @@ def _setup_prng():
     # here to generate seeds so that forked processes do not generate the same seed.
 
     # Generate next / prev seeds.
-    seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
+    seed = int.from_bytes(os.urandom(8), "big") - 2**63
     next_seed = torch.tensor(seed)
 
     # Create local seed - Each party has a separate local generator
-    local_seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
+    local_seed = int.from_bytes(os.urandom(8), "big") - 2**63
 
     # Create global generator - All parties share one global generator for sync'd rng
-    global_seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
+    global_seed = int.from_bytes(os.urandom(8), "big") - 2**63
     global_seed = torch.tensor(global_seed)
 
     _sync_seeds(next_seed, local_seed, global_seed)
