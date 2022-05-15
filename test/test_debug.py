@@ -9,7 +9,7 @@ import crypten
 import torch
 from crypten.config import cfg
 from crypten.debug import configure_logging, pdb
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
 class TestDebug(MultiProcessTestCase):

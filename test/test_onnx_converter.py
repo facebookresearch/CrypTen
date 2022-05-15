@@ -17,8 +17,8 @@ from crypten.common.tensor_types import is_float_tensor
 from crypten.config import cfg
 from crypten.nn import onnx_converter
 from test.multiprocess_test_case import (
-    MultiProcessTestCase,
     get_random_test_tensor,
+    MultiProcessTestCase,
     onehot,
 )
 

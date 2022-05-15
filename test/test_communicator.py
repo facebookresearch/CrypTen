@@ -16,7 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from crypten.common import serial
 from crypten.config import cfg
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
 # TODO: Commenting this out until we figure out why `thread.join() hangs

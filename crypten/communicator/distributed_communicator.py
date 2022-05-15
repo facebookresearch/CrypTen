@@ -17,7 +17,7 @@ import torch.distributed as dist
 from crypten.common import serial
 from torch.distributed import ReduceOp
 
-from .communicator import Communicator, _logging
+from .communicator import _logging, Communicator
 
 
 class DistributedCommunicator(Communicator):

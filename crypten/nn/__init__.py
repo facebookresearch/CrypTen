@@ -32,8 +32,8 @@ from .module import (
     Dropout2d,
     Dropout3d,
     DropoutNd,
-    Erf,
     Equal,
+    Erf,
     Exp,
     Expand,
     Flatten,
@@ -60,8 +60,8 @@ from .module import (
     Reshape,
     Sequential,
     Shape,
-    Slice,
     Sigmoid,
+    Slice,
     Softmax,
     Sqrt,
     Squeeze,
@@ -71,7 +71,7 @@ from .module import (
     Unsqueeze,
     Where,
 )
-from .onnx_converter import TF_AND_TF2ONNX, from_pytorch, from_onnx, from_tensorflow
+from .onnx_converter import from_onnx, from_pytorch, from_tensorflow, TF_AND_TF2ONNX
 
 
 # expose contents of package

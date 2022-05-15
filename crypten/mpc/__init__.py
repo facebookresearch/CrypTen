@@ -6,8 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from crypten.config import cfg
-from crypten.mpc import primitives  # noqa: F401
-from crypten.mpc import provider
+from crypten.mpc import primitives, provider  # noqa: F401
 
 from .context import run_multiprocess
 from .mpc import MPCTensor

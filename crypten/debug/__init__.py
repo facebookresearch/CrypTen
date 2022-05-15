@@ -10,7 +10,7 @@ from functools import wraps
 
 from crypten.config import cfg
 
-from .debug import MultiprocessingPdb, configure_logging, validate_correctness
+from .debug import configure_logging, MultiprocessingPdb, validate_correctness
 
 
 pdb = MultiprocessingPdb()

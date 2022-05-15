@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from crypten.config import cfg
 from crypten.cuda import CUDALongTensor
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 from test.test_mpc import TestMPC
 
 
