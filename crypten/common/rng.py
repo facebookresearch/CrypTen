@@ -23,7 +23,7 @@ def generate_random_ring_element(size, ring_size=(2**64), generator=None, **kwar
         size,
         generator=generator,
         dtype=torch.long,
-        **kwargs
+        **kwargs,
     )
     if rand_element.is_cuda:
         return CUDALongTensor(rand_element)
