@@ -32,6 +32,8 @@ class BinarySharedTensor(object):
     where n is the number of parties present in the protocol (world_size).
     """
 
+    PUBLIC_COMPUTE_PARTY = 0  # Party responsible for public XOR and NOT.
+
     def __init__(
         self, tensor=None, size=None, broadcast_size=False, src=0, device=None
     ):
@@ -214,7 +216,7 @@ class BinarySharedTensor(object):
     def __ixor__(self, y):
         """Bitwise XOR operator (element-wise) in place"""
         if is_tensor(y) or isinstance(y, int):
-            if self.rank == 0:
+            if self.rank == self.PUBLIC_COMPUTE_PARTY:
                 self.share ^= y
         elif isinstance(y, BinarySharedTensor):
             self.share ^= y.share
@@ -267,7 +269,7 @@ class BinarySharedTensor(object):
     def __invert__(self):
         """Bitwise NOT operator (element-wise)"""
         result = self.clone()
-        if result.rank == 0:
+        if result.rank == self.PUBLIC_COMPUTE_PARTY:
             result.share ^= -1
         return result
 

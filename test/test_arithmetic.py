@@ -120,40 +120,48 @@ class TestArithmetic(MultiProcessTestCase):
         arithmetic_functions = ["add", "add_", "sub", "sub_", "mul", "mul_"]
         for func in arithmetic_functions:
             for tensor_type in [lambda x: x, ArithmeticSharedTensor]:
-                tensor1 = get_random_test_tensor(is_float=True)
-                tensor2 = get_random_test_tensor(is_float=True)
-                encrypted = ArithmeticSharedTensor(tensor1)
-                encrypted2 = tensor_type(tensor2)
+                for public_party in range(2):
 
-                reference = getattr(tensor1, func)(tensor2)
-                encrypted_out = getattr(encrypted, func)(encrypted2)
-                private_type = tensor_type == ArithmeticSharedTensor
-                self._check(
-                    encrypted_out,
-                    reference,
-                    "%s %s failed" % ("private" if private_type else "public", func),
-                )
-                if "_" in func:
-                    # Check in-place op worked
+                    # Vary which party performs public addition.
+                    ArithmeticSharedTensor.PUBLIC_COMPUTE_PARTY = public_party
+                    self.assertTrue(
+                        ArithmeticSharedTensor.PUBLIC_COMPUTE_PARTY == public_party
+                    )
+
+                    tensor1 = get_random_test_tensor(is_float=True)
+                    tensor2 = get_random_test_tensor(is_float=True)
+                    encrypted = ArithmeticSharedTensor(tensor1)
+                    encrypted2 = tensor_type(tensor2)
+
+                    reference = getattr(tensor1, func)(tensor2)
+                    encrypted_out = getattr(encrypted, func)(encrypted2)
+                    private_type = tensor_type == ArithmeticSharedTensor
                     self._check(
-                        encrypted,
+                        encrypted_out,
                         reference,
-                        "%s %s failed"
-                        % ("private" if private_type else "public", func),
+                        "%s %s failed" % ("private" if private_type else "public", func),
                     )
-                else:
-                    # Check original is not modified
-                    self._check(
-                        encrypted,
-                        tensor1,
-                        "%s %s failed"
-                        % (
-                            "private"
-                            if tensor_type == ArithmeticSharedTensor
-                            else "public",
-                            func,
-                        ),
-                    )
+                    if "_" in func:
+                        # Check in-place op worked
+                        self._check(
+                            encrypted,
+                            reference,
+                            "%s %s failed"
+                            % ("private" if private_type else "public", func),
+                        )
+                    else:
+                        # Check original is not modified
+                        self._check(
+                            encrypted,
+                            tensor1,
+                            "%s %s failed"
+                            % (
+                                "private"
+                                if tensor_type == ArithmeticSharedTensor
+                                else "public",
+                                func,
+                            ),
+                        )
 
                 # Check encrypted vector with encrypted scalar works.
                 tensor1 = get_random_test_tensor(is_float=True)
@@ -270,35 +278,43 @@ class TestArithmetic(MultiProcessTestCase):
             tensor_size2[dimension] = index.size(0)
             for func in index_add_functions:
                 for tensor_type in [lambda x: x, ArithmeticSharedTensor]:
-                    tensor1 = get_random_test_tensor(size=tensor_size1, is_float=True)
-                    tensor2 = get_random_test_tensor(size=tensor_size2, is_float=True)
-                    encrypted = ArithmeticSharedTensor(tensor1)
-                    encrypted2 = tensor_type(tensor2)
+                    for public_party in range(2):
 
-                    reference = getattr(tensor1, func)(dimension, index, tensor2)
-                    encrypted_out = getattr(encrypted, func)(
-                        dimension, index, encrypted2
-                    )
-                    private = tensor_type == ArithmeticSharedTensor
-                    self._check(
-                        encrypted_out,
-                        reference,
-                        "%s %s failed" % ("private" if private else "public", func),
-                    )
-                    if func.endswith("_"):
-                        # Check in-place index_add worked
+                        # Vary which party performs public addition.
+                        ArithmeticSharedTensor.PUBLIC_COMPUTE_PARTY = public_party
+                        self.assertTrue(
+                            ArithmeticSharedTensor.PUBLIC_COMPUTE_PARTY == public_party
+                        )
+
+                        tensor1 = get_random_test_tensor(size=tensor_size1, is_float=True)
+                        tensor2 = get_random_test_tensor(size=tensor_size2, is_float=True)
+                        encrypted = ArithmeticSharedTensor(tensor1)
+                        encrypted2 = tensor_type(tensor2)
+
+                        reference = getattr(tensor1, func)(dimension, index, tensor2)
+                        encrypted_out = getattr(encrypted, func)(
+                            dimension, index, encrypted2
+                        )
+                        private = tensor_type == ArithmeticSharedTensor
                         self._check(
-                            encrypted,
+                            encrypted_out,
                             reference,
                             "%s %s failed" % ("private" if private else "public", func),
                         )
-                    else:
-                        # Check original is not modified
-                        self._check(
-                            encrypted,
-                            tensor1,
-                            "%s %s failed" % ("private" if private else "public", func),
-                        )
+                        if func.endswith("_"):
+                            # Check in-place index_add worked
+                            self._check(
+                                encrypted,
+                                reference,
+                                "%s %s failed" % ("private" if private else "public", func),
+                            )
+                        else:
+                            # Check original is not modified
+                            self._check(
+                                encrypted,
+                                tensor1,
+                                "%s %s failed" % ("private" if private else "public", func),
+                            )
 
     def test_scatter(self):
         """Test scatter/scatter_add function of encrypted tensor"""

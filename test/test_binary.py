@@ -153,13 +153,21 @@ class TestBinary(MultiProcessTestCase):
     def test_XOR(self):
         """Test bitwise-XOR function on BinarySharedTensor"""
         for tensor_type in [lambda x: x, BinarySharedTensor]:
-            tensor = get_random_test_tensor(is_float=False)
-            tensor2 = get_random_test_tensor(is_float=False)
-            reference = tensor ^ tensor2
-            encrypted_tensor = BinarySharedTensor(tensor)
-            encrypted_tensor2 = tensor_type(tensor2)
-            encrypted_out = encrypted_tensor ^ encrypted_tensor2
-            self._check(encrypted_out, reference, "%s XOR failed" % tensor_type)
+            for public_party in range(2):
+
+                # Vary which party performs public XOR.
+                BinarySharedTensor.PUBLIC_COMPUTE_PARTY = public_party
+                self.assertTrue(
+                    BinarySharedTensor.PUBLIC_COMPUTE_PARTY == public_party
+                )
+
+                tensor = get_random_test_tensor(is_float=False)
+                tensor2 = get_random_test_tensor(is_float=False)
+                reference = tensor ^ tensor2
+                encrypted_tensor = BinarySharedTensor(tensor)
+                encrypted_tensor2 = tensor_type(tensor2)
+                encrypted_out = encrypted_tensor ^ encrypted_tensor2
+                self._check(encrypted_out, reference, "%s XOR failed" % tensor_type)
 
     def test_AND(self):
         """Test bitwise-AND function on BinarySharedTensor"""
@@ -229,11 +237,20 @@ class TestBinary(MultiProcessTestCase):
 
     def test_invert(self):
         """Test bitwise-invert function on BinarySharedTensor"""
-        tensor = get_random_test_tensor(is_float=False)
-        encrypted_tensor = BinarySharedTensor(tensor)
-        reference = ~tensor
-        encrypted_out = ~encrypted_tensor
-        self._check(encrypted_out, reference, "invert failed")
+        for public_party in range(2):
+
+            # Vary which party performs NOT operation.
+            BinarySharedTensor.PUBLIC_COMPUTE_PARTY = public_party
+            self.assertTrue(
+                BinarySharedTensor.PUBLIC_COMPUTE_PARTY == public_party
+            )
+
+            # Perform inversion test.
+            tensor = get_random_test_tensor(is_float=False)
+            encrypted_tensor = BinarySharedTensor(tensor)
+            reference = ~tensor
+            encrypted_out = ~encrypted_tensor
+            self._check(encrypted_out, reference, "invert failed")
 
     def test_add(self):
         """Tests add using binary shares"""
@@ -332,52 +349,60 @@ class TestBinary(MultiProcessTestCase):
         """Test inplace vs. out-of-place functions"""
         for op in ["__xor__", "__and__", "__or__"]:
             for tensor_type in [lambda x: x, BinarySharedTensor]:
-                tensor1 = get_random_test_tensor(is_float=False)
-                tensor2 = get_random_test_tensor(is_float=False)
+                for public_party in range(2):
 
-                reference = getattr(tensor1, op)(tensor2)
+                    # Vary which party performs public XOR and NOT.
+                    BinarySharedTensor.PUBLIC_COMPUTE_PARTY = public_party
+                    self.assertTrue(
+                        BinarySharedTensor.PUBLIC_COMPUTE_PARTY == public_party
+                    )
 
-                encrypted1 = BinarySharedTensor(tensor1)
-                encrypted2 = tensor_type(tensor2)
+                    tensor1 = get_random_test_tensor(is_float=False)
+                    tensor2 = get_random_test_tensor(is_float=False)
 
-                input_plain_id = id(encrypted1.share)
-                input_encrypted_id = id(encrypted1)
+                    reference = getattr(tensor1, op)(tensor2)
 
-                # Test that out-of-place functions do not modify the input
-                private = isinstance(encrypted2, BinarySharedTensor)
-                encrypted_out = getattr(encrypted1, op)(encrypted2)
-                self._check(
-                    encrypted1,
-                    tensor1,
-                    "%s out-of-place %s modifies input"
-                    % ("private" if private else "public", op),
-                )
-                self._check(
-                    encrypted_out,
-                    reference,
-                    "%s out-of-place %s produces incorrect output"
-                    % ("private" if private else "public", op),
-                )
-                self.assertFalse(id(encrypted_out.share) == input_plain_id)
-                self.assertFalse(id(encrypted_out) == input_encrypted_id)
+                    encrypted1 = BinarySharedTensor(tensor1)
+                    encrypted2 = tensor_type(tensor2)
 
-                # Test that in-place functions modify the input
-                inplace_op = op[:2] + "i" + op[2:]
-                encrypted_out = getattr(encrypted1, inplace_op)(encrypted2)
-                self._check(
-                    encrypted1,
-                    reference,
-                    "%s in-place %s does not modify input"
-                    % ("private" if private else "public", inplace_op),
-                )
-                self._check(
-                    encrypted_out,
-                    reference,
-                    "%s in-place %s produces incorrect output"
-                    % ("private" if private else "public", inplace_op),
-                )
-                self.assertTrue(id(encrypted_out.share) == input_plain_id)
-                self.assertTrue(id(encrypted_out) == input_encrypted_id)
+                    input_plain_id = id(encrypted1.share)
+                    input_encrypted_id = id(encrypted1)
+
+                    # Test that out-of-place functions do not modify the input
+                    private = isinstance(encrypted2, BinarySharedTensor)
+                    encrypted_out = getattr(encrypted1, op)(encrypted2)
+                    self._check(
+                        encrypted1,
+                        tensor1,
+                        "%s out-of-place %s modifies input"
+                        % ("private" if private else "public", op),
+                    )
+                    self._check(
+                        encrypted_out,
+                        reference,
+                        "%s out-of-place %s produces incorrect output"
+                        % ("private" if private else "public", op),
+                    )
+                    self.assertFalse(id(encrypted_out.share) == input_plain_id)
+                    self.assertFalse(id(encrypted_out) == input_encrypted_id)
+
+                    # Test that in-place functions modify the input
+                    inplace_op = op[:2] + "i" + op[2:]
+                    encrypted_out = getattr(encrypted1, inplace_op)(encrypted2)
+                    self._check(
+                        encrypted1,
+                        reference,
+                        "%s in-place %s does not modify input"
+                        % ("private" if private else "public", inplace_op),
+                    )
+                    self._check(
+                        encrypted_out,
+                        reference,
+                        "%s in-place %s produces incorrect output"
+                        % ("private" if private else "public", inplace_op),
+                    )
+                    self.assertTrue(id(encrypted_out.share) == input_plain_id)
+                    self.assertTrue(id(encrypted_out) == input_encrypted_id)
 
     def test_control_flow_failure(self):
         """Tests that control flow fails as expected"""

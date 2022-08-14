@@ -16,6 +16,7 @@ from .provider import TupleProvider
 
 class TrustedFirstParty(TupleProvider):
     NAME = "TFP"
+    COMMUNICATING_PARTY = 0
 
     def generate_additive_triple(self, size0, size1, op, device=None, *args, **kwargs):
         """Generate multiplicative triples of given sizes"""
@@ -24,9 +25,9 @@ class TrustedFirstParty(TupleProvider):
 
         c = getattr(torch, op)(a, b, *args, **kwargs)
 
-        a = ArithmeticSharedTensor(a, precision=0, src=0)
-        b = ArithmeticSharedTensor(b, precision=0, src=0)
-        c = ArithmeticSharedTensor(c, precision=0, src=0)
+        a = ArithmeticSharedTensor(a, precision=0, src=self.COMMUNICATING_PARTY)
+        b = ArithmeticSharedTensor(b, precision=0, src=self.COMMUNICATING_PARTY)
+        c = ArithmeticSharedTensor(c, precision=0, src=self.COMMUNICATING_PARTY)
 
         return a, b, c
 
@@ -37,7 +38,9 @@ class TrustedFirstParty(TupleProvider):
 
         # Stack to vectorize scatter function
         stacked = torch_stack([r, r2])
-        stacked = ArithmeticSharedTensor(stacked, precision=0, src=0)
+        stacked = ArithmeticSharedTensor(
+            stacked, precision=0, src=self.COMMUNICATING_PARTY
+        )
         return stacked[0], stacked[1]
 
     def generate_binary_triple(self, size0, size1, device=None):
@@ -46,9 +49,9 @@ class TrustedFirstParty(TupleProvider):
         b = generate_kbit_random_tensor(size1, device=device)
         c = a & b
 
-        a = BinarySharedTensor(a, src=0)
-        b = BinarySharedTensor(b, src=0)
-        c = BinarySharedTensor(c, src=0)
+        a = BinarySharedTensor(a, src=self.COMMUNICATING_PARTY)
+        b = BinarySharedTensor(b, src=self.COMMUNICATING_PARTY)
+        c = BinarySharedTensor(c, src=self.COMMUNICATING_PARTY)
 
         return a, b, c
 
@@ -61,9 +64,11 @@ class TrustedFirstParty(TupleProvider):
         ]
         theta_r = count_wraps(r)
 
-        shares = comm.get().scatter(r, 0)
+        shares = comm.get().scatter(r, self.COMMUNICATING_PARTY)
         r = ArithmeticSharedTensor.from_shares(shares, precision=0)
-        theta_r = ArithmeticSharedTensor(theta_r, precision=0, src=0)
+        theta_r = ArithmeticSharedTensor(
+            theta_r, precision=0, src=self.COMMUNICATING_PARTY
+        )
 
         return r, theta_r
 
@@ -72,7 +77,7 @@ class TrustedFirstParty(TupleProvider):
         # generate random bit
         r = generate_kbit_random_tensor(size, bitlength=1, device=device)
 
-        rA = ArithmeticSharedTensor(r, precision=0, src=0)
-        rB = BinarySharedTensor(r, src=0)
+        rA = ArithmeticSharedTensor(r, precision=0, src=self.COMMUNICATING_PARTY)
+        rB = BinarySharedTensor(r, src=self.COMMUNICATING_PARTY)
 
         return rA, rB
