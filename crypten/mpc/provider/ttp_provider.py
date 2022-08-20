@@ -168,8 +168,8 @@ class TTPClient:
 
         def ttp_request(self, func_name, device, *args, **kwargs):
             assert (
-                comm.get().get_rank() == self.COMMUNICATING_PARTY
-            ), f"Only party {self.COMMUNICATING_PARTY} communicates with the TTPServer"
+                comm.get().get_rank() == 0
+            ), "Only party 0 communicates with the TTPServer"
             if device is not None:
                 device = str(device)
             message = {
