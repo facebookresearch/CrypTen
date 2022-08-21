@@ -2359,7 +2359,6 @@ class Hardtanh(Module):
             )
 
     def forward(self, input):
-        print(input)
         if isinstance(input, list):
             input, min_val, max_val = input
             min_val, max_val = min_val.item(), max_val.item()
