@@ -57,7 +57,7 @@ class TestDebug(MultiProcessTestCase):
             # Ensure incorrect validation works properly for value
             encrypted_tensor.add = lambda y: crypten.cryptensor(tensor)
             with self.assertRaises(ValueError):
-                encrypted_tensor.add(1)
+                encrypted_tensor.add(2)
 
             # Test matmul in validation mode
             x = get_random_test_tensor(size=(3, 5), is_float=True)
