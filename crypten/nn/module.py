@@ -1303,13 +1303,20 @@ class Unsqueeze(Module):
         self.dimension = dimension
 
     def forward(self, input):
-        return input.unsqueeze(self.dimension)
+        if isinstance(input, list):
+            assert len(input) == 2, "list input must be [x, dimension]"
+            input, dimension = input
+            assert len(dimension) == 1, "can only unsqueeze one dimension at a time"
+            dimension = int(dimension.item())
+        else:
+            dimension = self.dimension
+        return input.unsqueeze(dimension)
 
     @staticmethod
     def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
-        dimension = attributes["axes"]
+        dimension = attributes.get("axes", [None])
         assert len(dimension) == 1, "can only unsqueeze one dimension at a time"
         return Unsqueeze(dimension[0])
 
@@ -1331,6 +1338,7 @@ class Slice(Module):
     def forward(self, x):
 
         # Process inputs:
+        axes = None
         if isinstance(x, list):
             if len(x) == 3:
                 x, starts, ends = x
@@ -1340,13 +1348,16 @@ class Slice(Module):
                 steps = 1
             elif len(x) == 5:
                 x, starts, ends, axes, steps = x
+                if not torch.eq(steps.int(), 1).all():
+                    raise ValueError("Only steps value of 1 currently supported.")
             else:
                 raise ValueError("list input x must have 3, 4, or 5, values")
             starts, ends = starts.int().tolist(), ends.int().tolist()
+        else:
+            starts, ends, axes = self.starts, self.ends, self.axes
+            steps = 1
         if axes is None:
             axes = list(range(len(starts)))
-        if not torch.eq(steps.int(), 1).all():
-            raise ValueError("Only steps value of 1 currently supported.")
 
         # Perform slicing:
         output = x
