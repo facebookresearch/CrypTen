@@ -482,9 +482,9 @@ class TestNN(object):
             "BatchNorm1d": (25,),
             "BatchNorm2d": (3,),
             "BatchNorm3d": (6,),
-            "ConstantPad1d": (3, 1.0),
-            "ConstantPad2d": (2, 2.0),
-            "ConstantPad3d": (1, 0.0),
+            # "ConstantPad1d": (3, 1.0),
+            # "ConstantPad2d": (2, 2.0),
+            # "ConstantPad3d": (1, 0.0),  # TODO: Support negative steps in Slice.
             "Conv1d": (3, 6, 5),
             "Conv2d": (3, 6, 5),
             "Hardtanh": (-3, 1),
