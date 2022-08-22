@@ -78,7 +78,7 @@ def RAPPOR_loss(alpha):
 class TestPrivacyModels(MultiProcessTestCase):
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):
         if tolerance is None:
-            tolerance = getattr(self, "default_tolerance", 0.05)
+            tolerance = getattr(self, "default_tolerance", 0.07)
         tensor = encrypted_tensor.get_plain_text()
 
         # Check sizes match
@@ -135,6 +135,7 @@ class TestPrivacyModels(MultiProcessTestCase):
         ) in itertools.product(
             TEST_MODELS, PROTOCOLS, RR_PROBS, RAPPOR_PROBS, [False, True]
         ):
+            logging.info(f"Model: {model_tuple}; Protocol: {protocol}")
             cfg.nn.dpsmpc.protocol = protocol
             cfg.nn.dpsmpc.skip_loss_forward = skip_forward
 
