@@ -104,7 +104,7 @@ class TestPrivacyModels(MultiProcessTestCase):
 
         if std == 0:
             self.assertTrue(
-                torch.allclose(grad, dp_grad, rtol=tolerance, atol=tolerance * 0.1)
+                torch.allclose(grad, dp_grad, rtol=tolerance, atol=tolerance * 0.2)
             )
         else:
             errors = grad - dp_grad
