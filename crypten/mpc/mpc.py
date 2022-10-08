@@ -10,6 +10,7 @@ from crypten import communicator as comm
 from crypten.common.tensor_types import is_tensor
 from crypten.common.util import torch_stack
 from crypten.config import cfg
+from crypten.cryptensor import implements
 from crypten.cuda import CUDALongTensor
 
 from ..cryptensor import CrypTensor
@@ -320,6 +321,11 @@ BINARY_FUNCTIONS = [
     "conv_transpose1d",
     "conv_transpose2d",
 ]
+TORCH_OVERRIDE_BINARY_FUNCTION = [
+    "add",
+    "sub",
+    "mul",
+]
 
 
 def _add_unary_passthrough_function(name):
@@ -333,12 +339,22 @@ def _add_unary_passthrough_function(name):
 
 def _add_binary_passthrough_function(name):
     def binary_wrapper_function(self, value, *args, **kwargs):
+        func_name = name
+        if torch.is_tensor(self) and isinstance(value, MPCTensor):
+            self, value = value, self   # swap order of arguments
+            func_name = f"__r{name}__"  # invoke __radd__, __rsub__, etc.
+
         result = self.shallow_copy()
         if isinstance(value, MPCTensor):
             value = value._tensor
-        result._tensor = getattr(result._tensor, name)(value, *args, **kwargs)
+        result._tensor = getattr(result._tensor, func_name)(value, *args, **kwargs)
         return result
 
+    # register as torch function that can be overridden:
+    if name in TORCH_OVERRIDE_BINARY_FUNCTION:
+        implements(name)(binary_wrapper_function)
+
+    # register function into MPCTensor:
     setattr(MPCTensor, name, binary_wrapper_function)
 
 
