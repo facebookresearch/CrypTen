@@ -222,7 +222,7 @@ def _setup_prng():
 
 def _sync_seeds(next_seed, local_seed, global_seed):
     """
-    Sends random seed to next party, recieve seed from prev. party, and broadcast global seed
+    Sends random seed to next party, receive seed from prev. party, and broadcast global seed
 
     After seeds are distributed. One seed is created for each party to coordinate seeds
     across cuda devices.
