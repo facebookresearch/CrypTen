@@ -422,6 +422,7 @@ class TestCrypten(MultiProcessTestCase):
                 "where failed with private condition",
             )
 
+    @unittest.skip("Test is flaky, with successes, failures and timeouts as outcomes")
     def test_is_initialized(self):
         """Tests that the is_initialized flag is set properly"""
         comm = crypten.communicator

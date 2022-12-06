@@ -12,6 +12,8 @@ from functools import reduce
 import crypten
 import torch
 
+from .common.util import _grad_input_padding
+
 
 # registry that maps function names to AutogradFunctions:
 FUNCTION_REGISTRY = {}
@@ -1482,8 +1484,7 @@ class AutogradAvgPool2D(AutogradFunction):
             in_channels, 1, kernel_size[0], kernel_size[1], device=grad_output.device
         ) / (kernel_size[0] * kernel_size[1])
 
-        # TODO: Eliminate dependency on torch internal function by implementing in util
-        grad_input_padding = torch.nn.grad._grad_input_padding(
+        grad_input_padding = _grad_input_padding(
             grad_output,
             input_shape,
             stride,
@@ -1620,8 +1621,7 @@ class AutogradConv1D(AutogradFunction):
             )
 
         # compute gradient with respect to input:
-        # TODO: Eliminate dependency on torch internal function by implementing in util
-        output_padding = torch.nn.grad._grad_input_padding(
+        output_padding = _grad_input_padding(
             grad_output,
             input.size(),
             stride,
@@ -1700,8 +1700,7 @@ class AutogradConv2D(AutogradFunction):
             )
 
         # compute gradient with respect to input:
-        # TODO: Eliminate dependency on torch internal function by implementing in util
-        output_padding = torch.nn.grad._grad_input_padding(
+        output_padding = _grad_input_padding(
             grad_output,
             input.size(),
             stride,

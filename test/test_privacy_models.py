@@ -97,14 +97,14 @@ class TestPrivacyModels(MultiProcessTestCase):
 
     def _check_gradients_with_dp(self, model, dp_model, std, tolerance=None):
         if tolerance is None:
-            tolerance = getattr(self, "default_tolerance", 0.05)
+            tolerance = getattr(self, "default_tolerance", 0.07)
 
         grad = torch.cat([p.grad.flatten() for p in model.parameters()])
         dp_grad = torch.cat([p.grad.flatten() for p in dp_model.parameters()])
 
         if std == 0:
             self.assertTrue(
-                torch.allclose(grad, dp_grad, rtol=tolerance, atol=tolerance * 0.1)
+                torch.allclose(grad, dp_grad, rtol=tolerance, atol=tolerance * 0.2)
             )
         else:
             errors = grad - dp_grad
@@ -135,6 +135,7 @@ class TestPrivacyModels(MultiProcessTestCase):
         ) in itertools.product(
             TEST_MODELS, PROTOCOLS, RR_PROBS, RAPPOR_PROBS, [False, True]
         ):
+            logging.info(f"Model: {model_tuple}; Protocol: {protocol}")
             cfg.nn.dpsmpc.protocol = protocol
             cfg.nn.dpsmpc.skip_loss_forward = skip_forward
 
