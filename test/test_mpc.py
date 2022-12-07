@@ -52,7 +52,7 @@ class TestMPC(object):
 
         diff = (tensor - reference).abs_()
         norm_diff = diff.div(tensor.abs() + reference.abs()).abs_()
-        test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.1)
+        test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.2)
         test_passed = test_passed.gt(0).all().item() == 1
         if not test_passed:
             logging.info(msg)
@@ -2302,6 +2302,9 @@ class TestTTP(MultiProcessTestCase, TestMPC):
 class Test3PC(MultiProcessTestCase, TestMPC):
     def setUp(self):
         super(Test3PC, self).setUp(world_size=3)
+
+    def tearDown(self):
+        super(Test3PC, self).tearDown()
 
 
 class TestRSS(MultiProcessTestCase, TestMPC):

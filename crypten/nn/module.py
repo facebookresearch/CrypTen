@@ -1012,7 +1012,7 @@ class ConstantOfShape(Module):
 
     def forward(self, size):
         if torch.is_tensor(size):
-            size = size.tolist()
+            size = size.int().tolist()
         assert isinstance(
             size, (list, tuple)
         ), f"size must be list or tuple, not {type(size)}"
@@ -1303,13 +1303,20 @@ class Unsqueeze(Module):
         self.dimension = dimension
 
     def forward(self, input):
-        return input.unsqueeze(self.dimension)
+        if isinstance(input, list):
+            assert len(input) == 2, "list input must be [x, dimension]"
+            input, dimension = input
+            assert len(dimension) == 1, "can only unsqueeze one dimension at a time"
+            dimension = int(dimension.item())
+        else:
+            dimension = self.dimension
+        return input.unsqueeze(dimension)
 
     @staticmethod
     def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
-        dimension = attributes["axes"]
+        dimension = attributes.get("axes", [None])
         assert len(dimension) == 1, "can only unsqueeze one dimension at a time"
         return Unsqueeze(dimension[0])
 
@@ -1326,15 +1333,35 @@ class Slice(Module):
         super().__init__()
         self.starts = starts
         self.ends = ends
-        if axes is None:
-            self.axes = list(range(len(starts)))
-        else:
-            self.axes = axes
+        self.axes = axes
 
     def forward(self, x):
+        # Process inputs:
+        axes = None
+        if isinstance(x, list):
+            if len(x) == 3:
+                x, starts, ends = x
+                axes, steps = self.axes, 1
+            elif len(x) == 4:
+                x, starts, ends, axes = x
+                steps = 1
+            elif len(x) == 5:
+                x, starts, ends, axes, steps = x
+                if not torch.eq(steps.int(), 1).all():
+                    raise ValueError("Only steps value of 1 currently supported.")
+            else:
+                raise ValueError("list input x must have 3, 4, or 5, values")
+            starts, ends = starts.int().tolist(), ends.int().tolist()
+        else:
+            starts, ends, axes = self.starts, self.ends, self.axes
+            steps = 1
+        if axes is None:
+            axes = list(range(len(starts)))
+
+        # Perform slicing:
         output = x
-        for idx, axis in enumerate(self.axes):
-            start, end = int(self.starts[idx]), int(self.ends[idx])
+        for idx, axis in enumerate(axes):
+            start, end = int(starts[idx]), int(ends[idx])
             length = min(end, output.size(int(axis))) - start
             output = output.narrow(int(axis), start, length)
         return output
@@ -1342,7 +1369,9 @@ class Slice(Module):
     @staticmethod
     def from_onnx(attributes=None):
         return Slice(
-            attributes["starts"], attributes["ends"], axes=attributes.get("axes", None)
+            attributes.get("starts", None),
+            attributes.get("ends", None),
+            axes=attributes.get("axes", None),
         )
 
 
@@ -1757,15 +1786,20 @@ class _ConstantPad(Module):
         self.mode = mode
 
     def forward(self, input):
-        return input.pad(self.padding, value=self.value, mode="constant")
+        if isinstance(input, list):
+            assert len(input) == 2, "input should be [tensor, pads] list"
+            padding = tuple(input[1].int().tolist())
+            input = input[0]
+        else:
+            padding = self.padding
+        return input.pad(padding, value=self.value, mode=self.mode)
 
     @staticmethod
     def from_onnx(attributes=None):
         if attributes is None:
             attributes = {}
-        return _ConstantPad(
-            attributes["pads"], attributes["value"], None, mode=attributes["mode"]
-        )
+        assert attributes["mode"] == b"constant", "only constant padding supported"
+        return _ConstantPad(None, 0, 0, mode="constant")
 
 
 class ConstantPad1d(_ConstantPad):
@@ -2335,14 +2369,19 @@ class Hardtanh(Module):
             )
 
     def forward(self, input):
-        return input.hardtanh(self.min_val, self.max_val)
-
-    def extra_repr(self):
-        return "min_val={}, max_val={}".format(self.min_val, self.max_val)
+        if isinstance(input, list):
+            input, min_val, max_val = input
+            min_val, max_val = min_val.item(), max_val.item()
+        else:
+            min_val, max_val = self.min_val, self.max_val
+        return input.hardtanh(min_val, max_val)
 
     @staticmethod
     def from_onnx(attributes=None):
-        return Hardtanh(min_val=attributes["min"], max_val=attributes["max"])
+        return Hardtanh(
+            min_val=attributes.get("min", -1.0),
+            max_val=attributes.get("max", 1.0),
+        )
 
 
 class ReLU6(Hardtanh):
