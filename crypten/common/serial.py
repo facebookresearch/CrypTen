@@ -88,10 +88,10 @@ class RestrictedUnpickler(pickle.Unpickler):
         "torch.ByteStorage",
         "torch.DoubleStorage",
         "torch.FloatStorage",
-        # "torch._C.HalfStorageBase",
-        # "torch._C.QInt32StorageBase",
-        # "torch._C.QInt8StorageBase",
-        # "torch.storage._TypedStorage",
+        "torch._C.HalfStorageBase",
+        "torch._C.QInt32StorageBase",
+        "torch._C.QInt8StorageBase",
+        "torch.storage._TypedStorage",
     ]
 
     for item in __ALLOWLIST:

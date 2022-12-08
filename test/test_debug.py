@@ -55,7 +55,6 @@ class TestDebug(MultiProcessTestCase):
                 encrypted_tensor.add(10)
 
             # Ensure incorrect validation works properly for value
-            # tensor2 = get_random_test_tensor(size=(2, 2), is_float=True)
             encrypted_tensor.add = lambda y: crypten.cryptensor(tensor)
             with self.assertRaises(ValueError):
                 encrypted_tensor.add(10)

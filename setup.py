@@ -52,5 +52,5 @@ if __name__ == "__main__":
         author=AUTHOR,
         license=LICENSE,
         tests_require=["pytest"],
-        data_files=[("/configs", ["configs/default.yaml"])],
+        data_files=[("configs", ["configs/default.yaml"])],
     )

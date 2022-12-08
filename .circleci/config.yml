@@ -34,7 +34,7 @@ jobs:
           no_output_timeout: 3h
           command: |
             . ~/crypten-test/bin/activate
-            echo 'for i in $(ls test/test_*.py | grep -Ev "test_(context|benchmark|tensorboard|models|cuda)"); do python3 -m unittest $i; (($? != 0)) && exit 1; done; exit 0' > run_tests.sh
+            echo 'for i in $(ls test/test_*.py | grep -Ev "test_(context|benchmark|models)"); do python3 -m unittest $i; (($? != 0)) && exit 1; done; exit 0' > run_tests.sh
             bash ./run_tests.sh
       - run:
           name: Linear svm example
