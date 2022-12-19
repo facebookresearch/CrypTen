@@ -40,7 +40,7 @@ def max_pool2d(
         # padding with extremely negative values to avoid choosing pads.
         # The magnitude of this value should not be too large because
         # multiplication can otherwise fail.
-        pad_value=(-(2 ** 24)),
+        pad_value=(-(2**24)),
         # TODO: Find a better solution for padding with max_pooling
     )
     max_vals, argmax_vals = max_input.max(dim=-1, one_hot=True)

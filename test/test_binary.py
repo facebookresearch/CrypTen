@@ -13,7 +13,7 @@ import crypten
 import torch
 from crypten.common.tensor_types import is_int_tensor
 from crypten.mpc.primitives import BinarySharedTensor
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
 class TestBinary(MultiProcessTestCase):

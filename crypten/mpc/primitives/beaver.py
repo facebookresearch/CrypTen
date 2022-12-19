@@ -163,7 +163,7 @@ def truncate(x, y):
     # NOTE: The multiplication here must be split into two parts
     # to avoid long out-of-bounds when y <= 2 since (2 ** 63) is
     # larger than the largest long integer.
-    correction = wrap_count * 4 * (int(2 ** 62) // y)
+    correction = wrap_count * 4 * (int(2**62) // y)
     x.share -= correction.share
     return x
 

@@ -12,6 +12,8 @@ from functools import reduce
 import crypten
 import torch
 
+from .common.util import _grad_input_padding
+
 
 # registry that maps function names to AutogradFunctions:
 FUNCTION_REGISTRY = {}
@@ -1482,8 +1484,7 @@ class AutogradAvgPool2D(AutogradFunction):
             in_channels, 1, kernel_size[0], kernel_size[1], device=grad_output.device
         ) / (kernel_size[0] * kernel_size[1])
 
-        # TODO: Eliminate dependency on torch internal function by implementing in util
-        grad_input_padding = torch.nn.grad._grad_input_padding(
+        grad_input_padding = _grad_input_padding(
             grad_output,
             input_shape,
             stride,
@@ -1620,8 +1621,7 @@ class AutogradConv1D(AutogradFunction):
             )
 
         # compute gradient with respect to input:
-        # TODO: Eliminate dependency on torch internal function by implementing in util
-        output_padding = torch.nn.grad._grad_input_padding(
+        output_padding = _grad_input_padding(
             grad_output,
             input.size(),
             stride,
@@ -1700,8 +1700,7 @@ class AutogradConv2D(AutogradFunction):
             )
 
         # compute gradient with respect to input:
-        # TODO: Eliminate dependency on torch internal function by implementing in util
-        output_padding = torch.nn.grad._grad_input_padding(
+        output_padding = _grad_input_padding(
             grad_output,
             input.size(),
             stride,
@@ -1961,6 +1960,53 @@ class AutogradBinaryCrossEntropyWithLogits(AutogradFunction):
     def backward(ctx, grad_output):
         target, sigmoid_out = ctx.saved_tensors
         return (sigmoid_out - target).div(target.nelement()).mul_(grad_output)
+
+
+@register_function("rappor_loss")
+class AutogradRAPPORLoss(AutogradFunction):
+    @staticmethod
+    def forward(ctx, logit, target, alpha, skip_forward=False):
+        assert (
+            logit.size() == target.size()
+        ), "Logit and target sizes must match for rappor loss"
+        pred = logit.sigmoid()
+        ctx.mark_non_differentiable(target)
+        if alpha == 0.0:
+            ctx.save_multiple_for_backward([target, pred, None, alpha])
+            pred_normalized = pred
+        else:
+            pred_normalized = alpha * pred + (1 - alpha) * (1 - pred)
+            grad_correction = pred * (1 - pred)
+            grad_correction *= (pred_normalized * (1 - pred_normalized)).reciprocal(
+                input_in_01=True
+            )
+            ctx.save_multiple_for_backward(
+                [target, pred_normalized, grad_correction, alpha]
+            )
+
+        if skip_forward:
+            return pred.new(0)
+
+        log_pos, log_neg = (
+            crypten.stack([pred_normalized, 1.0 - pred_normalized])
+            .log(input_in_01=True)
+            .unbind(dim=0)
+        )
+
+        loss_values = target * log_pos + (1.0 - target) * log_neg
+        return -(loss_values.mean())
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        target, pred_normalized, grad_correction, alpha = ctx.saved_tensors
+
+        if alpha == 0.0:
+            return (pred_normalized - target).div(target.nelement()).mul_(grad_output)
+
+        grad = (pred_normalized - target).div(target.nelement())
+        grad *= 2 * alpha - 1
+        grad *= grad_correction
+        return grad.mul_(grad_output)
 
 
 @register_function("cross_entropy")

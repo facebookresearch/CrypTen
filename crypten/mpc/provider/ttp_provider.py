@@ -251,7 +251,7 @@ class TTPServer:
         """Create random generator to send to a party"""
         ws = comm.get().get_world_size()
 
-        seeds = [torch.randint(-(2 ** 63), 2 ** 63 - 1, size=()) for _ in range(ws)]
+        seeds = [torch.randint(-(2**63), 2**63 - 1, size=()) for _ in range(ws)]
         reqs = [
             dist.isend(tensor=seeds[i], dst=i, group=self.ttp_group) for i in range(ws)
         ]

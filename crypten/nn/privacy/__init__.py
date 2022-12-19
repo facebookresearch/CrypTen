@@ -5,6 +5,6 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-from .dp_split import DPSplitModel
+from .dp_split import DPSplitModel, SkippedLoss
 
-__all__ = ["DPSplitModel"]
+__all__ = ["DPSplitModel", "SkippedLoss"]

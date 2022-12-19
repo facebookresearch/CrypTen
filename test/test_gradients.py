@@ -19,8 +19,8 @@ from crypten.common.tensor_types import is_float_tensor
 from crypten.config import cfg
 from crypten.gradients import AutogradContext
 from test.multiprocess_test_case import (
-    MultiProcessTestCase,
     get_random_test_tensor,
+    MultiProcessTestCase,
     onehot,
 )
 
@@ -950,8 +950,41 @@ class TestGradients:
                 # backward
                 reference.backward()
                 out_encr.backward()
+                self._check(tensor_encr.grad, tensor.grad, f"{loss} backward failed")
+
+    def test_rappor_loss(self):
+        """Tests RAPPOR Loss"""
+        sizes = [(3,), (8,), (5,)]
+        alphas = [0.1, 0.3, 0.4]
+
+        for size, alpha in itertools.product(sizes, alphas):
+            for skip_forward in [True, False]:
+                tensor = get_random_test_tensor(size=size, is_float=True)
+
+                target = get_random_test_tensor(size=size, is_float=True)
+                target = target.gt(0.0).float()
+                target_encr = crypten.cryptensor(target)
+
+                # forward
+                tensor.requires_grad = True
+                tensor_encr = crypten.cryptensor(tensor, requires_grad=True)
+
+                reference = tensor.sigmoid()
+                reference = alpha * reference + (1 - alpha) * (1 - reference)
+
+                reference = torch.nn.functional.binary_cross_entropy(reference, target)
+                out_encr = tensor_encr.rappor_loss(
+                    target_encr, alpha, skip_forward=skip_forward
+                )
+
+                if not skip_forward:
+                    self._check(out_encr, reference, "rappor_loss forward failed")
+
+                # backward
+                reference.backward()
+                out_encr.backward()
                 self._check(
-                    tensor_encr.grad, tensor.grad, f"{loss} backward failed with"
+                    tensor_encr.grad, tensor.grad, "rappor_loss backward failed"
                 )
 
     def test_cosine_similarity(self):

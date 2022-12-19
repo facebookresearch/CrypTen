@@ -8,7 +8,7 @@
 import os
 import subprocess
 import uuid
-from argparse import REMAINDER, ArgumentParser
+from argparse import ArgumentParser, REMAINDER
 
 
 """

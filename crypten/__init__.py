@@ -207,9 +207,30 @@ def _setup_prng():
     # here to generate seeds so that forked processes do not generate the same seed.
 
     # Generate next / prev seeds.
-    seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
+    seed = int.from_bytes(os.urandom(8), "big") - 2**63
     next_seed = torch.tensor(seed)
-    prev_seed = torch.tensor([0], dtype=torch.long)  # populated by irecv
+
+    # Create local seed - Each party has a separate local generator
+    local_seed = int.from_bytes(os.urandom(8), "big") - 2**63
+
+    # Create global generator - All parties share one global generator for sync'd rng
+    global_seed = int.from_bytes(os.urandom(8), "big") - 2**63
+    global_seed = torch.tensor(global_seed)
+
+    _sync_seeds(next_seed, local_seed, global_seed)
+
+
+def _sync_seeds(next_seed, local_seed, global_seed):
+    """
+    Sends random seed to next party, recieve seed from prev. party, and broadcast global seed
+
+    After seeds are distributed. One seed is created for each party to coordinate seeds
+    across cuda devices.
+    """
+    global generators
+
+    # Populated by recieving the previous party's next_seed (irecv)
+    prev_seed = torch.tensor([0], dtype=torch.long)
 
     # Send random seed to next party, receive random seed from prev party
     world_size = comm.get().get_world_size()
@@ -229,12 +250,7 @@ def _setup_prng():
     prev_seed = prev_seed.item()
     next_seed = next_seed.item()
 
-    # Create local seed - Each party has a separate local generator
-    local_seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
-
-    # Create global generator - All parties share one global generator for sync'd rng
-    global_seed = int.from_bytes(os.urandom(8), "big") - 2 ** 63
-    global_seed = torch.tensor(global_seed)
+    # Broadcase global generator - All parties share one global generator for sync'd rng
     global_seed = comm.get().broadcast(global_seed, 0).item()
 
     # Create one of each seed per party
@@ -247,6 +263,24 @@ def _setup_prng():
         generators["next"][device].manual_seed(next_seed)
         generators["local"][device].manual_seed(local_seed)
         generators["global"][device].manual_seed(global_seed)
+
+
+def manual_seed(next_seed, local_seed, global_seed):
+    """
+    Allow users to set their random seed for testing purposes. For each device, we set three random seeds.
+    Note that prev_seed is populated using next_seed
+    Args:
+        next_seed  - shared seed with the next party
+        local_seed - seed known only to the local party (separate from torch's default seed to prevent interference from torch.manual_seed)
+        global_seed - seed shared by all parties
+    """
+    if cfg.debug.debug_mode:
+        next_seed = torch.tensor(next_seed)
+        global_seed = torch.tensor(global_seed)
+
+        _sync_seeds(next_seed, local_seed, global_seed)
+    else:
+        raise ValueError("User-supplied random seeds is only allowed in debug mode")
 
 
 def load_from_party(
