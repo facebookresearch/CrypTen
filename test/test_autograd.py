@@ -15,7 +15,7 @@ import torch
 from crypten.common.tensor_types import is_float_tensor
 from crypten.config import cfg
 from crypten.gradients import AutogradContext, AutogradFunction
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
 class TestAutograd(object):

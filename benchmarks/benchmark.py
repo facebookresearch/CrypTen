@@ -43,8 +43,7 @@ from examples import multiprocess_launcher
 
 
 try:
-    from . import data
-    from . import models
+    from . import data, models
 except ImportError:
     # direct import if relative fails
     import data

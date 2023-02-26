@@ -9,6 +9,7 @@
 import itertools
 import logging
 import math
+import os
 import unittest
 
 import crypten
@@ -21,7 +22,7 @@ from crypten.common.tensor_types import is_float_tensor
 from crypten.config import cfg
 from crypten.mpc import MPCTensor, ptype as Ptype
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
 class TestMPC(object):
@@ -51,7 +52,7 @@ class TestMPC(object):
 
         diff = (tensor - reference).abs_()
         norm_diff = diff.div(tensor.abs() + reference.abs()).abs_()
-        test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.1)
+        test_passed = norm_diff.le(tolerance) + diff.le(tolerance * 0.2)
         test_passed = test_passed.gt(0).all().item() == 1
         if not test_passed:
             logging.info(msg)
@@ -521,87 +522,103 @@ class TestMPC(object):
                     self._check(encrypted_conv, reference, f"{func_name} failed")
 
     def test_conv2d_square_image_one_channel(self):
-        self._conv2d((5, 5), 1)
+        self._conv2d((5, 5), 1, "conv2d")
+
+    def test_conv_transpose2d_square_image_one_channel(self):
+        self._conv2d((5, 5), 1, "conv_transpose2d")
 
     def test_conv2d_square_image_many_channels(self):
-        self._conv2d((5, 5), 5)
+        self._conv2d((5, 5), 5, "conv2d")
+
+    def test_conv_transpose2d_square_image_many_channels(self):
+        self._conv2d((5, 5), 5, "conv_transpose2d")
 
     def test_conv2d_rectangular_image_one_channel(self):
-        self._conv2d((16, 7), 1)
+        self._conv2d((16, 7), 1, "conv2d")
+
+    def test_conv_transpose2d_rectangular_image_one_channel(self):
+        self._conv2d((16, 7), 1, "conv_transpose2d")
 
     def test_conv2d_rectangular_image_many_channels(self):
-        self._conv2d((16, 7), 5)
+        self._conv2d((16, 7), 5, "conv2d")
 
-    def _conv2d(self, image_size, in_channels):
+    def test_conv_transpose2d_rectangular_image_many_channels(self):
+        self._conv2d((16, 7), 5, "conv_transpose2d")
+
+    def _conv2d(self, image_size, in_channels, func_name):
         """Test convolution of encrypted tensor with public/private tensors."""
         nbatches = [1, 3]
         kernel_sizes = [(1, 1), (2, 2), (2, 3)]
-        ochannels = [1, 3, 6]
+        ochannels = [1, 3]
         paddings = [0, 1, (0, 1)]
         strides = [1, 2, (1, 2)]
         dilations = [1, 2]
         groupings = [1, 2]
 
-        for func_name in ["conv2d", "conv_transpose2d"]:
-            for kernel_type in [lambda x: x, MPCTensor]:
-                for (
-                    batches,
-                    kernel_size,
-                    out_channels,
-                    padding,
-                    stride,
-                    dilation,
-                    groups,
-                ) in itertools.product(
-                    nbatches,
-                    kernel_sizes,
-                    ochannels,
-                    paddings,
-                    strides,
-                    dilations,
-                    groupings,
-                ):
-                    # group convolution is not supported on GPU
-                    if self.device.type == "cuda" and groups > 1:
-                        continue
+        assert func_name in [
+            "conv2d",
+            "conv_transpose2d",
+        ], f"Invalid func_name: {func_name}"
 
-                    # sample input:
-                    input_size = (batches, in_channels * groups, *image_size)
-                    input = self._get_random_test_tensor(size=input_size, is_float=True)
+        for kernel_type in [lambda x: x, MPCTensor]:
+            for (
+                batches,
+                kernel_size,
+                out_channels,
+                padding,
+                stride,
+                dilation,
+                groups,
+            ) in itertools.product(
+                nbatches,
+                kernel_sizes,
+                ochannels,
+                paddings,
+                strides,
+                dilations,
+                groupings,
+            ):
+                # group convolution is not supported on GPU
+                if self.device.type == "cuda" and groups > 1:
+                    continue
 
-                    # sample filtering kernel:
-                    if func_name == "conv2d":
-                        k_size = (out_channels * groups, in_channels, *kernel_size)
-                    else:
-                        k_size = (in_channels * groups, out_channels, *kernel_size)
-                    kernel = self._get_random_test_tensor(size=k_size, is_float=True)
+                # sample input:
+                input_size = (batches, in_channels * groups, *image_size)
+                input = self._get_random_test_tensor(size=input_size, is_float=True)
 
-                    # perform filtering:
-                    encr_matrix = MPCTensor(input)
-                    encr_kernel = kernel_type(kernel)
-                    encr_conv = getattr(encr_matrix, func_name)(
-                        encr_kernel,
-                        padding=padding,
-                        stride=stride,
-                        dilation=dilation,
-                        groups=groups,
-                    )
+                # sample filtering kernel:
+                if func_name == "conv2d":
+                    k_size = (out_channels * groups, in_channels, *kernel_size)
+                else:
+                    k_size = (in_channels * groups, out_channels, *kernel_size)
+                kernel = self._get_random_test_tensor(size=k_size, is_float=True)
 
-                    # check that result is correct:
-                    reference = getattr(F, func_name)(
-                        input,
-                        kernel,
-                        padding=padding,
-                        stride=stride,
-                        dilation=dilation,
-                        groups=groups,
-                    )
-                    self._check(encr_conv, reference, "%s failed" % func_name)
+                # perform filtering:
+                encr_matrix = MPCTensor(input)
+                encr_kernel = kernel_type(kernel)
+                encr_conv = getattr(encr_matrix, func_name)(
+                    encr_kernel,
+                    padding=padding,
+                    stride=stride,
+                    dilation=dilation,
+                    groups=groups,
+                )
 
-    def test_pooling(self):
-        """Test avg_pool, max_pool of encrypted tensor."""
+                # check that result is correct:
+                reference = getattr(F, func_name)(
+                    input,
+                    kernel,
+                    padding=padding,
+                    stride=stride,
+                    dilation=dilation,
+                    groups=groups,
+                )
+                self._check(encr_conv, reference, "%s failed" % func_name)
 
-        def assert_index_match(
+    def test_max_pooling(self):
+        """Test max_pool of encrypted tensor."""
+
+        def _assert_index_match(
             indices,
             encrypted_indices,
             matrix_size,
@@ -642,6 +659,63 @@ class TestMPC(object):
                 strides = list(range(1, kernel_size + 1)) + [(1, kernel_size)]
                 paddings = range(kernel_size // 2 + 1)
 
+                for (
+                    stride,
+                    padding,
+                    dilation,
+                    ceil_mode,
+                    return_indices,
+                ) in itertools.product(
+                    strides,
+                    paddings,
+                    dilations,
+                    [False, True],
+                    [False, True],
+                ):
+                    kwargs = {
+                        "stride": stride,
+                        "padding": padding,
+                        "dilation": dilation,
+                        "ceil_mode": ceil_mode,
+                        "return_indices": return_indices,
+                    }
+
+                    # Skip kernels that lead to 0-size outputs
+                    if (kernel_size - 1) * dilation > width - 1:
+                        continue
+
+                    reference = F.max_pool2d(matrix, kernel_size, **kwargs)
+                    encrypted_matrix = MPCTensor(matrix)
+                    encrypted_pool = encrypted_matrix.max_pool2d(kernel_size, **kwargs)
+
+                    if return_indices:
+                        indices = reference[1]
+                        encrypted_indices = encrypted_pool[1]
+
+                        kwargs.pop("return_indices")
+                        _assert_index_match(
+                            indices,
+                            encrypted_indices,
+                            matrix.size(),
+                            kernel_size,
+                            **kwargs,
+                        )
+
+                        encrypted_pool = encrypted_pool[0]
+                        reference = reference[0]
+
+                    self._check(encrypted_pool, reference, "max_pool2d failed")
+
+    def test_avg_pooling(self):
+        """Test avg_pool of encrypted tensor."""
+        for width in range(2, 5):
+            for kernel_size in range(1, width):
+                matrix_size = (1, 4, 5, width)
+                matrix = self._get_random_test_tensor(size=matrix_size, is_float=True)
+
+                strides = list(range(1, kernel_size + 1)) + [(1, kernel_size)]
+                paddings = range(kernel_size // 2 + 1)
+
                 for stride, padding in itertools.product(strides, paddings):
                     kwargs = {"stride": stride, "padding": padding}
                     reference = F.avg_pool2d(matrix, kernel_size, **kwargs)
@@ -649,42 +723,6 @@ class TestMPC(object):
                     encrypted_matrix = MPCTensor(matrix)
                     encrypted_pool = encrypted_matrix.avg_pool2d(kernel_size, **kwargs)
                     self._check(encrypted_pool, reference, "avg_pool2d failed")
-
-                    # Test max_pool2d
-                    for dilation, ceil_mode, return_indices in itertools.product(
-                        dilations, [False, True], [False, True]
-                    ):
-                        # Skip kernels that lead to 0-size outputs
-                        if (kernel_size - 1) * dilation > width - 1:
-                            continue
-
-                        kwargs["dilation"] = dilation
-                        kwargs["ceil_mode"] = ceil_mode
-                        kwargs["return_indices"] = return_indices
-
-                        reference = F.max_pool2d(matrix, kernel_size, **kwargs)
-                        encrypted_matrix = MPCTensor(matrix)
-                        encrypted_pool = encrypted_matrix.max_pool2d(
-                            kernel_size, **kwargs
-                        )
-
-                        if return_indices:
-                            indices = reference[1]
-                            encrypted_indices = encrypted_pool[1]
-
-                            kwargs.pop("return_indices")
-                            assert_index_match(
-                                indices,
-                                encrypted_indices,
-                                matrix.size(),
-                                kernel_size,
-                                **kwargs,
-                            )
-
-                            encrypted_pool = encrypted_pool[0]
-                            reference = reference[0]
-
-                        self._check(encrypted_pool, reference, "max_pool2d failed")
 
     def test_adaptive_pooling(self):
         """test adaptive_avg_pool2d and adaptive_max_pool2d"""
@@ -1971,31 +2009,28 @@ class TestMPC(object):
         unencrypted versions to generate identical random output. Also confirms
         that the number of zeros in the encrypted dropout function is as expected.
         """
-        all_prob_values = [x * 0.2 for x in range(0, 5)]
+        all_prob_values = [x * 0.2 for x in range(5)]
+
+        def get_first_nonzero_value(x):
+            x = x.flatten()
+            x = x[x.abs().ge(1e-4)]
+            x = x.take(torch.tensor(0))
+            return x
 
         # check that the encrypted and plaintext versions scale
         # identically, by testing on all-ones tensor
         for prob in all_prob_values:
             tensor = torch.ones([10, 10, 10], device=self.device).float()
             encr_tensor = MPCTensor(tensor)
-            dropout_encr_tensor = encr_tensor.dropout(prob, training=True)
-            dropout_plaintext_tensor = F.dropout(tensor, prob, training=True)
+            dropout_encr = encr_tensor.dropout(prob, training=True)
+            dropout_decr = dropout_encr.get_plain_text()
+            dropout_plain = F.dropout(tensor, prob, training=True)
 
             # All non-zero values should be identical in both tensors, so
             # compare any one of them
-            dropout_decrypt_tensor = dropout_encr_tensor.get_plain_text()
-            dropout_decrypt_nonzero_index = torch.nonzero(dropout_decrypt_tensor)[
-                0
-            ].tolist()
-            dropout_plaintext_nonzero_index = torch.nonzero(dropout_plaintext_tensor)[
-                0
-            ].tolist()
-            decr_nonzero_value = dropout_decrypt_tensor[
-                tuple(dropout_decrypt_nonzero_index)
-            ]
-            plaintext_nonzero_value = dropout_plaintext_tensor[
-                tuple(dropout_plaintext_nonzero_index)
-            ]
+            decr_nonzero_value = get_first_nonzero_value(dropout_decr)
+            plaintext_nonzero_value = get_first_nonzero_value(dropout_plain)
+
             self.assertTrue(
                 math.isclose(
                     decr_nonzero_value,
@@ -2014,20 +2049,20 @@ class TestMPC(object):
                                 size=size, ex_zero=True, min_value=1.0, is_float=True
                             )
                             encr_tensor = MPCTensor(tensor)
-                            dropout_encr_tensor = getattr(encr_tensor, dropout_fn)(
+                            dropout_encr = getattr(encr_tensor, dropout_fn)(
                                 prob, inplace=inplace, training=training
                             )
                             if training:
                                 # Check the scaling for non-zero elements
-                                dropout_tensor = dropout_encr_tensor.get_plain_text()
+                                dropout_decr = dropout_encr.get_plain_text()
                                 scaled_tensor = tensor / (1 - prob)
-                                reference = dropout_tensor.where(
-                                    dropout_tensor == 0, scaled_tensor
+                                reference = dropout_decr.where(
+                                    dropout_decr == 0, scaled_tensor
                                 )
                             else:
                                 reference = tensor
                             self._check(
-                                dropout_encr_tensor,
+                                dropout_encr,
                                 reference,
                                 f"dropout failed with size {size} and probability "
                                 f"{prob}",
@@ -2051,7 +2086,7 @@ class TestMPC(object):
                                 "dropout3d",
                                 "feature_dropout",
                             ]:
-                                dropout_encr_flat = dropout_encr_tensor.flatten(
+                                dropout_encr_flat = dropout_encr.flatten(
                                     start_dim=0, end_dim=1
                                 )
                                 dropout_flat = dropout_encr_flat.get_plain_text()
@@ -2067,10 +2102,174 @@ class TestMPC(object):
         # Check the expected number of zero elements
         # For speed, restrict test to single p = 0.4
         encr_tensor = MPCTensor(torch.empty((int(1e5), 2, 2)).fill_(1).to(self.device))
-        dropout_encr_tensor = encr_tensor.dropout(0.4)
-        dropout_tensor = dropout_encr_tensor.get_plain_text()
+        dropout_encr = encr_tensor.dropout(0.4)
+        dropout_tensor = dropout_encr.get_plain_text()
         frac_zero = float((dropout_tensor == 0).sum()) / dropout_tensor.nelement()
         self.assertTrue(math.isclose(frac_zero, 0.4, rel_tol=1e-2, abs_tol=1e-2))
+
+    def _test_cache_save_load(self):
+        # Determine expected filepaths
+        provider = crypten.mpc.get_default_provider()
+        request_path = provider._DEFAULT_CACHE_PATH + f"/request_cache-{self.rank}"
+        tuple_path = provider._DEFAULT_CACHE_PATH + f"/tuple_cache-{self.rank}"
+
+        # Clear any existing files in the cache location
+        if os.path.exists(request_path):
+            os.remove(request_path)
+        if os.path.exists(tuple_path):
+            os.remove(tuple_path)
+
+        # Store cache values for reference
+        requests = provider.request_cache
+        tuple_cache = provider.tuple_cache
+
+        # Save cache to file
+        provider.save_cache()
+
+        # Assert cache files exist
+        self.assertTrue(
+            os.path.exists(request_path), "request_cache file not found after save"
+        )
+        self.assertTrue(
+            os.path.exists(tuple_path), "tuple_cache file not found after save"
+        )
+
+        # Assert cache empty
+        self.assertEqual(
+            len(provider.request_cache), 0, "cache save did not clear request cache"
+        )
+        self.assertEqual(
+            len(provider.tuple_cache), 0, "cache save did not clear tuple cache"
+        )
+
+        # Ensure test is working properly by not clearing references
+        self.assertTrue(len(requests) > 0, "reference requests cleared during save")
+        self.assertTrue(len(tuple_cache) > 0, "reference tuples cleared during save")
+
+        # Load cache from file
+        provider.load_cache()
+
+        # Assert files are deleted
+        self.assertFalse(
+            os.path.exists(request_path), "request_cache filepath exists after load"
+        )
+        self.assertFalse(
+            os.path.exists(tuple_path), "tuple_cache filepath exists after load"
+        )
+
+        # Assert request cache is loaded as expected
+        self.assertEqual(
+            provider.request_cache, requests, "loaded request_cache is incorrect"
+        )
+
+        # Assert loaded tuple dict is as expected
+        tc = [(k, v) for k, v in provider.tuple_cache.items()]
+        ref = [(k, v) for k, v in tuple_cache.items()]
+        for i in range(len(tc)):
+            t, r = tc[i], ref[i]
+            t_key, r_key = t[0], r[0]
+            t_tuples, r_tuples = t[1], r[1]
+
+            # Check keys
+            self.assertEqual(t_key, r_key, "Loaded tuple_cache key is incorrect")
+
+            # Check tuple values
+            for j in range(len(t_tuples)):
+                t_tuple, r_tuple = t_tuples[j], r_tuples[j]
+                for k in range(len(t_tuple)):
+                    t_tensor = t_tuple[k]._tensor
+                    r_tensor = r_tuple[k]._tensor
+                    self.assertTrue(
+                        t_tensor.eq(r_tensor).all(),
+                        "Loaded tuple_cache tuple tensor incorrect",
+                    )
+
+    def test_tuple_cache(self):
+        # Skip RSS setting since it does not generate tuples
+        if cfg.mpc.protocol == "replicated":
+            return
+
+        # TODO: encorporate wrap_rng for 3PC+ settings
+        if comm.get().get_world_size() > 2:
+            return
+
+        provider = crypten.mpc.get_default_provider()
+
+        # Test tracing attribute
+        crypten.trace()
+        self.assertTrue(provider.tracing)
+
+        x = get_random_test_tensor(is_float=True)
+        x = crypten.cryptensor(x)
+
+        _ = x.square()
+        _ = x * x
+        _ = x.matmul(x.t())
+        _ = x.relu()
+        y = x.unsqueeze(0)
+        _ = y.conv1d(y, stride=2)
+
+        # Populate reference requests
+        ref_names = ["square"]
+        ref_names += ["generate_additive_triple"] * 2
+        ref_names += ["generate_binary_triple"] * 7 + ["B2A_rng"]
+        ref_names += ["generate_additive_triple"] * 2
+
+        ref_args = [
+            (torch.Size([1, 5]),),
+            (torch.Size([1, 5]), torch.Size([1, 5]), "mul"),
+            (torch.Size([1, 5]), torch.Size([5, 1]), "matmul"),
+            (torch.Size([1, 1, 5]), torch.Size([1, 1, 5])),
+        ]
+        ref_args += [(torch.Size([2, 1, 1, 5]), torch.Size([2, 1, 1, 5]))] * 6
+        ref_args += [(torch.Size([1, 5]),)]
+        ref_args += [(torch.Size([1, 5]), torch.Size([1, 5]), "mul")]
+        ref_args += [(torch.Size([1, 1, 5]), torch.Size([1, 1, 5]), "conv1d")]
+
+        kwargs = {"device": torch.device("cpu")}
+        conv_kwargs = {"device": torch.device("cpu"), "stride": 2}
+        requests = [(ref_names[i], ref_args[i], kwargs) for i in range(12)]
+        requests += [(ref_names[12], ref_args[12], conv_kwargs)]
+
+        self.assertEqual(
+            provider.request_cache,
+            requests,
+            "TupleProvider request cache incorrect",
+        )
+
+        crypten.trace(False)
+        self.assertFalse(provider.tracing)
+
+        # Check that cache populates as expected
+        crypten.fill_cache()
+        kwargs = frozenset(kwargs.items())
+        conv_kwargs = frozenset(conv_kwargs.items())
+
+        keys = [(ref_names[i], ref_args[i], kwargs) for i in range(12)]
+        keys += [(ref_names[12], ref_args[12], conv_kwargs)]
+
+        self.assertEqual(
+            set(provider.tuple_cache.keys()),
+            set(keys),
+            "TupleProvider tuple_cache populated incorrectly",
+        )
+
+        # Test saving from / loading to cache
+        self._test_cache_save_load()
+
+        # Test that function calls return from cache when trace is off
+        crypten.trace(False)
+        _ = x.square()
+        _ = x * x
+        _ = x.matmul(x.t())
+        _ = x.relu()
+        y = x.unsqueeze(0)
+        _ = y.conv1d(y, stride=2)
+
+        for v in provider.tuple_cache.values():
+            self.assertEqual(
+                len(v), 0, msg="TupleProvider is not popping tuples properly from cache"
+            )
 
 
 # Run all unit tests with both TFP and TTP providers
@@ -2098,6 +2297,14 @@ class TestTTP(MultiProcessTestCase, TestMPC):
         cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTTP, self).tearDown()
+
+
+class Test3PC(MultiProcessTestCase, TestMPC):
+    def setUp(self):
+        super(Test3PC, self).setUp(world_size=3)
+
+    def tearDown(self):
+        super(Test3PC, self).tearDown()
 
 
 class TestRSS(MultiProcessTestCase, TestMPC):

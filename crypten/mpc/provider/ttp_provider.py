@@ -15,15 +15,16 @@ from crypten.common.rng import generate_kbit_random_tensor, generate_random_ring
 from crypten.common.util import count_wraps
 from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 
+from .provider import TupleProvider
+
 
 TTP_FUNCTIONS = ["additive", "square", "binary", "wraps", "B2A"]
 
 
-class TrustedThirdParty:
+class TrustedThirdParty(TupleProvider):
     NAME = "TTP"
 
-    @staticmethod
-    def generate_additive_triple(size0, size1, op, device=None, *args, **kwargs):
+    def generate_additive_triple(self, size0, size1, op, device=None, *args, **kwargs):
         """Generate multiplicative triples of given sizes"""
         generator = TTPClient.get().get_generator(device=device)
 
@@ -45,8 +46,7 @@ class TrustedThirdParty:
 
         return a, b, c
 
-    @staticmethod
-    def square(size, device=None):
+    def square(self, size, device=None):
         """Generate square double of given size"""
         generator = TTPClient.get().get_generator(device=device)
 
@@ -61,8 +61,7 @@ class TrustedThirdParty:
         r2 = ArithmeticSharedTensor.from_shares(r2, precision=0)
         return r, r2
 
-    @staticmethod
-    def generate_binary_triple(size0, size1, device=None):
+    def generate_binary_triple(self, size0, size1, device=None):
         """Generate binary triples of given size"""
         generator = TTPClient.get().get_generator(device=device)
 
@@ -82,8 +81,7 @@ class TrustedThirdParty:
         c = BinarySharedTensor.from_shares(c)
         return a, b, c
 
-    @staticmethod
-    def wrap_rng(size, device=None):
+    def wrap_rng(self, size, device=None):
         """Generate random shared tensor of given size and sharing of its wraps"""
         generator = TTPClient.get().get_generator(device=device)
 
@@ -100,8 +98,7 @@ class TrustedThirdParty:
         theta_r = ArithmeticSharedTensor.from_shares(theta_r, precision=0)
         return r, theta_r
 
-    @staticmethod
-    def B2A_rng(size, device=None):
+    def B2A_rng(self, size, device=None):
         """Generate random bit tensor as arithmetic and binary shared tensors"""
         generator = TTPClient.get().get_generator(device=device)
 
@@ -119,28 +116,6 @@ class TrustedThirdParty:
         rA = ArithmeticSharedTensor.from_shares(rA, precision=0)
         rB = BinarySharedTensor.from_shares(rB)
         return rA, rB
-
-    @staticmethod
-    def rand(*sizes, encoder=None, device=None):
-        """Generate random ArithmeticSharedTensor uniform on [0, 1]"""
-        generator = TTPClient.get().get_generator(device=device)
-
-        if isinstance(sizes, torch.Size):
-            sizes = tuple(sizes)
-
-        if isinstance(sizes[0], torch.Size):
-            sizes = tuple(sizes[0])
-
-        if comm.get().get_rank() == 0:
-            # Request samples from TTP
-            samples = TTPClient.get().ttp_request(
-                "rand", device, *sizes, encoder=encoder
-            )
-        else:
-            samples = generate_random_ring_element(
-                sizes, generator=generator, device=device
-            )
-        return ArithmeticSharedTensor.from_shares(samples)
 
     @staticmethod
     def _init():
@@ -276,7 +251,7 @@ class TTPServer:
         """Create random generator to send to a party"""
         ws = comm.get().get_world_size()
 
-        seeds = [torch.randint(-(2 ** 63), 2 ** 63 - 1, size=()) for _ in range(ws)]
+        seeds = [torch.randint(-(2**63), 2**63 - 1, size=()) for _ in range(ws)]
         reqs = [
             dist.isend(tensor=seeds[i], dst=i, group=self.ttp_group) for i in range(ws)
         ]

@@ -8,7 +8,7 @@
 
 from .init import *  # noqa: F403
 from .distances import CosineSimilarity
-from .loss import BCELoss, BCEWithLogitsLoss, CrossEntropyLoss, L1Loss, MSELoss
+from .loss import _Loss, BCELoss, BCEWithLogitsLoss, CrossEntropyLoss, L1Loss, MSELoss
 from .module import (
     AdaptiveAvgPool2d,
     AdaptiveMaxPool2d,
@@ -32,8 +32,8 @@ from .module import (
     Dropout2d,
     Dropout3d,
     DropoutNd,
-    Erf,
     Equal,
+    Erf,
     Exp,
     Expand,
     Flatten,
@@ -50,6 +50,7 @@ from .module import (
     Mean,
     Module,
     ModuleDict,
+    ModuleList,
     Mul,
     Parameter,
     Pow,
@@ -59,8 +60,8 @@ from .module import (
     Reshape,
     Sequential,
     Shape,
-    Slice,
     Sigmoid,
+    Slice,
     Softmax,
     Sqrt,
     Squeeze,
@@ -70,11 +71,12 @@ from .module import (
     Unsqueeze,
     Where,
 )
-from .onnx_converter import TF_AND_TF2ONNX, from_pytorch, from_onnx, from_tensorflow
+from .onnx_converter import from_onnx, from_pytorch, from_tensorflow, TF_AND_TF2ONNX
 
 
 # expose contents of package
 __all__ = [  # noqa: F405
+    "_Loss",
     "AdaptiveAvgPool2d",
     "AdaptiveMaxPool2d",
     "Add",
@@ -123,6 +125,7 @@ __all__ = [  # noqa: F405
     "Mean",
     "Module",
     "ModuleDict",
+    "ModuleList",
     "MSELoss",
     "Mul",
     "Parameter",

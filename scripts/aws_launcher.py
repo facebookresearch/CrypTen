@@ -61,7 +61,7 @@ import sys
 import time
 import uuid
 import warnings
-from argparse import REMAINDER, ArgumentParser
+from argparse import ArgumentParser, REMAINDER
 from pathlib import Path
 
 import boto3

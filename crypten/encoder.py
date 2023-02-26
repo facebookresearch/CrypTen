@@ -24,7 +24,7 @@ def nearest_integer_division(tensor, integer):
     pos_remainder = (1 - lez) * tensor % integer
     neg_remainder = lez * ((integer - tensor) % integer)
     remainder = pos_remainder + neg_remainder
-    quotient = tensor // integer
+    quotient = tensor.div(integer, rounding_mode="trunc")
     correction = (2 * remainder > integer).long()
     return quotient + tensor.sign() * correction
 
@@ -36,7 +36,7 @@ class FixedPointEncoder:
         if precision_bits is None:
             precision_bits = cfg.encoder.precision_bits
         self._precision_bits = precision_bits
-        self._scale = int(2 ** precision_bits)
+        self._scale = int(2**precision_bits)
 
     def encode(self, x, device=None):
         """Helper function to wrap data if needed"""
@@ -72,7 +72,7 @@ class FixedPointEncoder:
         assert is_int_tensor(tensor), "input must be a LongTensor"
         if self._scale > 1:
             correction = (tensor < 0).long()
-            dividend = tensor // self._scale - correction
+            dividend = tensor.div(self._scale - correction, rounding_mode="floor")
             remainder = tensor % self._scale
             remainder += (remainder == 0).long() * self._scale * correction
 
@@ -84,7 +84,7 @@ class FixedPointEncoder:
 
     def __setattr__(self, name, value):
         if name == "_precision_bits":
-            dict.__setattr__(self, "_scale", int(2 ** value))
+            dict.__setattr__(self, "_scale", int(2**value))
         elif name == "_scale":
             dict.__setattr__(self, "_precision_bits", int(math.log2(value)))
         dict.__setattr__(self, name, value)

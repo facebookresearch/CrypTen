@@ -23,7 +23,12 @@ def dropout(self, p=0.5, training=True, inplace=False):
         inplace: If set to ``True``, will do this operation in-place.
             Default: ``False``
     """
-    assert p >= 0.0 and p <= 1.0, "dropout probability has to be between 0 and 1"
+    if p == 0.0:
+        return self
+    elif p == 1.0:
+        return self - self
+
+    assert p > 0.0 and p < 1.0, "dropout probability has to be between 0 and 1"
     if training and inplace:
         logging.warning(
             "CrypTen dropout does not support inplace computation during training."
@@ -38,7 +43,9 @@ def dropout(self, p=0.5, training=True, inplace=False):
     rand_tensor = crypten.rand(self.size(), device=self.device)
     dropout_tensor = rand_tensor > p
     if inplace:
-        result_tensor = self.mul_(dropout_tensor).div_(1 - p)
+        result_tensor = self.div_(1 - p)
+        result_tensor = result_tensor.mul_(dropout_tensor)
     else:
-        result_tensor = self.mul(dropout_tensor).div_(1 - p)
+        result_tensor = self.div(1 - p)
+        result_tensor = result_tensor.mul(dropout_tensor)
     return result_tensor

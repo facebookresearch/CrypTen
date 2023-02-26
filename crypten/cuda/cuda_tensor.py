@@ -162,7 +162,7 @@ class CUDALongTensor(object):
         bks = CUDALongTensor.__BLOCK_SIZE[num_blocks]
 
         x_block = CUDALongTensor.stack(
-            [(x >> (bks * i)) & (2 ** bks - 1) for i in range(nb)]
+            [(x >> (bks * i)) & (2**bks - 1) for i in range(nb)]
         )
 
         return x_block.double()
@@ -200,7 +200,7 @@ class CUDALongTensor(object):
         kernel_elements = functools.reduce(operator.mul, ks)
 
         nb = 3 if kernel_elements < 256 else 4
-        nb2 = nb ** 2
+        nb2 = nb**2
 
         x_encoded = CUDALongTensor.__encode_as_fp64(x, nb).data
         y_encoded = CUDALongTensor.__encode_as_fp64(y, nb).data
@@ -330,7 +330,7 @@ class CUDALongTensor(object):
         z = z.sum(0)
 
         if isinstance(kernel_size, (int, float)):
-            pool_size = kernel_size ** 2
+            pool_size = kernel_size**2
         else:
             pool_size = kernel_size[0] * kernel_size[1]
 

@@ -565,7 +565,7 @@ class ArithmeticSharedTensor(object):
             kernel_size, stride=stride, padding=padding, ceil_mode=ceil_mode
         )
         if isinstance(kernel_size, (int, float)):
-            pool_size = kernel_size ** 2
+            pool_size = kernel_size**2
         else:
             pool_size = kernel_size[0] * kernel_size[1]
         return z / pool_size
@@ -669,7 +669,7 @@ class ArithmeticSharedTensor(object):
 
     @data.setter
     def data(self, value):
-        self._tensor.data = value
+        self._tensor.set_(value)
 
 
 # Register regular functions

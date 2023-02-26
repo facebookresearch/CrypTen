@@ -12,7 +12,7 @@ import crypten
 import torch
 from crypten.common.tensor_types import is_float_tensor
 from crypten.config import cfg
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
+from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
 class TestOptim(object):
@@ -97,6 +97,11 @@ class TestOptim(object):
                 self._check(
                     crypten_params[i], torch_params[i], "Parameter update mismatch"
                 )
+
+            torch_optimizer.zero_grad()
+            crypten_optimizer.zero_grad()
+            for i in range(len(crypten_params)):
+                self.assertIsNone(crypten_params[i].grad, "Optimizer zero_grad failed")
 
 
 class TestTFP(MultiProcessTestCase, TestOptim):

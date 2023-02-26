@@ -95,7 +95,7 @@ def square(x):
     (x_shares,) = replicate_shares([x.share])
     x1, x2 = x_shares
 
-    x_square = x1 ** 2 + 2 * x1 * x2
+    x_square = x1**2 + 2 * x1 * x2
 
     z = x.shallow_copy()
     z.share = x_square
@@ -118,10 +118,10 @@ def truncate(x, y):
     rank = x.rank
 
     if rank == 0:
-        x.share //= y
+        x.share = x.share.div(y, rounding_mode="trunc")
     elif rank == 1:
         x2 = comm.get().recv(x.share, 2)
-        x.share = x.share.add(x2) // y
+        x.share = x.share.add(x2).div(y, rounding_mode="trunc")
     elif rank == 2:
         comm.get().send(x.share, 1)
         x.share -= x.share

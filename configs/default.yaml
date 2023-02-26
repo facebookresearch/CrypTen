@@ -40,3 +40,8 @@ mpc:
   active_security: False
   provider: "TFP"
   protocol: "beaver"
+nn:
+  dpsmpc:
+    protocol: "layer_estimation"
+    skip_loss_forward: True
+    cache_pred_size: True

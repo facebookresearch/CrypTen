@@ -6,10 +6,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import crypten
+import torch
 from crypten.config import cfg
 from crypten.debug import configure_logging, pdb
-from test.multiprocess_test_case import MultiProcessTestCase, get_random_test_tensor
-from torch import tensor
+from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
 class TestDebug(MultiProcessTestCase):
@@ -32,7 +32,7 @@ class TestDebug(MultiProcessTestCase):
     def test_wrap_error_detection(self):
         """Force a wrap error and test whether it raises in debug mode."""
         encrypted_tensor = crypten.cryptensor(0)
-        encrypted_tensor.share = tensor(2 ** 63 - 1)
+        encrypted_tensor.share = torch.tensor(2**63 - 1)
         with self.assertRaises(ValueError):
             encrypted_tensor.div(2)
 
@@ -43,15 +43,26 @@ class TestDebug(MultiProcessTestCase):
             tensor = get_random_test_tensor(size=(2, 2), is_float=True)
             encrypted_tensor = crypten.cryptensor(tensor)
 
+            # Test properties (non-tensor outputs)
+            _ = encrypted_tensor.size()
+
             # Ensure correct validation works properly
             encrypted_tensor.add(1)
 
             # Ensure incorrect validation works properly for size
             encrypted_tensor.add = lambda y: crypten.cryptensor(0)
             with self.assertRaises(ValueError):
-                encrypted_tensor.add(1)
+                encrypted_tensor.add(10)
 
             # Ensure incorrect validation works properly for value
             encrypted_tensor.add = lambda y: crypten.cryptensor(tensor)
             with self.assertRaises(ValueError):
-                encrypted_tensor.add(1)
+                encrypted_tensor.add(10)
+
+            # Test matmul in validation mode
+            x = get_random_test_tensor(size=(3, 5), is_float=True)
+            y = get_random_test_tensor(size=(1, 3), is_float=True)
+
+            x = crypten.cryptensor(x)
+            y = crypten.cryptensor(y)
+            _ = y.matmul(x)

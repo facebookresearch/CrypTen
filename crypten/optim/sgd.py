@@ -22,6 +22,8 @@ class SGD(Optimizer):
         weight_decay (float, optional): weight decay (L2 penalty) (default: 0)
         dampening (float, optional): dampening for momentum (default: 0)
         nesterov (bool, optional): enables Nesterov momentum (default: False)
+        grad_threshold (float, optional): imposes a threshold on the magnitude of gradient values.
+            Gradient values with magnitude above the threshold will be replaced with 0.
     Example:
         >>> optimizer = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)
         >>> optimizer.zero_grad()
@@ -50,7 +52,14 @@ class SGD(Optimizer):
     """
 
     def __init__(
-        self, params, lr, momentum=0, dampening=0, weight_decay=0, nesterov=False
+        self,
+        params,
+        lr,
+        momentum=0,
+        dampening=0,
+        weight_decay=0,
+        nesterov=False,
+        grad_threshold=None,
     ):
         if not isinstance(lr, (int, float)) or lr < 0.0:
             raise ValueError("Invalid learning rate: {}".format(lr))
@@ -70,6 +79,12 @@ class SGD(Optimizer):
         }
         if nesterov and (momentum <= 0 or dampening != 0):
             raise ValueError("Nesterov momentum requires a momentum and zero dampening")
+
+        # Compute thresholding based on square value since abs is more expensive
+        self.square_threshold = grad_threshold
+        if self.square_threshold is not None:
+            self.square_threshold *= self.square_threshold
+
         super(SGD, self).__init__(params, defaults)
 
     def __setstate__(self, state):
@@ -98,7 +113,13 @@ class SGD(Optimizer):
                 for p in group["params"]:
                     if p.grad is None:
                         continue
-                    d_p = p.grad
+
+                    # Threshold gradients to prevent gradient explosion
+                    if self.square_threshold is not None:
+                        d_p = p.grad.mul(p.grad.square().lt(self.square_threshold))
+                    else:
+                        d_p = p.grad
+
                     if weight_decay != 0:
                         d_p = d_p.add(p.mul(weight_decay))
                     if momentum != 0:
