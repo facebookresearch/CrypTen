@@ -64,6 +64,7 @@ For example, two-party arithmetic secret-sharing:
 
   import crypten
   import crypten.communicator as comm
+  from crypten import mpc
 
   @mpc.run_multiprocess(world_size=2)
   def examine_arithmetic_shares():
