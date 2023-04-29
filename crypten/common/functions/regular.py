@@ -88,7 +88,7 @@ def index_add(self, dim, index, tensor):
     """
     result = self.clone()
     assert index.dim() == 1, "index needs to be a vector"
-    tensor = tensor._tensor if hasattr(tensor, "_tensor") else tensor
+    tensor = getattr(tensor, "_tensor", tensor)
     result._tensor.index_add_(dim, index, tensor)
     return result
 
@@ -101,7 +101,7 @@ def scatter_add(self, dim, index, other):
     value in index for dimension = dim.
     """
     result = self.clone()
-    other = other._tensor if hasattr(other, "_tensor") else other
+    other = getattr(other, "_tensor", other)
     result._tensor.scatter_add_(dim, index, other)
     return result
 
