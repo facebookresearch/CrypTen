@@ -53,7 +53,7 @@ class PyTorchTensor(CrypTensor):
 
     def add(self, tensor):
         result = self.clone()
-        tensor = tensor._tensor if hasattr(tensor, "_tensor") else tensor
+        tensor = getattr(tensor, "_tensor", tensor)
         result._tensor = result._tensor + tensor
         return result
 
@@ -64,25 +64,25 @@ class PyTorchTensor(CrypTensor):
 
     def mul(self, tensor):
         result = self.clone()
-        tensor = tensor._tensor if hasattr(tensor, "_tensor") else tensor
+        tensor = getattr(tensor, "_tensor", tensor)
         result._tensor = result._tensor * tensor
         return result
 
     def div(self, tensor):
         result = self.clone()
-        tensor = tensor._tensor if hasattr(tensor, "_tensor") else tensor
+        tensor = getattr(tensor, "_tensor", tensor)
         result._tensor = result._tensor / tensor
         return result
 
     def matmul(self, tensor):
         result = self.clone()
-        tensor = tensor._tensor if hasattr(tensor, "_tensor") else tensor
+        tensor = getattr(tensor, "_tensor", tensor)
         result._tensor = result._tensor @ tensor
         return result
 
     def conv1d(self, kernel, *args, **kwargs):
         result = self.clone()
-        kernel = kernel._tensor if hasattr(kernel, "_tensor") else kernel
+        kernel = getattr(kernel, "_tensor", kernel)
         result._tensor = torch.nn.functional.conv1d(
             result._tensor, kernel, *args, **kwargs
         )
@@ -90,7 +90,7 @@ class PyTorchTensor(CrypTensor):
 
     def conv2d(self, kernel, *args, **kwargs):
         result = self.clone()
-        kernel = kernel._tensor if hasattr(kernel, "_tensor") else kernel
+        kernel = getattr(kernel, "_tensor", kernel)
         result._tensor = torch.nn.functional.conv2d(
             result._tensor, kernel, *args, **kwargs
         )
@@ -98,7 +98,7 @@ class PyTorchTensor(CrypTensor):
 
     def conv_transpose1d(self, kernel, *args, **kwargs):
         result = self.clone()
-        kernel = kernel._tensor if hasattr(kernel, "_tensor") else kernel
+        kernel = getattr(kernel, "_tensor", kernel)
         result._tensor = torch.nn.functional.conv_transpose1d(
             result._tensor, kernel, *args, **kwargs
         )
@@ -106,7 +106,7 @@ class PyTorchTensor(CrypTensor):
 
     def conv_transpose2d(self, kernel, *args, **kwargs):
         result = self.clone()
-        kernel = kernel._tensor if hasattr(kernel, "_tensor") else kernel
+        kernel = getattr(kernel, "_tensor", kernel)
         result._tensor = torch.nn.functional.conv_transpose2d(
             result._tensor, kernel, *args, **kwargs
         )
