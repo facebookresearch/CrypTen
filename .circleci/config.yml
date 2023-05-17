@@ -8,7 +8,7 @@ setup_venv: &setup_venv
     . ~/crypten-test/bin/activate
     pip3 install --upgrade pip
     pip3 install onnx==1.7.0 tensorboard pandas
-    pip3 install sklearn --use-pep517
+    pip3 install scikit-learn --use-pep517
     pip3 install torch>=1.7.0 torchvision>=0.8.1
     pip3 install tensorflow
     pip3 install tf2onnx
