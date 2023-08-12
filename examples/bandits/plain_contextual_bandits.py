@@ -81,7 +81,7 @@ def online_learner(
 
         # update linear least squares accumulators (using Sherman–Morrison formula):
         A_inv_context = A_inv[selected_arm, :, :].mv(context)
-        numerator = torch.ger(A_inv_context, A_inv_context)
+        numerator = torch.outer(A_inv_context, A_inv_context)
         denominator = A_inv_context.dot(context).add(1.0)
         A_inv[selected_arm, :, :].sub_(numerator.div_(denominator))
         b[selected_arm, :].add_(context.mul(reward))
