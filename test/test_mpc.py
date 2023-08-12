@@ -366,7 +366,7 @@ class TestMPC(object):
             tensor1 = self._get_random_test_tensor(is_float=True).squeeze()
             tensor2 = self._get_random_test_tensor(is_float=True).squeeze()
             dot_reference = tensor1.dot(tensor2)
-            ger_reference = torch.ger(tensor1, tensor2)
+            ger_reference = torch.outer(tensor1, tensor2)
 
             tensor2 = tensor_type(tensor2)
 
