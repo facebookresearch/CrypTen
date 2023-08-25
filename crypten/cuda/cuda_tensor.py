@@ -26,7 +26,7 @@ def implements(torch_function):
 HANDLED_FUNCTIONS = {}
 
 
-class CUDALongTensor(object):
+class CUDALongTensor:
     """
     A wrapper class for `torch.cuda.LongTensor`. When performing operations that are
     currently not supported for `torch.cuda.LongTensor` (e.g `matmul`, `conv2d`), it will

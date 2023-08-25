@@ -25,7 +25,7 @@ from crypten.mpc.primitives import ArithmeticSharedTensor, BinarySharedTensor
 from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
-class TestMPC(object):
+class TestMPC:
     """
     This class tests all functions of MPCTensor.
     """

@@ -18,7 +18,7 @@ from crypten.gradients import AutogradContext, AutogradFunction
 from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
-class TestAutograd(object):
+class TestAutograd:
     """
     This class tests all autograd-related functionality.
     """

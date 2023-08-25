@@ -76,7 +76,7 @@ def _inverse_broadcast(grad_output, input_size):
     return grad_output
 
 
-class BaseAutogradContext(object):
+class BaseAutogradContext:
     """
     Base implementation for AutogradContext, which saves context information
     for AutogradFunctions. Base implementation contains no-ops for all functions.
@@ -137,7 +137,7 @@ class AutogradContext(BaseAutogradContext):
         return self.context
 
 
-class AutogradFunction(object):
+class AutogradFunction:
     """
     Base implementation of a function that supports autograd.
     """

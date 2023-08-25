@@ -15,7 +15,7 @@ from crypten.config import cfg
 from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTestCase
 
 
-class TestOptim(object):
+class TestOptim:
     """
     This class tests the crypten.optim package.
     """

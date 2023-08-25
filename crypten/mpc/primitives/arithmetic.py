@@ -25,7 +25,7 @@ SENTINEL = -1
 
 
 # MPC tensor where shares additive-sharings.
-class ArithmeticSharedTensor(object):
+class ArithmeticSharedTensor:
     """
     Encrypted tensor object that uses additive sharing to perform computations.
 

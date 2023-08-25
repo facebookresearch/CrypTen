@@ -38,7 +38,7 @@ def linear_to_crypten(pytorch_linear):
     return crypten_linear
 
 
-class TestNN(object):
+class TestNN:
     """
     This class tests the crypten.nn package.
     """

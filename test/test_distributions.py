@@ -14,7 +14,7 @@ from crypten.config import cfg
 from test.multiprocess_test_case import MultiProcessTestCase
 
 
-class TestDistributions(object):
+class TestDistributions:
     """
     This class tests accuracy of distributions provided by random sampling in crypten.
     """

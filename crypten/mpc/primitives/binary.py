@@ -23,7 +23,7 @@ SENTINEL = -1
 
 
 # MPC tensor where shares are XOR-sharings.
-class BinarySharedTensor(object):
+class BinarySharedTensor:
     """
     Encrypted tensor object that uses binary sharing to perform computations.
 

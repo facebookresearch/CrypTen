@@ -14,7 +14,7 @@ from crypten.gradients import _inverse_broadcast
 
 
 # TODO: Move SkippedLoss elsewhere
-class SkippedLoss(object):
+class SkippedLoss:
     """Placeholder for output of a skipped loss function"""
 
     def __init__(self, msg=""):

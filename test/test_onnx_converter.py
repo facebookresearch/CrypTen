@@ -23,7 +23,7 @@ from test.multiprocess_test_case import (
 )
 
 
-class TestOnnxConverter(object):
+class TestOnnxConverter:
     """Tests PyTorch and Tensorflow model imports"""
 
     def _check(self, encrypted_tensor, reference, msg, tolerance=None):

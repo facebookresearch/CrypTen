@@ -12,7 +12,7 @@ import yaml
 from omegaconf import OmegaConf
 
 
-class CrypTenConfig(object):
+class CrypTenConfig:
     """
     Configuration object used to store configurable parameters for CrypTen.
 
