@@ -60,7 +60,7 @@ class TestCUDA(TestMPC):
 
         self.assertTrue(is_eq, msg=msg)
 
-    def test_mlp(self):
+    def test_mlp(self) -> None:
         """Test the forward/backward pass of MLP on GPU"""
         model = MLP()
         dummy_input = torch.empty((32, 128))
@@ -78,7 +78,7 @@ class TestCUDA(TestMPC):
         output.backward()
         model.update_parameters(learning_rate=1e-3)
 
-    def test_patched_matmul(self):
+    def test_patched_matmul(self) -> None:
         """Test torch.matmul on CUDALongTensor"""
         input_sizes = [
             (5,),
@@ -121,24 +121,24 @@ class TestCUDA(TestMPC):
             reference = torch.matmul(x, y)
             self._check_int(z.cpu(), reference, "matmul failed for cuda_patches")
 
-    def test_conv1d_smaller_signal_one_channel(self):
+    def test_conv1d_smaller_signal_one_channel(self) -> None:
         self._patched_conv1d(5, 1)
         self._conv1d(5, 1)
 
-    def test_conv1d_smaller_signal_many_channels(self):
+    def test_conv1d_smaller_signal_many_channels(self) -> None:
         self._patched_conv1d(5, 5)
         self._conv1d(5, 5)
 
     @unittest.skipIf(torch.cuda.is_available() is False, "requires CUDA")
-    def test_conv1d_larger_signal_one_channel(self):
+    def test_conv1d_larger_signal_one_channel(self) -> None:
         self._patched_conv1d(16, 1)
         self._conv1d(16, 1)
 
-    def test_conv1d_larger_signal_many_channels(self):
+    def test_conv1d_larger_signal_many_channels(self) -> None:
         self._patched_conv1d(16, 5)
         self._conv1d(16, 5)
 
-    def test_conv1d_large_filter(self):
+    def test_conv1d_large_filter(self) -> None:
         self._patched_conv1d(1024, 1, kernel_sizes=[256, 512])
 
     def _patched_conv1d(self, signal_size, in_channels, kernel_sizes=None):
@@ -186,23 +186,23 @@ class TestCUDA(TestMPC):
 
                 self._check_int(result, reference, f"{func_name} failed")
 
-    def test_conv2d_square_image_one_channel(self):
+    def test_conv2d_square_image_one_channel(self) -> None:
         self._patched_conv2d((5, 5), 1)
         self._conv2d((5, 5), 1)
 
-    def test_conv2d_square_image_many_channels(self):
+    def test_conv2d_square_image_many_channels(self) -> None:
         self._patched_conv2d((5, 5), 5)
         self._conv2d((5, 5), 5)
 
-    def test_conv2d_rectangular_image_one_channel(self):
+    def test_conv2d_rectangular_image_one_channel(self) -> None:
         self._patched_conv2d((16, 7), 1)
         self._conv2d((16, 7), 1)
 
-    def test_conv2d_rectangular_image_many_channels(self):
+    def test_conv2d_rectangular_image_many_channels(self) -> None:
         self._patched_conv2d((16, 7), 5)
         self._conv2d((16, 7), 5)
 
-    def test_conv2d_large_kernel(self):
+    def test_conv2d_large_kernel(self) -> None:
         self.nbatches = [1]
         self.ochannels = [1]
         self.paddings = [0]
@@ -266,7 +266,7 @@ class TestCUDA(TestMPC):
                 )
                 self._check_int(result, reference, "%s failed" % func_name)
 
-    def test_torch_arithmetic(self):
+    def test_torch_arithmetic(self) -> None:
         """Test torch arithmetic on CUDALongTensor"""
         funcs = ["add", "sub", "mul", "div"]
         a = get_random_test_tensor(is_float=False)
@@ -292,7 +292,7 @@ class TestCUDA(TestMPC):
                 "torch.{} failed for CUDALongTensor".format(op),
             )
 
-    def test_torch_comparators(self):
+    def test_torch_comparators(self) -> None:
         """Test torch comparators on CUDALongTensor"""
         for comp in ["gt", "ge", "lt", "le", "eq", "ne"]:
             tensor = get_random_test_tensor(is_float=False)
@@ -314,7 +314,7 @@ class TestCUDA(TestMPC):
             self._check_int(result1.cpu(), reference, "%s comparator failed" % comp)
             self._check_int(result2.cpu(), reference, "%s comparator failed" % comp)
 
-    def test_torch_avg_pool2d(self):
+    def test_torch_avg_pool2d(self) -> None:
         """Test avg_pool2d on CUDALongTensor"""
         for width in range(2, 5):
             for kernel_size in range(1, width):
@@ -343,7 +343,7 @@ class TestCUDA(TestMPC):
                                 result.cpu(), reference, "avg_pool2d failed"
                             )
 
-    def test_torch_stack_cat(self):
+    def test_torch_stack_cat(self) -> None:
         """Test torch.cat/torch.stack on CUDALongTensor"""
         funcs = ["stack", "cat"]
 
@@ -361,7 +361,7 @@ class TestCUDA(TestMPC):
                 reference, result.cpu(), "torch.{} failed for CUDALongTensor".format(op)
             )
 
-    def test_torch_broadcast_tensor(self):
+    def test_torch_broadcast_tensor(self) -> None:
         """Test torch.broadcast_tensor on CUDALongTensor"""
         x = get_random_test_tensor(size=(1, 5), is_float=False)
         y = get_random_test_tensor(size=(5, 1), is_float=False)
@@ -385,7 +385,7 @@ class TestCUDA(TestMPC):
             b, b_cuda.cpu(), "torch.broadcast_tensor failed for CUDALongTensor"
         )
 
-    def test_torch_split(self):
+    def test_torch_split(self) -> None:
         """Test torch.split on CUDALongTensor"""
         sizes = [
             (1,),
@@ -443,7 +443,7 @@ class TestCUDA(TestMPC):
                     self._check_int(result[i].cpu(), reference[i], "split failed")
                     self._check_int(result2[i].cpu(), reference[i], "split failed")
 
-    def test_torch_unbind(self):
+    def test_torch_unbind(self) -> None:
         """Test torch.unbind on CUDALongTensor"""
         sizes = [
             (1,),
@@ -482,7 +482,7 @@ class TestCUDA(TestMPC):
                         "unbind failed on CUDALongTensor",
                     )
 
-    def test_torch_gather(self):
+    def test_torch_gather(self) -> None:
         """Test torch.gather on CUDALongTensor"""
         sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
         for size in sizes:
@@ -506,7 +506,7 @@ class TestCUDA(TestMPC):
                 )
 
     @unittest.skip("torch.scatter behaves inconsistently on CUDA")
-    def test_torch_scatter(self):
+    def test_torch_scatter(self) -> None:
         """Test scatter/scatter_add function of CUDALongTensor
 
         This test will be skipped for now since torch.scatter provides
@@ -542,7 +542,7 @@ class TestCUDA(TestMPC):
                     self._check_int(result.cpu(), reference, "{} failed".format(func))
                     self._check_int(result2.cpu(), reference, "{} failed".format(func))
 
-    def test_torch_nonzero(self):
+    def test_torch_nonzero(self) -> None:
         """Test torch.nonzero on CUDALongTensor"""
         sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
         for size in sizes:
@@ -567,7 +567,7 @@ class TestCUDA(TestMPC):
                 self._check_int(result_tuple[i].cpu(), ref_tuple[i], "nonzero failed")
 
     @unittest.skip("torch.scatter behaves inconsistently on CUDA")
-    def test_scatter(self):
+    def test_scatter(self) -> None:
         """This test will be skipped for now since torch.scatter provides
         inconsistent result given the same input on CUDA. This is likely
         due to a potential bug on pytorch's implementation of scatter
@@ -581,13 +581,13 @@ class TestTFP(MultiProcessTestCase, TestCUDA):
         super().__init__(methodName)
         self.device = torch.device("cuda")
 
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         crypten.CrypTensor.set_grad_enabled(False)
         cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTFP, self).tearDown()
@@ -598,13 +598,13 @@ class TestTTP(MultiProcessTestCase, TestCUDA):
         super().__init__(methodName)
         self.device = torch.device("cuda")
 
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         crypten.CrypTensor.set_grad_enabled(False)
         cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTTP, self).tearDown()

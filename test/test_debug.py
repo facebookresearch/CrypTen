@@ -13,7 +13,7 @@ from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTest
 
 
 class TestDebug(MultiProcessTestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communicator
         if self.rank >= 0:
@@ -23,20 +23,20 @@ class TestDebug(MultiProcessTestCase):
             cfg.debug.debug_mode = True
             cfg.debug.validation_mode = True
 
-    def testLogging(self):
+    def testLogging(self) -> None:
         configure_logging()
 
-    def testPdb(self):
+    def testPdb(self) -> None:
         self.assertTrue(hasattr(pdb, "set_trace"))
 
-    def test_wrap_error_detection(self):
+    def test_wrap_error_detection(self) -> None:
         """Force a wrap error and test whether it raises in debug mode."""
         encrypted_tensor = crypten.cryptensor(0)
         encrypted_tensor.share = torch.tensor(2**63 - 1)
         with self.assertRaises(ValueError):
             encrypted_tensor.div(2)
 
-    def test_correctness_validation(self):
+    def test_correctness_validation(self) -> None:
         for grad_enabled in [False, True]:
             crypten.set_grad_enabled(grad_enabled)
 

@@ -28,7 +28,7 @@ class TestModels(MultiProcessTestCase):
         "shufflenet_v2_x2_0",
     ]
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         crypten.init()
 
@@ -139,78 +139,78 @@ class TestModels(MultiProcessTestCase):
                 self._check_model(model_name, pretrained=pretrained)
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_alexnet(self):
+    def test_alexnet(self) -> None:
         """Tests AlexNet model"""
         self._check_model("alexnet")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_densenet121(self):
+    def test_densenet121(self) -> None:
         """Tests DenseNet121 model"""
         self._check_model("densenet121")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_densenet161(self):
+    def test_densenet161(self) -> None:
         """Tests DenseNet161 model"""
         self._check_model("densenet161")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_densenet169(self):
+    def test_densenet169(self) -> None:
         """Tests DenseNet169 model"""
         self._check_model("densenet169")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_densenet201(self):
+    def test_densenet201(self) -> None:
         """Tests DenseNet201 model"""
         self._check_model("densenet201")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_googlenet(self):
+    def test_googlenet(self) -> None:
         """Tests GoogLeNet models"""
         self._check_model("googlenet")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_inception(self):
+    def test_inception(self) -> None:
         """Tests inception models"""
         self._check_model("inception_v3")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_mnasnet(self):
+    def test_mnasnet(self) -> None:
         """Tests MnasNet models"""
         model_names = ["mnasnet0_5", "mnasnet0_75", "mnasnet1_0", "mnasnet1_3"]
         self._check_all_models(model_names)
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_mobilenet(self):
+    def test_mobilenet(self) -> None:
         """Tests MobileNet models"""
         self._check_model("mobilenet_v2")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_resnet_small(self):
+    def test_resnet_small(self) -> None:
         """Tests small ResNet models"""
         model_names = ["resnet18", "resnet34", "resnet50"]
         self._check_all_models(model_names)
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_resnet101(self):
+    def test_resnet101(self) -> None:
         """Tests ResNet101 model"""
         self._check_model("resnet101")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_resnet152(self):
+    def test_resnet152(self) -> None:
         """Tests ResNet152 model"""
         self._check_model("resnet152")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_resnext101_32x8d(self):
+    def test_resnext101_32x8d(self) -> None:
         """Tests ResNeXt models"""
         self._check_model("resnext101_32x8d")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_resnext50_32x4d(self):
+    def test_resnext50_32x4d(self) -> None:
         self._check_model("resnext50_32x4d")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_shufflenet(self):
+    def test_shufflenet(self) -> None:
         """Tests ShuffleNet models"""
         model_names = [
             "shufflenet_v2_x0_5",
@@ -221,57 +221,57 @@ class TestModels(MultiProcessTestCase):
         self._check_all_models(model_names)
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_squeezenet(self):
+    def test_squeezenet(self) -> None:
         """Tests SqueezeNet models"""
         model_names = ["squeezenet1_0", "squeezenet1_1"]
         self._check_all_models(model_names)
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_vgg11(self):
+    def test_vgg11(self) -> None:
         """Tests VGG11 model"""
         self._check_model("vgg11")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_vgg11_bn(self):
+    def test_vgg11_bn(self) -> None:
         """Tests VGG11 model with Batch Normalization"""
         self._check_model("vgg11_bn")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_vgg13(self):
+    def test_vgg13(self) -> None:
         """Tests VGG13 model"""
         self._check_model("vgg13")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_vgg13_bn(self):
+    def test_vgg13_bn(self) -> None:
         """Tests VGG13 model with Batch Normalization"""
         self._check_model("vgg13_bn")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_vgg16(self):
+    def test_vgg16(self) -> None:
         """Tests VGG16 model"""
         self._check_model("vgg16")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_vgg16_bn(self):
+    def test_vgg16_bn(self) -> None:
         """Tests VGG16 model with Batch Normalization"""
         self._check_model("vgg16_bn")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_vgg19(self):
+    def test_vgg19(self) -> None:
         """Tests VGG19 model"""
         self._check_model("vgg19")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_vgg19_bn(self):
+    def test_vgg19_bn(self) -> None:
         """Tests VGG19 model with Batch Normalization"""
         self._check_model("vgg19_bn")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_wide_resnet101_2(self):
+    def test_wide_resnet101_2(self) -> None:
         """Tests wide_resnet101_2 model"""
         self._check_model("wide_resnet101_2")
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_wide_resnet50_2(self):
+    def test_wide_resnet50_2(self) -> None:
         """Test wide_resnet50_2 model"""
         self._check_model("wide_resnet50_2")

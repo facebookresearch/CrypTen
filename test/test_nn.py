@@ -160,7 +160,7 @@ class TestNN:
             self._check(encr_output, reference, "GlobalAveragePool failed")
 
     @unittest.skip("ONNX converter for Dropout is broken.")  # FIXME
-    def test_dropout_module(self):
+    def test_dropout_module(self) -> None:
         """Tests the dropout module"""
         input_size = [3, 3, 3]
         prob_list = [0.2 * x for x in range(1, 5)]
@@ -1259,7 +1259,7 @@ class TestNN:
                 "loss has not decreased after training",
             )
 
-    def test_batchnorm_module(self):
+    def test_batchnorm_module(self) -> None:
         """
         Test BatchNorm modules correctly set and update running stats. Also
         tests stateless BatchNormalization module.
@@ -1362,7 +1362,7 @@ class TestNN:
                             f"{stat} update in BatchNormalization module incorrect",
                         )
 
-    def test_unencrypted_modules(self):
+    def test_unencrypted_modules(self) -> None:
         """Tests crypten.Modules without encrypting them."""
 
         # generate input:
@@ -1416,7 +1416,7 @@ class TestNN:
             _run_test(sample, target)
             _run_test(crypten.cryptensor(sample), crypten.cryptensor(target))
 
-    def test_state_dict(self):
+    def test_state_dict(self) -> None:
         """
         Tests dumping and loading of state dicts.
         """
@@ -1539,7 +1539,7 @@ class TestNN:
                     new_model2.load_state_dict(crypten.load(f))
                     _check_state_dict(new_model2, state_dict)
 
-    def test_to(self):
+    def test_to(self) -> None:
         """Test Module.to, Module.cpu, and Module.cuda"""
         module_list = [crypten.nn.Linear(10, 10) for _ in range(3)]
         model = crypten.nn.Sequential(*module_list)
@@ -1571,7 +1571,7 @@ class TestNN:
             for buffer in model_cuda.buffers():
                 self.assertEqual(buffer.device, cuda)
 
-    def test_module_dict(self):
+    def test_module_dict(self) -> None:
         """Test ModuleDict module"""
         module_dict = crypten.nn.ModuleDict()
         self.assertEqual(len(module_dict), 0, "ModuleDict initialized incorrect size")
@@ -1626,7 +1626,7 @@ class TestNN:
         module_dict.clear()
         self.assertEqual(len(module_dict), 0, "ModuleDict clear failed")
 
-    def test_module_list(self):
+    def test_module_list(self) -> None:
         """Test ModuleDict module"""
         module_list = crypten.nn.ModuleList()
         self.assertEqual(len(module_list), 0, "ModuleList initialized incorrect size")
@@ -1679,7 +1679,7 @@ class TestNN:
         self.assertTrue(isinstance(module_list[0], crypten.nn.Conv2d), msg)
         self.assertTrue(isinstance(module_list[1], crypten.nn.Linear), msg)
 
-    def test_parameter_initializations(self):
+    def test_parameter_initializations(self) -> None:
         """Test crypten.nn.init initializations"""
         sizes = [
             (),
@@ -1750,7 +1750,7 @@ class TestNN:
                     f"public crypten.nn.init.{init} failed.",
                 )
 
-    def test_tutorial_modules(self):
+    def test_tutorial_modules(self) -> None:
         """Tests that all modules from tutorial 5 properly convert to crypten modules using from_pytorch"""
         input_sizes = {
             AliceNet: (1, 50),
@@ -1833,23 +1833,23 @@ class AliceNet2(torch.nn.Module):
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestNN):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestNN):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTTP, self).tearDown()
 

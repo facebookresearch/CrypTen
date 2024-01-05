@@ -61,19 +61,19 @@ def test_rng_seeds_func():
 
 
 class TestContext(unittest.TestCase):
-    def test_rank(self):
+    def test_rank(self) -> None:
         ranks = test_rank_func()
         self.assertEqual(ranks, [0, 1])
 
-    def test_exception(self):
+    def test_exception(self) -> None:
         ret = test_exception_func()
         self.assertEqual(ret, None)
 
-    def test_world_size(self):
+    def test_world_size(self) -> None:
         ones = test_worldsize_func()
         self.assertEqual(ones, [1] * 10)
 
-    def test_in_first(self):
+    def test_in_first(self) -> None:
         # TODO: Make this work with TTP provider
         cfg.mpc.provider = "TFP"
 
@@ -87,7 +87,7 @@ class TestContext(unittest.TestCase):
         # Make sure everything is the same in the parent
         self.assertEqual(comm.get().get_world_size(), 1)
 
-    def test_generator(self):
+    def test_generator(self) -> None:
         """Tests that generators for PRZS RNG are setup properly with different
         RNG seeds for each process.
         """
@@ -102,7 +102,7 @@ class TestContext(unittest.TestCase):
         for i in range(len(generators)):
             self.assertNotEqual(generators[i][0], generators[i][1])
 
-    def test_with_args_kwargs(self):
+    def test_with_args_kwargs(self) -> None:
         args = (2, 3, 5, 8)
         kwargs = {"a": 1, "b": 2, "c": 3, "d": 4}
         retval = test_with_args_kwargs_func(*args, **kwargs)
@@ -113,7 +113,7 @@ class TestContext(unittest.TestCase):
         self.assertEqual(ret_args, args[1:])
         self.assertEqual(ret_kwargs, kwargs)
 
-    def test_rng_seeds(self):
+    def test_rng_seeds(self) -> None:
         all_seeds = test_rng_seeds_func()
 
         prev_seeds = [seed[0] for seed in all_seeds]

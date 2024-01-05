@@ -87,26 +87,26 @@ class TestDistributions:
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestDistributions):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         crypten.CrypTensor.set_grad_enabled(False)
         cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestDistributions):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         crypten.CrypTensor.set_grad_enabled(False)
         cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         crypten.CrypTensor.set_grad_enabled(True)
         super(TestTTP, self).tearDown()

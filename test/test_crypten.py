@@ -355,7 +355,7 @@ class TestCrypten(MultiProcessTestCase):
                         "crypten.load() failed using preloaded",
                     )
 
-    def test_plaintext_save_load_module_from_party(self):
+    def test_plaintext_save_load_module_from_party(self) -> None:
         """Test that crypten.save_from_party and crypten.load_from_party
         properly save and load plaintext modules"""
         import tempfile
@@ -381,7 +381,7 @@ class TestCrypten(MultiProcessTestCase):
                         )
                 self.assertEqual(result.src, src)
 
-    def test_where(self):
+    def test_where(self) -> None:
         """Test that crypten.where properly conditions"""
         sizes = [(10,), (5, 10), (1, 5, 10)]
         y_types = [lambda x: x, crypten.cryptensor]
@@ -423,7 +423,7 @@ class TestCrypten(MultiProcessTestCase):
             )
 
     @unittest.skip("Test is flaky, with successes, failures and timeouts as outcomes")
-    def test_is_initialized(self):
+    def test_is_initialized(self) -> None:
         """Tests that the is_initialized flag is set properly"""
         comm = crypten.communicator
 

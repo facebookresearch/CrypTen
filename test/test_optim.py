@@ -41,7 +41,7 @@ class TestOptim:
             logging.info("Reference: %s" % reference)
         self.assertTrue(test_passed, msg=msg)
 
-    def test_sgd(self):
+    def test_sgd(self) -> None:
         lr_vals = [0.01, 0.1, 0.5]
         momentum_vals = [0.0, 0.1, 0.9]
         dampening_vals = [0.0, 0.01, 0.1]
@@ -105,22 +105,22 @@ class TestOptim:
 
 
 class TestTFP(MultiProcessTestCase, TestOptim):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestOptim):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTTP, self).tearDown()

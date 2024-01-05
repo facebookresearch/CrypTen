@@ -76,7 +76,7 @@ class TestOnnxConverter:
 
     """
     @unittest.skip("CrypTen no longer supports from_tensorflow")
-    def test_tensorflow_model_conversion(self):
+    def test_tensorflow_model_conversion(self) -> None:
         import tensorflow as tf
         import tf2onnx
 
@@ -408,23 +408,23 @@ class PyTorchLinear(torch.nn.Module):
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestOnnxConverter):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestOnnxConverter):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTTP, self).tearDown()
 

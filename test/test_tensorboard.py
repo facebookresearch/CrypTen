@@ -15,12 +15,12 @@ from test.multiprocess_test_case import MultiProcessTestCase
 class TestTensorboard(MultiProcessTestCase):
     """This class tests the crypten.nn.tensorboard package."""
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         if self.rank >= 0:
             crypten.init()
 
-    def test_tensorboard(self):
+    def test_tensorboard(self) -> None:
 
         # create small crypten model:
         model = crypten.nn.Graph("input", "output")

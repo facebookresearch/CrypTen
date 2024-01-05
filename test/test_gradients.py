@@ -653,7 +653,7 @@ class TestGradients:
             logging.info(f"Result - Reference {image.grad - crypten_grad}")
             self.assertTrue(sum_is_close, msg=msg)
 
-    def test_square(self):
+    def test_square(self) -> None:
         """Tests square function gradient.
         Note: torch pow(2) is used to verify gradient,
             since PyTorch does not implement square().
@@ -676,10 +676,10 @@ class TestGradients:
                 f"square backward failed with size {size}",
             )
 
-    def test_pow(self):
+    def test_pow(self) -> None:
         self._pow_helper("pow")
 
-    def test_magic_pow(self):
+    def test_magic_pow(self) -> None:
         self._pow_helper("__pow__")
 
     def _pow_helper(self, pow_fn):
@@ -689,7 +689,7 @@ class TestGradients:
                 self._check_forward_backward(pow_fn, tensor, power)
                 self._check_forward_backward(pow_fn, tensor, float(power))
 
-    def test_norm(self):
+    def test_norm(self) -> None:
         """Tests p-norm"""
         self.default_tolerance *= 2  # Increase tolerance for norm test
         for p in [1, 1.5, 2, 3, float("inf"), "fro"]:
@@ -699,7 +699,7 @@ class TestGradients:
             for dim in [0, 1, 2]:
                 self._check_forward_backward("norm", tensor, p=p, dim=dim)
 
-    def test_pad(self):
+    def test_pad(self) -> None:
         """Tests padding"""
         sizes = [(1,), (5,), (1, 1), (5, 5), (5, 5, 5), (5, 3, 32, 32)]
         pads = [
@@ -726,14 +726,14 @@ class TestGradients:
                 for value in [0, 1, 10]:
                     self._check_forward_backward("pad", tensor, pad, value=value)
 
-    def test_clone(self):
+    def test_clone(self) -> None:
         """Tests shallow_copy and clone of encrypted tensors."""
         sizes = [(5,), (1, 5), (5, 10, 15)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size, is_float=True)
             self._check_forward_backward("clone", tensor)
 
-    def test_cat_stack(self):
+    def test_cat_stack(self) -> None:
         for module in [crypten, torch]:  # torch.cat on CrypTensor runs crypten.cat
             for func in ["cat", "stack"]:
                 for dimensions in range(1, 5):
@@ -778,7 +778,7 @@ class TestGradients:
                                     f"{func} backward failed",
                                 )
 
-    def test_dropout(self):
+    def test_dropout(self) -> None:
         """Tests forward for dropout"""
         # Create a separate test for dropout since it cannot use the
         # regular forward function
@@ -814,7 +814,7 @@ class TestGradients:
                             "probability {}".format(size, use_zeros, prob),
                         )
 
-    def test_batchnorm(self):
+    def test_batchnorm(self) -> None:
         """
         Tests batchnorm forward and backward steps with training on / off.
         """
@@ -901,7 +901,7 @@ class TestGradients:
                         tolerance=tolerance,
                     )
 
-    def test_cross_entropy(self):
+    def test_cross_entropy(self) -> None:
         """Tests cross_entropy and binary_cross_entropy"""
         sizes = [(3, 2), (8, 4), (5, 10)]
         losses = [
@@ -952,7 +952,7 @@ class TestGradients:
                 out_encr.backward()
                 self._check(tensor_encr.grad, tensor.grad, f"{loss} backward failed")
 
-    def test_rappor_loss(self):
+    def test_rappor_loss(self) -> None:
         """Tests RAPPOR Loss"""
         sizes = [(3,), (8,), (5,)]
         alphas = [0.1, 0.3, 0.4]
@@ -987,7 +987,7 @@ class TestGradients:
                     tensor_encr.grad, tensor.grad, "rappor_loss backward failed"
                 )
 
-    def test_cosine_similarity(self):
+    def test_cosine_similarity(self) -> None:
         """Tests cosine_similarity"""
         for size in SIZES:
             tensor0 = get_random_test_tensor(size=size, is_float=True)
@@ -1000,7 +1000,7 @@ class TestGradients:
                     "cosine_similarity", tensor0, tensor1, dim=dim
                 )
 
-    def test_view_reshape(self):
+    def test_view_reshape(self) -> None:
         """Tests view and reshape gradients"""
         size_to_views = {
             (10,): [(5, 2), (1, 10)],
@@ -1014,7 +1014,7 @@ class TestGradients:
                 self._check_forward_backward("view", tensor, view)
                 self._check_forward_backward("reshape", tensor, view)
 
-    def test_narrow_flatten(self):
+    def test_narrow_flatten(self) -> None:
         """Tests narrow and flatten gradients"""
         sizes = [(10,), (5, 4), (10, 6, 8)]
 
@@ -1025,7 +1025,7 @@ class TestGradients:
                 self._check_forward_backward("narrow", tensor, dim, 0, 2)
                 self._check_forward_backward("narrow", tensor, dim, 1, 3)
 
-    def test_flip(self):
+    def test_flip(self) -> None:
         """Tests flip gradient"""
         sizes = [(2, 3, 7, 2), (5, 10, 15)]
         flips = [(0, 2, 1), (0, 1)]
@@ -1035,7 +1035,7 @@ class TestGradients:
             for flip in flips:
                 self._check_forward_backward("flip", tensor, flip)
 
-    def test_gather_scatter(self):
+    def test_gather_scatter(self) -> None:
         """Tests gather and scatter gradients"""
         sizes = [(2, 2), (3, 5), (3, 5, 10)]
         indices = [[0, 1, 0, 0], [0, 1, 0, 0, 1] * 3, [0, 0, 1] * 50]
@@ -1073,7 +1073,7 @@ class TestGradients:
                     f"{func} backward failed with index {index}",
                 )
 
-    def test_index_select(self):
+    def test_index_select(self) -> None:
         """Tests index_select gradients"""
         sizes = [(2, 2), (3, 5), (3, 5, 10), (4, 8, 2, 5)]
         for size in sizes:
@@ -1088,7 +1088,7 @@ class TestGradients:
                     )
                     self._check_forward_backward("index_select", tensor, dim, index)
 
-    def test_take(self):
+    def test_take(self) -> None:
         """Tests take gradients"""
         sizes = [(10,), (5, 10), (2, 5, 10)]
         indices = [[0], [0, 5], [0, 2, 5, 8]]
@@ -1098,7 +1098,7 @@ class TestGradients:
             index = torch.tensor(index)
             self._check_forward_backward("take", tensor, index)
 
-    def test_roll(self):
+    def test_roll(self) -> None:
         """Tests roll gradients"""
         sizes = [(1, 10), (5, 10), (2, 5, 10)]
         shifts = [1, 3, (1, 2)]
@@ -1109,7 +1109,7 @@ class TestGradients:
             tensor = get_random_test_tensor(size=size, is_float=True)
             self._check_forward_backward("roll", tensor, shift, dim)
 
-    def test_cumsum(self):
+    def test_cumsum(self) -> None:
         """Tests cumsum gradient"""
         sizes = [(), (10,), (5, 10), (2, 5, 10)]
 
@@ -1118,7 +1118,7 @@ class TestGradients:
             for dim in range(tensor.dim()):
                 self._check_forward_backward("cumsum", tensor, dim)
 
-    def test_trace(self):
+    def test_trace(self) -> None:
         """Tests trace gradient"""
         sizes = [(1, 1), (3, 3), (10, 10)]
 
@@ -1126,7 +1126,7 @@ class TestGradients:
             tensor = get_random_test_tensor(size=size, is_float=True)
             self._check_forward_backward("trace", tensor)
 
-    def test_var(self):
+    def test_var(self) -> None:
         """Tests var gradient"""
         sizes = [(10,), (1, 10), (5, 10), (2, 5, 10)]
 
@@ -1143,7 +1143,7 @@ class TestGradients:
                         "var", tensor, dim, unbiased=unbiased, keepdim=keepdim
                     )
 
-    def test_getitem(self):
+    def test_getitem(self) -> None:
         """Tests getitem gradient"""
         sizes = [(10,), (10, 1), (5, 10), (5, 2, 10)]
         indices = [0, 1, 3]
@@ -1152,7 +1152,7 @@ class TestGradients:
             tensor = get_random_test_tensor(size=size, is_float=True)
             self._check_forward_backward("__getitem__", tensor, index)
 
-    def test_pos_pow(self):
+    def test_pos_pow(self) -> None:
         """Test gradient crypten pos_pow"""
         for power in [3, -2, 1.75]:
             # ensure base is positive for pos_pow
@@ -1177,7 +1177,7 @@ class TestGradients:
                 f"pos_pow backward failed with power {power}",
             )
 
-    def test_polynomial(self):
+    def test_polynomial(self) -> None:
         for terms in range(1, 5):
             for encrypt_coeffs in [False, True]:
                 tensor = get_random_test_tensor(is_float=True)
@@ -1212,36 +1212,36 @@ class TestGradients:
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestGradients):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestGradients):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTTP, self).tearDown()
 
 
 class TestPTT(unittest.TestCase, TestGradients):
-    def setUp(self):
+    def setUp(self) -> None:
         self.default_tolerance = 0.5
         self._original_backend = crypten.get_default_cryptensor_type()
         crypten.set_default_cryptensor_type("ptt")
         super(TestPTT, self).setUp()
         crypten.init()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         crypten.set_default_cryptensor_type(self._original_backend)
         super(TestPTT, self).setUp()
 

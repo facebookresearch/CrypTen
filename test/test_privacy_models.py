@@ -114,7 +114,7 @@ class TestPrivacyModels(MultiProcessTestCase):
             self.assertTrue(sample_mean.item() < tolerance)
             self.assertTrue(sample_std.sub(std).abs() < tolerance)
 
-    def test_dp_split_mpc(self):
+    def test_dp_split_mpc(self) -> None:
         # TODO: Vary Noise Magnitude
         NOISE_MAGNITUDE = 0
         FEATURE_SRC = 0
