@@ -37,7 +37,7 @@ class TestCommunicator:
     This class tests all member functions of crypten package
     """
 
-    def test_send_recv(self):
+    def test_send_recv(self) -> None:
         tensor = torch.tensor([self.rank], dtype=torch.long)
 
         # Send forward, receive backward
@@ -53,7 +53,7 @@ class TestCommunicator:
         self.assertTrue(torch.is_tensor(result))
         self.assertEqual(result.item(), src)
 
-    def test_scatter(self):
+    def test_scatter(self) -> None:
         for rank in range(self.world_size):
             tensor = []
             if self.rank == rank:
@@ -63,7 +63,7 @@ class TestCommunicator:
             self.assertTrue(torch.is_tensor(result))
             self.assertEqual(result.item(), self.rank)
 
-    def test_reduce(self):
+    def test_reduce(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
         for rank in range(self.world_size):
             for size in sizes:
@@ -76,14 +76,14 @@ class TestCommunicator:
                 # else:
                 #     self.assertTrue((result == tensor).all())
 
-    def test_all_reduce(self):
+    def test_all_reduce(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size)
             result = comm.get().all_reduce(tensor)
             self.assertTrue((result == (tensor * self.world_size)).all())
 
-    def test_gather(self):
+    def test_gather(self) -> None:
         tensor = torch.tensor([self.rank])
         for rank in range(self.world_size):
             result = comm.get().gather(tensor, rank)
@@ -92,7 +92,7 @@ class TestCommunicator:
             else:
                 self.assertIsNone(result[0])
 
-    def test_gather_random(self):
+    def test_gather_random(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5), (1000,)]
         for rank in range(self.world_size):
             for size in sizes:
@@ -105,14 +105,14 @@ class TestCommunicator:
                 else:
                     self.assertIsNone(result[0])
 
-    def test_all_gather(self):
+    def test_all_gather(self) -> None:
         tensor = torch.tensor([self.rank])
         result = comm.get().all_gather(tensor)
         self.assertEqual(
             result, [torch.tensor([rank]) for rank in range(self.world_size)]
         )
 
-    def test_mutation(self):
+    def test_mutation(self) -> None:
         for _ in range(10):
             tensor = torch.tensor([self.rank])
             result = comm.get().all_gather(tensor)
@@ -124,7 +124,7 @@ class TestCommunicator:
                 result, [torch.tensor([rank]) for rank in range(self.world_size)]
             )
 
-    def test_all_gather_random(self):
+    def test_all_gather_random(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
         for size in sizes:
             tensor = get_random_test_tensor(size=size)
@@ -133,7 +133,7 @@ class TestCommunicator:
             for res in result:
                 self.assertTrue((res == tensor).all())
 
-    def test_broadcast(self):
+    def test_broadcast(self) -> None:
         for rank in range(self.world_size):
             tensor = torch.tensor([0], dtype=torch.long)
             if self.rank == rank:
@@ -143,13 +143,13 @@ class TestCommunicator:
             self.assertTrue(torch.is_tensor(tensor))
             self.assertEqual(tensor.item(), 1)
 
-    def test_get_world_size(self):
+    def test_get_world_size(self) -> None:
         self.assertEqual(comm.get().get_world_size(), self.world_size)
 
-    def test_get_rank(self):
+    def test_get_rank(self) -> None:
         self.assertEqual(comm.get().get_rank(), self.rank)
 
-    def test_batched_all_reduce(self):
+    def test_batched_all_reduce(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
         tensors = [get_random_test_tensor(size=size) for size in sizes]
 
@@ -158,7 +158,7 @@ class TestCommunicator:
         for i, result in enumerate(results):
             self.assertTrue((result == (tensors[i] * self.world_size)).all())
 
-    def test_batched_reduce(self):
+    def test_batched_reduce(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
         for rank in range(self.world_size):
             tensors = [get_random_test_tensor(size=size) for size in sizes]
@@ -172,7 +172,7 @@ class TestCommunicator:
                 # else:
                 #     self.assertTrue((result == tensor).all())
 
-    def test_batched_broadcast(self):
+    def test_batched_broadcast(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
         for rank in range(self.world_size):
             if self.rank == rank:
@@ -186,7 +186,7 @@ class TestCommunicator:
                 self.assertTrue(torch.is_tensor(tensor))
                 self.assertTrue(tensor.eq(1).all())
 
-    def test_send_recv_obj(self):
+    def test_send_recv_obj(self) -> None:
         TEST_OBJECTS = [
             {"a": 1, "b": 2, "c": 3},
             torch.tensor(1),
@@ -240,7 +240,7 @@ class TestCommunicator:
                     with self.assertRaises(ValueError):
                         comm.get().recv_obj(1 - self.rank)
 
-    def test_broadcast_obj(self):
+    def test_broadcast_obj(self) -> None:
         TEST_OBJECTS = [
             {"a": 1, "b": 2, "c": 3},
             torch.tensor(1),
@@ -285,7 +285,7 @@ class TestCommunicator:
                         comm.get().broadcast_obj(test_obj, src)
 
     @unittest.skip("Skipping for now as it keeps timing out")  # FIXME
-    def test_name(self):
+    def test_name(self) -> None:
         # Test default name is correct
         self.assertEqual(comm.get().get_name(), f"rank{comm.get().get_rank()}")
 
@@ -312,7 +312,7 @@ class TestCommunicator:
 
 
 class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
-    def test_logging(self):
+    def test_logging(self) -> None:
         # Assert initialization resets comm.get() stats
         self.assertEqual(comm.get().comm_rounds, 0)
         self.assertEqual(comm.get().comm_bytes, 0)

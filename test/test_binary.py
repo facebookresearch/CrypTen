@@ -21,7 +21,7 @@ class TestBinary(MultiProcessTestCase):
     This class tests all functions of BinarySharedTensor.
     """
 
-    def setUp(self):
+    def setUp(self) -> None:
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communcator
         if self.rank >= 0:
@@ -46,7 +46,7 @@ class TestBinary(MultiProcessTestCase):
             logging.info("Result - Reference = %s" % (tensor - reference))
         self.assertTrue(test_passed, msg=msg)
 
-    def test_encrypt_decrypt(self):
+    def test_encrypt_decrypt(self) -> None:
         """
         Tests tensor encryption and decryption for both positive
         and negative values.
@@ -91,7 +91,7 @@ class TestBinary(MultiProcessTestCase):
                         dst=dst,
                     )
 
-    def test_transpose(self):
+    def test_transpose(self) -> None:
         sizes = [
             (1,),
             (5,),
@@ -121,7 +121,7 @@ class TestBinary(MultiProcessTestCase):
                     encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
 
-    def test_permute(self):
+    def test_permute(self) -> None:
         """Test the permute operations"""
         sizes = [
             (1,),
@@ -150,7 +150,7 @@ class TestBinary(MultiProcessTestCase):
                 encrypted_out = encrypted_tensor.permute(dim_arr)
                 self._check(encrypted_out, reference, "permute failed")
 
-    def test_XOR(self):
+    def test_XOR(self) -> None:
         """Test bitwise-XOR function on BinarySharedTensor"""
         for tensor_type in [lambda x: x, BinarySharedTensor]:
             tensor = get_random_test_tensor(is_float=False)
@@ -161,7 +161,7 @@ class TestBinary(MultiProcessTestCase):
             encrypted_out = encrypted_tensor ^ encrypted_tensor2
             self._check(encrypted_out, reference, "%s XOR failed" % tensor_type)
 
-    def test_AND(self):
+    def test_AND(self) -> None:
         """Test bitwise-AND function on BinarySharedTensor"""
         for tensor_type in [lambda x: x, BinarySharedTensor]:
             tensor = get_random_test_tensor(is_float=False)
@@ -172,7 +172,7 @@ class TestBinary(MultiProcessTestCase):
             encrypted_out = encrypted_tensor & encrypted_tensor2
             self._check(encrypted_out, reference, "%s AND failed" % tensor_type)
 
-    def test_OR(self):
+    def test_OR(self) -> None:
         """Test bitwise-OR function on BinarySharedTensor"""
         for tensor_type in [lambda x: x, BinarySharedTensor]:
             tensor = get_random_test_tensor(is_float=False)
@@ -183,7 +183,7 @@ class TestBinary(MultiProcessTestCase):
             encrypted_out = encrypted_tensor | encrypted_tensor2
             self._check(encrypted_out, reference, "%s OR failed" % tensor_type)
 
-    def test_bitwise_broadcasting(self):
+    def test_bitwise_broadcasting(self) -> None:
         """Tests bitwise function broadcasting"""
         bitwise_ops = ["__and__", "__or__", "__xor__"]
         sizes = [
@@ -227,7 +227,7 @@ class TestBinary(MultiProcessTestCase):
                         f"failed with sizes {size1}, {size2}",
                     )
 
-    def test_invert(self):
+    def test_invert(self) -> None:
         """Test bitwise-invert function on BinarySharedTensor"""
         tensor = get_random_test_tensor(is_float=False)
         encrypted_tensor = BinarySharedTensor(tensor)
@@ -235,7 +235,7 @@ class TestBinary(MultiProcessTestCase):
         encrypted_out = ~encrypted_tensor
         self._check(encrypted_out, reference, "invert failed")
 
-    def test_add(self):
+    def test_add(self) -> None:
         """Tests add using binary shares"""
         for tensor_type in [lambda x: x, BinarySharedTensor]:
             tensor = get_random_test_tensor(is_float=False)
@@ -246,7 +246,7 @@ class TestBinary(MultiProcessTestCase):
             encrypted_out = encrypted_tensor + encrypted_tensor2
             self._check(encrypted_out, reference, "%s add failed" % tensor_type)
 
-    def test_comparators(self):
+    def test_comparators(self) -> None:
         """Test comparators (>, >=, <, <=, ==, !=)"""
         for _scale in [False, True]:
             for comp in ["gt", "ge", "lt", "le", "eq", "ne"]:
@@ -262,7 +262,7 @@ class TestBinary(MultiProcessTestCase):
 
                     self._check(encrypted_out, reference, "%s comparator failed" % comp)
 
-    def test_sum(self):
+    def test_sum(self) -> None:
         """Tests sum using binary shares"""
         tensor = get_random_test_tensor(size=(5, 5, 5), is_float=False)
         encrypted = BinarySharedTensor(tensor)
@@ -273,7 +273,7 @@ class TestBinary(MultiProcessTestCase):
             encrypted_out = encrypted.sum(dim)
             self._check(encrypted_out, reference, "sum failed")
 
-    def test_get_set(self):
+    def test_get_set(self) -> None:
         for tensor_type in [lambda x: x, BinarySharedTensor]:
             for size in range(1, 5):
                 # Test __getitem__
@@ -312,7 +312,7 @@ class TestBinary(MultiProcessTestCase):
                     encrypted_out, reference, "%s setitem failed" % type(encrypted2)
                 )
 
-    def test_share_attr(self):
+    def test_share_attr(self) -> None:
         """Tests share attribute getter and setter"""
         for is_float in (True, False):
             reference = get_random_test_tensor(is_float=is_float)
@@ -328,7 +328,7 @@ class TestBinary(MultiProcessTestCase):
                 torch.equal(encrypted_tensor.share, new_share), "share setter failed"
             )
 
-    def test_inplace(self):
+    def test_inplace(self) -> None:
         """Test inplace vs. out-of-place functions"""
         for op in ["__xor__", "__and__", "__or__"]:
             for tensor_type in [lambda x: x, BinarySharedTensor]:
@@ -379,7 +379,7 @@ class TestBinary(MultiProcessTestCase):
                 self.assertTrue(id(encrypted_out.share) == input_plain_id)
                 self.assertTrue(id(encrypted_out) == input_encrypted_id)
 
-    def test_control_flow_failure(self):
+    def test_control_flow_failure(self) -> None:
         """Tests that control flow fails as expected"""
         tensor = get_random_test_tensor(is_float=False)
         encrypted_tensor = BinarySharedTensor(tensor)
@@ -396,14 +396,14 @@ class TestBinary(MultiProcessTestCase):
             elif encrypted_tensor:
                 pass
 
-    def test_src_failure(self):
+    def test_src_failure(self) -> None:
         """Tests that out-of-bounds src fails as expected"""
         tensor = get_random_test_tensor(is_float=True)
         for src in [None, "abc", -2, self.world_size]:
             with self.assertRaises(AssertionError):
                 BinarySharedTensor(tensor, src=src)
 
-    def test_src_match_input_data(self):
+    def test_src_match_input_data(self) -> None:
         """Tests incorrect src in BinarySharedTensor fails as expected"""
         tensor = get_random_test_tensor(is_float=True)
         tensor.src = 0
@@ -411,7 +411,7 @@ class TestBinary(MultiProcessTestCase):
             with self.assertRaises(AssertionError):
                 BinarySharedTensor(tensor, src=testing_src)
 
-    def test_where(self):
+    def test_where(self) -> None:
         """Tests where() conditional element selection"""
         sizes = [(10,), (5, 10), (1, 5, 10)]
         y_types = [lambda x: x, BinarySharedTensor]
@@ -452,7 +452,7 @@ class TestBinary(MultiProcessTestCase):
                 "where failed with private condition",
             )
 
-    def test_gather(self):
+    def test_gather(self) -> None:
         """Test gather function of encrypted tensor"""
         sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
         for size in sizes:
@@ -465,7 +465,7 @@ class TestBinary(MultiProcessTestCase):
                 encrypted_out = encrypted.gather(dim, index)
                 self._check(encrypted_out, reference, f"gather failed with size {size}")
 
-    def test_scatter(self):
+    def test_scatter(self) -> None:
         """Test scatter function of encrypted tensor"""
         funcs = ["scatter", "scatter_"]
         sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
@@ -504,7 +504,7 @@ class TestBinary(MultiProcessTestCase):
                                 % ("private" if private else "public", func),
                             )
 
-    def test_split(self):
+    def test_split(self) -> None:
         """Test gather function of encrypted tensor"""
         sizes = [(5, 5), (5, 5, 5), (5, 5, 5, 5)]
 

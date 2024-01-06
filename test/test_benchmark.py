@@ -19,17 +19,17 @@ except ValueError:
 
 
 class TestBenchmark(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         crypten.init()
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_func_benchmarks_run(self):
+    def test_func_benchmarks_run(self) -> None:
         """Ensure function benchmarks run without an exception"""
         func_benchmarks = benchmark.FuncBenchmarks()
         func_benchmarks.run()
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_model_benchmarks_run(self):
+    def test_model_benchmarks_run(self) -> None:
         """Ensure model benchmarks run without an exception"""
         model_benchmarks = benchmark.ModelBenchmarks()
         for model in model_benchmarks.models:
@@ -37,7 +37,7 @@ class TestBenchmark(unittest.TestCase):
         model_benchmarks.run()
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_func_benchmarks_data(self):
+    def test_func_benchmarks_data(self) -> None:
         """Sanity check length and columns of function benchmarks"""
         func_benchmarks = benchmark.FuncBenchmarks()
         func_benchmarks.run()
@@ -65,7 +65,7 @@ class TestBenchmark(unittest.TestCase):
         )
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_model_benchmarks_data(self):
+    def test_model_benchmarks_data(self) -> None:
         """Sanity check length and columns of model benchmarks"""
         model_benchmarks = benchmark.ModelBenchmarks()
         for model in model_benchmarks.models:
@@ -93,7 +93,7 @@ class TestBenchmark(unittest.TestCase):
         )
 
     @unittest.skip("Skipping to resolve timeout issues in unittest framework")
-    def test_advanced_model_benchmarks(self):
+    def test_advanced_model_benchmarks(self) -> None:
         """Tests advanced models are added with flag"""
         model_benchmarks = benchmark.ModelBenchmarks(advanced_models=False)
         self.assertTrue(all(not model.advanced for model in model_benchmarks.models))

@@ -32,7 +32,7 @@ class TestCommon(unittest.TestCase):
         test_passed = (tensor == reference).all().item() == 1
         self.assertTrue(test_passed, msg=msg)
 
-    def test_encode_decode(self):
+    def test_encode_decode(self) -> None:
         """Tests tensor encoding and decoding."""
         for float in [False, True]:
             if float:
@@ -67,7 +67,7 @@ class TestCommon(unittest.TestCase):
             decoded = fpe.decode(fpe.encode(tensor)).type(dtype)
             self._check(decoded, tensor, "Encoding/decoding a %s failed." % dtype)
 
-    def test_nearest_integer_division(self):
+    def test_nearest_integer_division(self) -> None:
         # test without scaling:
         scale = 1
         reference = [[-26, -25, -7, -5, -4, -1, 0, 1, 3, 4, 5, 7, 25, 26]]
@@ -89,7 +89,7 @@ class TestCommon(unittest.TestCase):
             "Nearest integer division failed.",
         )
 
-    def test_chebyshev_series(self):
+    def test_chebyshev_series(self) -> None:
         """Checks coefficients returned by chebyshev_series are correct"""
         for width, terms in [(6, 10), (6, 20)]:
             result = chebyshev_series(torch.tanh, width, terms)
@@ -99,7 +99,7 @@ class TestCommon(unittest.TestCase):
             self.assertTrue(result[0] < 1e-4)
             self.assertTrue(torch.isclose(result[-1], torch.tensor(3.5e-2), atol=1e-1))
 
-    def test_config(self):
+    def test_config(self) -> None:
         """Checks setting configuartion with config manager works"""
         # Set the config directly
         crypten.init()

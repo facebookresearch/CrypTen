@@ -400,7 +400,7 @@ class TestAutograd:
             encr_output.backward()
             self._check(encr_input.grad, input.grad, "%s backward failed" % func_name)
 
-    def test_autograd(self):
+    def test_autograd(self) -> None:
         """Tests autograd graph construction and backprop."""
 
         # define test cases:
@@ -462,7 +462,7 @@ class TestAutograd:
             for idx in range(number_of_inputs):
                 self._check(encr_inputs[idx].grad, inputs[idx].grad, "backward failed")
 
-    def test_autograd_repetition(self):
+    def test_autograd_repetition(self) -> None:
         """Tests running autograd on the same input repeatedly."""
 
         # create test case:
@@ -487,23 +487,23 @@ class TestAutograd:
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestAutograd):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTFP, self).tearDown()
 
 
 class TestTTP(MultiProcessTestCase, TestAutograd):
-    def setUp(self):
+    def setUp(self) -> None:
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()
 
-    def tearDown(self):
+    def tearDown(self) -> None:
         cfg.mpc.provider = self._original_provider
         super(TestTTP, self).tearDown()
 
