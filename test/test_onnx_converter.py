@@ -8,7 +8,6 @@
 import collections
 import io
 import logging
-import os
 import unittest
 
 import crypten
