@@ -11,7 +11,6 @@ Contains data used for training / testing model benchmarks
 import os
 from pathlib import Path
 
-import crypten
 import PIL
 import torch
 import torch.nn.functional as F

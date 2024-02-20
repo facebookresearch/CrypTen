@@ -45,8 +45,6 @@ from examples import multiprocess_launcher
 try:
     from . import data, models
 except ImportError:
-    # direct import if relative fails
-    import data
     import models
 
 Runtime = namedtuple("Runtime", "mid q1 q3")
