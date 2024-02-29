@@ -34,6 +34,8 @@ class ArithmeticSharedTensor:
     the number of parties present in the protocol (world_size).
     """
 
+    PUBLIC_COMPUTE_PARTY = 0  # Party responsible for public addition.
+
     # constructors:
     def __init__(
         self,
@@ -239,7 +241,7 @@ class ArithmeticSharedTensor:
         result = self.shallow_copy()
         if isinstance(value, (int, float)):
             value = self.encoder.encode(value).item()
-            if result.rank == 0:
+            if result.rank == self.PUBLIC_COMPUTE_PARTY:
                 result.share = torch.nn.functional.pad(
                     result.share, pad, mode=mode, value=value
                 )
@@ -362,7 +364,7 @@ class ArithmeticSharedTensor:
             y = result.encoder.encode(y, device=self.device)
 
             if additive_func:  # ['add', 'sub']
-                if result.rank == 0:
+                if result.rank == self.PUBLIC_COMPUTE_PARTY:
                     result.share = getattr(result.share, op)(y)
                 else:
                     result.share = torch.broadcast_tensors(result.share, y)[0]
@@ -514,7 +516,7 @@ class ArithmeticSharedTensor:
         private = isinstance(tensor, ArithmeticSharedTensor)
         if public:
             enc_tensor = self.encoder.encode(tensor)
-            if self.rank == 0:
+            if self.rank == self.PUBLIC_COMPUTE_PARTY:
                 self._tensor.index_add_(dim, index, enc_tensor)
         elif private:
             self._tensor.index_add_(dim, index, tensor._tensor)
@@ -541,7 +543,7 @@ class ArithmeticSharedTensor:
         public = isinstance(other, (int, float)) or is_tensor(other)
         private = isinstance(other, ArithmeticSharedTensor)
         if public:
-            if self.rank == 0:
+            if self.rank == self.PUBLIC_COMPUTE_PARTY:
                 self.share.scatter_add_(dim, index, self.encoder.encode(other))
         elif private:
             self.share.scatter_add_(dim, index, other.share)

@@ -23,6 +23,7 @@ TTP_FUNCTIONS = ["additive", "square", "binary", "wraps", "B2A"]
 
 class TrustedThirdParty(TupleProvider):
     NAME = "TTP"
+    COMMUNICATING_PARTY = 0
 
     def generate_additive_triple(self, size0, size1, op, device=None, *args, **kwargs):
         """Generate multiplicative triples of given sizes"""
@@ -30,7 +31,7 @@ class TrustedThirdParty(TupleProvider):
 
         a = generate_random_ring_element(size0, generator=generator, device=device)
         b = generate_random_ring_element(size1, generator=generator, device=device)
-        if comm.get().get_rank() == 0:
+        if comm.get().get_rank() == self.COMMUNICATING_PARTY:
             # Request c from TTP
             c = TTPClient.get().ttp_request(
                 "additive", device, size0, size1, op, *args, **kwargs
@@ -51,7 +52,7 @@ class TrustedThirdParty(TupleProvider):
         generator = TTPClient.get().get_generator(device=device)
 
         r = generate_random_ring_element(size, generator=generator, device=device)
-        if comm.get().get_rank() == 0:
+        if comm.get().get_rank() == self.COMMUNICATING_PARTY:
             # Request r2 from TTP
             r2 = TTPClient.get().ttp_request("square", device, size)
         else:
@@ -68,7 +69,7 @@ class TrustedThirdParty(TupleProvider):
         a = generate_kbit_random_tensor(size0, generator=generator, device=device)
         b = generate_kbit_random_tensor(size1, generator=generator, device=device)
 
-        if comm.get().get_rank() == 0:
+        if comm.get().get_rank() == self.COMMUNICATING_PARTY:
             # Request c from TTP
             c = TTPClient.get().ttp_request("binary", device, size0, size1)
         else:
@@ -86,7 +87,7 @@ class TrustedThirdParty(TupleProvider):
         generator = TTPClient.get().get_generator(device=device)
 
         r = generate_random_ring_element(size, generator=generator, device=device)
-        if comm.get().get_rank() == 0:
+        if comm.get().get_rank() == self.COMMUNICATING_PARTY:
             # Request theta_r from TTP
             theta_r = TTPClient.get().ttp_request("wraps", device, size)
         else:
@@ -107,7 +108,7 @@ class TrustedThirdParty(TupleProvider):
             size, bitlength=1, generator=generator, device=device
         )
 
-        if comm.get().get_rank() == 0:
+        if comm.get().get_rank() == self.COMMUNICATING_PARTY:
             # Request rA from TTP
             rA = TTPClient.get().ttp_request("B2A", device, size)
         else:
