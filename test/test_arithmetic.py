@@ -145,9 +145,11 @@ class TestArithmetic(MultiProcessTestCase):
                         tensor1,
                         "%s %s failed"
                         % (
-                            "private"
-                            if tensor_type == ArithmeticSharedTensor
-                            else "public",
+                            (
+                                "private"
+                                if tensor_type == ArithmeticSharedTensor
+                                else "public"
+                            ),
                             func,
                         ),
                     )
@@ -352,9 +354,11 @@ class TestArithmetic(MultiProcessTestCase):
             self._check(
                 encrypted_out,
                 dot_reference,
-                "%s dot product failed" % "private"
-                if tensor_type == ArithmeticSharedTensor
-                else "public",
+                (
+                    "%s dot product failed" % "private"
+                    if tensor_type == ArithmeticSharedTensor
+                    else "public"
+                ),
             )
 
             # ger
@@ -363,9 +367,11 @@ class TestArithmetic(MultiProcessTestCase):
             self._check(
                 encrypted_out,
                 ger_reference,
-                "%s outer product failed" % "private"
-                if tensor_type == ArithmeticSharedTensor
-                else "public",
+                (
+                    "%s outer product failed" % "private"
+                    if tensor_type == ArithmeticSharedTensor
+                    else "public"
+                ),
             )
 
     def test_squeeze(self) -> None:

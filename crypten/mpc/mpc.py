@@ -291,7 +291,8 @@ class MPCTensor(CrypTensor):
         `broadcastable`_.
 
         .. _broadcastable:
-            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics"""  # noqa: B950
+            https://pytorch.org/docs/stable/notes/broadcasting.html#broadcasting-semantics
+        """  # noqa: B950
         result = self.clone()
         if isinstance(y, CrypTensor):
             result.share = torch.broadcast_tensors(result.share, y.share)[0].clone()

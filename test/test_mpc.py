@@ -376,9 +376,11 @@ class TestMPC:
             self._check(
                 encrypted_out,
                 dot_reference,
-                "%s dot product failed" % "private"
-                if tensor_type == MPCTensor
-                else "public",
+                (
+                    "%s dot product failed" % "private"
+                    if tensor_type == MPCTensor
+                    else "public"
+                ),
             )
 
             # ger
@@ -387,9 +389,11 @@ class TestMPC:
             self._check(
                 encrypted_out,
                 ger_reference,
-                "%s outer product failed" % "private"
-                if tensor_type == MPCTensor
-                else "public",
+                (
+                    "%s outer product failed" % "private"
+                    if tensor_type == MPCTensor
+                    else "public"
+                ),
             )
 
     def test_squeeze(self):
