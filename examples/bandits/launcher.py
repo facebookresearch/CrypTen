@@ -28,7 +28,9 @@ import random
 import examples.util
 import torch
 import visdom
-from examples.multiprocess_launcher import MultiProcessLauncher
+from deeplearning.projects.crypten.examples.multiprocess_launcher import (
+    MultiProcessLauncher,
+)
 from examples.util import NoopContextManager, process_mnist_files
 from torchvision.datasets.mnist import MNIST
 

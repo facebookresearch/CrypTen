@@ -22,7 +22,9 @@ import argparse
 import logging
 import os
 
-from examples.multiprocess_launcher import MultiProcessLauncher
+from deeplearning.projects.crypten.examples.multiprocess_launcher import (
+    MultiProcessLauncher,
+)
 
 
 parser = argparse.ArgumentParser(description="CrypTen Autograd CNN Training")

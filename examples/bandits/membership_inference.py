@@ -27,7 +27,9 @@ import pickle
 import examples.util
 import torch
 import visdom
-from examples.multiprocess_launcher import MultiProcessLauncher
+from deeplearning.projects.crypten.examples.multiprocess_launcher import (
+    MultiProcessLauncher,
+)
 
 
 def compute_rewards(weights, dataset, epsilon=0.0):
