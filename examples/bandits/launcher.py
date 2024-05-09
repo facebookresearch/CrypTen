@@ -427,9 +427,9 @@ def build_learner(args, bandits, download_mnist):
 
 def _run_experiment(args):
     if args.plaintext:
-        import plain_contextual_bandits as bandits
+        import plain_contextual_bandits as bandits  # @manual
     else:
-        import private_contextual_bandits as bandits
+        import private_contextual_bandits as bandits  # @manual
 
     learner_func = build_learner(args, bandits, download_mnist)
     import crypten
