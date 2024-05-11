@@ -27,7 +27,7 @@ import os
 from deeplearning.projects.crypten.examples.multiprocess_launcher import (
     MultiProcessLauncher,
 )
-from mpc_imagenet import run_experiment
+from mpc_imagenet import run_experiment  # @manual
 
 
 # input arguments:

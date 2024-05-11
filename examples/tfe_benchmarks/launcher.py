@@ -139,7 +139,7 @@ parser.add_argument(
 
 def _run_experiment(args):
     # only import here to initialize crypten within the subprocesses
-    from tfe_benchmarks import run_tfe_benchmarks
+    from tfe_benchmarks import run_tfe_benchmarks  # @manual
 
     # Only Rank 0 will display logs.
     level = logging.INFO

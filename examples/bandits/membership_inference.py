@@ -204,7 +204,7 @@ def membership_inference(args, load_data_module, download_mnist):
 
 
 def _run_experiment(args):
-    import launcher
+    import launcher  # @manual=fbsource//arvr/tools/buck:launcher_main
 
     membership_inference(args, launcher, launcher.download_mnist)
 
