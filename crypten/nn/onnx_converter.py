@@ -19,8 +19,8 @@ from torch.onnx import OperatorExportTypes
 from . import module
 
 try:
-    import tensorflow as tf  # noqa
-    import tf2onnx
+    import tensorflow as tf  # @manual
+    import tf2onnx  # @manual
 
     TF_AND_TF2ONNX = True
 except ImportError:
