@@ -6,9 +6,17 @@
 # LICENSE file in the root directory of this source tree.
 
 import crypten.nn as nn
+
+# @manual=//tensorboard:lib
 from tensorboard.compat.proto.attr_value_pb2 import AttrValue
+
+# @manual=//tensorboard:lib
 from tensorboard.compat.proto.graph_pb2 import GraphDef
+
+# @manual=//tensorboard:lib
 from tensorboard.compat.proto.node_def_pb2 import NodeDef
+
+# @manual=//tensorboard:lib
 from tensorboard.compat.proto.versions_pb2 import VersionDef
 from torch.utils.tensorboard import SummaryWriter as _SummaryWriter
 
