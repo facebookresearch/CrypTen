@@ -49,6 +49,10 @@ _For Linux or Mac_
 ```bash
 pip install crypten
 ```
+Alternatively, it can be installed via conda (works for Windows as long as [PyTorch](https://pytorch.org/get-started/locally/) is installed):
+```bash
+conda install -c conda-forge crypten
+```
 
 If you want to run the examples in the `examples` directory, you should also do the following
 ```bash
