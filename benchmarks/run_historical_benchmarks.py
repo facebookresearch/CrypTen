@@ -90,7 +90,7 @@ venv = "cd /tmp && . .venv/bin/activate && "
 
 # install PyTorch
 subprocess.call(
-    f"{venv} pip3 install onnx==1.6.0 tensorboard pandas sklearn", shell=True
+    f"{venv} pip3 install onnx==1.6.0 tensorboard pandas scikit-learn", shell=True
 )
 stable_url = "https://download.pytorch.org/whl/torch_stable.html"
 pip_torch = f"pip install torch==1.5.1+cu{cuda_version} torchvision==0.6.1+cu{cuda_version} -f https://download.pytorch.org/whl/torch_stable.html"
