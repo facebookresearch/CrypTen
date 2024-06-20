@@ -211,7 +211,7 @@ class Index extends React.Component {
               'CrypTen currently implements a cryptographic method called '+
               'secure multiparty computation (MPC), and we expect to add '+
               'support for homomorphic encryption and secure enclaves in '+
-              'futue releases. It works in the \u201Chonest but '+
+              'future releases. It works in the \u201Chonest but '+
               ' curious\u201D model (assumes the absence of malicious '+
               'and adversarial agents) that is used'+
               'frequently in cryptographic research, but additional '+
