@@ -21,6 +21,8 @@ class TestBinary(MultiProcessTestCase):
     This class tests all functions of BinarySharedTensor.
     """
 
+    # pyre-fixme[14]: `setUp` overrides method defined in `MultiProcessTestCase`
+    #  inconsistently.
     def setUp(self) -> None:
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communcator
@@ -112,12 +114,14 @@ class TestBinary(MultiProcessTestCase):
 
             if len(size) == 2:  # t() asserts dim == 2
                 reference = tensor.t()
+                # pyre-fixme[16]: `BinarySharedTensor` has no attribute `t`.
                 encrypted_out = encrypted_tensor.t()
                 self._check(encrypted_out, reference, "t() failed")
 
             for dim0 in range(len(size)):
                 for dim1 in range(len(size)):
                     reference = tensor.transpose(dim0, dim1)
+                    # pyre-fixme[16]: `BinarySharedTensor` has no attribute `transpose`.
                     encrypted_out = encrypted_tensor.transpose(dim0, dim1)
                     self._check(encrypted_out, reference, "transpose failed")
 
@@ -140,6 +144,7 @@ class TestBinary(MultiProcessTestCase):
             # test reversing the dimensions
             dim_arr = [x - 1 for x in range(tensor.dim(), 0, -1)]
             reference = tensor.permute(dim_arr)
+            # pyre-fixme[16]: `BinarySharedTensor` has no attribute `permute`.
             encrypted_out = encrypted_tensor.permute(dim_arr)
             self._check(encrypted_out, reference, "permute failed")
 
@@ -243,6 +248,8 @@ class TestBinary(MultiProcessTestCase):
             reference = tensor + tensor2
             encrypted_tensor = BinarySharedTensor(tensor)
             encrypted_tensor2 = tensor_type(tensor2)
+            # pyre-fixme[58]: `+` is not supported for operand types
+            #  `BinarySharedTensor` and `Any`.
             encrypted_out = encrypted_tensor + encrypted_tensor2
             self._check(encrypted_out, reference, "%s add failed" % tensor_type)
 
@@ -281,6 +288,7 @@ class TestBinary(MultiProcessTestCase):
                 reference = tensor[:, 0]
 
                 encrypted_tensor = BinarySharedTensor(tensor)
+                # pyre-fixme[16]: `BinarySharedTensor` has no attribute `__getitem__`.
                 encrypted_out = encrypted_tensor[:, 0]
                 self._check(encrypted_out, reference, "getitem failed")
 
@@ -462,6 +470,7 @@ class TestBinary(MultiProcessTestCase):
                 index = index.abs().clamp(0, 4)
                 encrypted = BinarySharedTensor(tensor)
                 reference = tensor.gather(dim, index)
+                # pyre-fixme[16]: `BinarySharedTensor` has no attribute `gather`.
                 encrypted_out = encrypted.gather(dim, index)
                 self._check(encrypted_out, reference, f"gather failed with size {size}")
 
@@ -516,6 +525,7 @@ class TestBinary(MultiProcessTestCase):
                 for idx in range(6):
                     split = (idx, 5 - idx)
                     reference0, reference1 = tensor.split(split, dim=dim)
+                    # pyre-fixme[16]: `BinarySharedTensor` has no attribute `split`.
                     encrypted_out0, encrypted_out1 = encrypted.split(split, dim=dim)
 
                     self._check(

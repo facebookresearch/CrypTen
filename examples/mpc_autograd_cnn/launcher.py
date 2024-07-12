@@ -89,6 +89,7 @@ def _run_experiment(args):
         level=level,
         format="%(asctime)s - %(process)d - %(name)s - %(levelname)s - %(message)s",
     )
+    # pyre-fixme[21]: Could not find module `mpc_autograd_cnn`.
     from mpc_autograd_cnn import run_mpc_autograd_cnn  # @manual
 
     run_mpc_autograd_cnn(

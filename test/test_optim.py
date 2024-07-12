@@ -73,10 +73,13 @@ class TestOptim:
             }
 
             if nesterov and (momentum <= 0 or dampening != 0):
+                # pyre-fixme[16]: `TestOptim` has no attribute `assertRaises`.
                 with self.assertRaises(ValueError):
                     crypten.optim.SGD(crypten_model.parameters(), **kwargs)
                 continue
 
+            # pyre-fixme[6]: For 2nd argument expected `Optional[bool]` but got `float`.
+            # pyre-fixme[6]: For 2nd argument expected `bool` but got `float`.
             torch_optimizer = torch.optim.SGD(torch_model.parameters(), **kwargs)
             crypten_optimizer = crypten.optim.SGD(crypten_model.parameters(), **kwargs)
 
@@ -101,11 +104,15 @@ class TestOptim:
             torch_optimizer.zero_grad()
             crypten_optimizer.zero_grad()
             for i in range(len(crypten_params)):
+                # pyre-fixme[16]: `TestOptim` has no attribute `assertIsNone`.
                 self.assertIsNone(crypten_params[i].grad, "Optimizer zero_grad failed")
 
 
 class TestTFP(MultiProcessTestCase, TestOptim):
+    # pyre-fixme[14]: `setUp` overrides method defined in `MultiProcessTestCase`
+    #  inconsistently.
     def setUp(self) -> None:
+        # pyre-fixme[16]: `CrypTenConfig` has no attribute `mpc`.
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
@@ -116,7 +123,10 @@ class TestTFP(MultiProcessTestCase, TestOptim):
 
 
 class TestTTP(MultiProcessTestCase, TestOptim):
+    # pyre-fixme[14]: `setUp` overrides method defined in `MultiProcessTestCase`
+    #  inconsistently.
     def setUp(self) -> None:
+        # pyre-fixme[16]: `CrypTenConfig` has no attribute `mpc`.
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()

@@ -452,6 +452,7 @@ class TestAutograd:
             # check output of forward pass:
             output, encr_output = outputs[-1][0], encr_outputs[-1][0]
             self._check(encr_output._tensor, output, "forward failed")
+            # pyre-fixme[16]: `TestAutograd` has no attribute `assertTrue`.
             self.assertTrue(encr_output.requires_grad, "requires_grad incorrect")
 
             # perform backward pass:
@@ -477,6 +478,7 @@ class TestAutograd:
             output = input.exp().sum()
             encr_output = encr_input.exp().sum()
             self._check(encr_output._tensor, output, "forward failed")
+            # pyre-fixme[16]: `TestAutograd` has no attribute `assertTrue`.
             self.assertTrue(encr_output.requires_grad, "requires_grad incorrect")
 
             # perform backward computation:
@@ -487,7 +489,10 @@ class TestAutograd:
 
 # Run all unit tests with both TFP and TTP providers
 class TestTFP(MultiProcessTestCase, TestAutograd):
+    # pyre-fixme[14]: `setUp` overrides method defined in `MultiProcessTestCase`
+    #  inconsistently.
     def setUp(self) -> None:
+        # pyre-fixme[16]: `CrypTenConfig` has no attribute `mpc`.
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TFP"
         super(TestTFP, self).setUp()
@@ -498,7 +503,10 @@ class TestTFP(MultiProcessTestCase, TestAutograd):
 
 
 class TestTTP(MultiProcessTestCase, TestAutograd):
+    # pyre-fixme[14]: `setUp` overrides method defined in `MultiProcessTestCase`
+    #  inconsistently.
     def setUp(self) -> None:
+        # pyre-fixme[16]: `CrypTenConfig` has no attribute `mpc`.
         self._original_provider = cfg.mpc.provider
         cfg.mpc.provider = "TTP"
         super(TestTTP, self).setUp()

@@ -15,6 +15,8 @@ from test.multiprocess_test_case import MultiProcessTestCase
 class TestTensorboard(MultiProcessTestCase):
     """This class tests the crypten.nn.tensorboard package."""
 
+    # pyre-fixme[14]: `setUp` overrides method defined in `MultiProcessTestCase`
+    #  inconsistently.
     def setUp(self) -> None:
         super().setUp()
         if self.rank >= 0:

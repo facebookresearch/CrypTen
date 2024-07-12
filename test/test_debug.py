@@ -13,6 +13,8 @@ from test.multiprocess_test_case import get_random_test_tensor, MultiProcessTest
 
 
 class TestDebug(MultiProcessTestCase):
+    # pyre-fixme[14]: `setUp` overrides method defined in `MultiProcessTestCase`
+    #  inconsistently.
     def setUp(self) -> None:
         super().setUp()
         # We don't want the main process (rank -1) to initialize the communicator

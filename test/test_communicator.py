@@ -38,9 +38,11 @@ class TestCommunicator:
     """
 
     def test_send_recv(self) -> None:
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
         tensor = torch.tensor([self.rank], dtype=torch.long)
 
         # Send forward, receive backward
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
         dst = (self.rank + 1) % self.world_size
         src = (self.rank - 1) % self.world_size
 
@@ -50,27 +52,36 @@ class TestCommunicator:
         if self.rank > 0:
             comm.get().send(tensor, dst=dst)
 
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
         self.assertTrue(torch.is_tensor(result))
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
         self.assertEqual(result.item(), src)
 
     def test_scatter(self) -> None:
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
         for rank in range(self.world_size):
             tensor = []
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
             if self.rank == rank:
                 tensor = [torch.tensor(i) for i in range(self.world_size)]
 
             result = comm.get().scatter(tensor, rank, size=())
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
             self.assertTrue(torch.is_tensor(result))
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
             self.assertEqual(result.item(), self.rank)
 
     def test_reduce(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
         for rank in range(self.world_size):
             for size in sizes:
                 tensor = get_random_test_tensor(size=size)
                 result = comm.get().reduce(tensor, rank)
 
+                # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
                 if rank == self.rank:
+                    # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
                     self.assertTrue((result == (tensor * self.world_size)).all())
                 # NOTE: torch.distributed has undefined behavior for non-dst rank
                 # else:
@@ -81,47 +92,68 @@ class TestCommunicator:
         for size in sizes:
             tensor = get_random_test_tensor(size=size)
             result = comm.get().all_reduce(tensor)
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
             self.assertTrue((result == (tensor * self.world_size)).all())
 
     def test_gather(self) -> None:
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
         tensor = torch.tensor([self.rank])
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
         for rank in range(self.world_size):
             result = comm.get().gather(tensor, rank)
             if rank == self.rank:
+                # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
                 self.assertEqual(result, [torch.tensor([0]), torch.tensor([1])])
             else:
+                # pyre-fixme[16]: `TestCommunicator` has no attribute `assertIsNone`.
                 self.assertIsNone(result[0])
 
     def test_gather_random(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5), (1000,)]
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
         for rank in range(self.world_size):
             for size in sizes:
                 tensor = get_random_test_tensor(size=size)
                 result = comm.get().gather(tensor, rank)
+                # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
                 if rank == self.rank:
+                    # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
                     self.assertTrue(isinstance(result, list))
                     for res in result:
                         self.assertTrue((res == tensor).all())
                 else:
+                    # pyre-fixme[16]: `TestCommunicator` has no attribute
+                    #  `assertIsNone`.
                     self.assertIsNone(result[0])
 
     def test_all_gather(self) -> None:
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
         tensor = torch.tensor([self.rank])
         result = comm.get().all_gather(tensor)
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
         self.assertEqual(
-            result, [torch.tensor([rank]) for rank in range(self.world_size)]
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
+            result,
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
+            [torch.tensor([rank]) for rank in range(self.world_size)],
         )
 
     def test_mutation(self) -> None:
         for _ in range(10):
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
             tensor = torch.tensor([self.rank])
             result = comm.get().all_gather(tensor)
             # Mutate the tensor, which should have no effect since the gather
             # has finished. If we don't clone the tensor though, this might
             # mutate one of the tensors received by the other party.
             tensor += 1
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
             self.assertEqual(
-                result, [torch.tensor([rank]) for rank in range(self.world_size)]
+                # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
+                result,
+                # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
+                [torch.tensor([rank]) for rank in range(self.world_size)],
             )
 
     def test_all_gather_random(self) -> None:
@@ -129,24 +161,33 @@ class TestCommunicator:
         for size in sizes:
             tensor = get_random_test_tensor(size=size)
             result = comm.get().all_gather(tensor)
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
             self.assertTrue(isinstance(result, list))
             for res in result:
                 self.assertTrue((res == tensor).all())
 
     def test_broadcast(self) -> None:
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
         for rank in range(self.world_size):
             tensor = torch.tensor([0], dtype=torch.long)
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
             if self.rank == rank:
                 tensor += 1
 
             tensor = comm.get().broadcast(tensor, rank)
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
             self.assertTrue(torch.is_tensor(tensor))
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
             self.assertEqual(tensor.item(), 1)
 
     def test_get_world_size(self) -> None:
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
         self.assertEqual(comm.get().get_world_size(), self.world_size)
 
     def test_get_rank(self) -> None:
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
         self.assertEqual(comm.get().get_rank(), self.rank)
 
     def test_batched_all_reduce(self) -> None:
@@ -154,17 +195,22 @@ class TestCommunicator:
         tensors = [get_random_test_tensor(size=size) for size in sizes]
 
         results = comm.get().all_reduce(tensors, batched=True)
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
         self.assertTrue(isinstance(results, list))
         for i, result in enumerate(results):
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
             self.assertTrue((result == (tensors[i] * self.world_size)).all())
 
     def test_batched_reduce(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
         for rank in range(self.world_size):
             tensors = [get_random_test_tensor(size=size) for size in sizes]
             results = comm.get().reduce(tensors, rank, batched=True)
 
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
             if rank == self.rank:
+                # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
                 self.assertTrue(isinstance(results, list))
                 for i, result in enumerate(results):
                     self.assertTrue((result == (tensors[i] * self.world_size)).all())
@@ -174,13 +220,16 @@ class TestCommunicator:
 
     def test_batched_broadcast(self) -> None:
         sizes = [(), (1,), (5,), (5, 5), (5, 5, 5)]
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
         for rank in range(self.world_size):
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
             if self.rank == rank:
                 tensors = [torch.ones(size) for size in sizes]
             else:
                 tensors = [torch.zeros(size) for size in sizes]
 
             tensors = comm.get().broadcast(tensors, rank, batched=True)
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `assertTrue`.
             self.assertTrue(isinstance(tensors, list))
             for tensor in tensors:
                 self.assertTrue(torch.is_tensor(tensor))
@@ -193,14 +242,20 @@ class TestCommunicator:
             torch.nn.Linear(10, 5),
             CNN(),
         ]
+        # pyre-fixme[16]: Item `Dict` of `Union[Dict[str, int], CNN, Tensor,
+        #  Linear]` has no attribute `parameters`.
         for param in TEST_OBJECTS[2].parameters():
             param.data.fill_(1.0)
+        # pyre-fixme[16]: Item `Dict` of `Union[Dict[str, int], CNN, Tensor,
+        #  Linear]` has no attribute `parameters`.
         for param in TEST_OBJECTS[3].parameters():
             param.data.fill_(1.0)
         serial.register_safe_class(CNN)
 
         for reference in TEST_OBJECTS:
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
             for src in range(self.world_size):
+                # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
                 if self.rank == src:
                     test_obj = reference
                     comm.get().send_obj(test_obj, 1 - self.rank)
@@ -211,10 +266,13 @@ class TestCommunicator:
                     test_obj_params = list(test_obj.parameters())
                     reference_params = list(reference.parameters())
                     for i, param in enumerate(reference_params):
+                        # pyre-fixme[16]: `TestCommunicator` has no attribute
+                        #  `assertTrue`.
                         self.assertTrue(
                             test_obj_params[i].eq(param).all(), "broadcast_obj failed"
                         )
                 else:
+                    # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
                     self.assertEqual(test_obj, reference, "broadcast_obj failed")
 
         # Test that the restricted loader will raise an error for code injection
@@ -234,9 +292,12 @@ class TestCommunicator:
                         arr, dst=(1 - self.rank), group=comm.get().main_group
                     )
 
+                    # pyre-fixme[16]: Optional type has no attribute `wait`.
                     r0.wait()
                     r1.wait()
                 else:
+                    # pyre-fixme[16]: `TestCommunicator` has no attribute
+                    #  `assertRaises`.
                     with self.assertRaises(ValueError):
                         comm.get().recv_obj(1 - self.rank)
 
@@ -247,24 +308,33 @@ class TestCommunicator:
             torch.nn.Linear(10, 5),
             CNN(),
         ]
+        # pyre-fixme[16]: Item `Dict` of `Union[Dict[str, int], CNN, Tensor,
+        #  Linear]` has no attribute `parameters`.
         for param in TEST_OBJECTS[2].parameters():
             param.data.fill_(1.0)
+        # pyre-fixme[16]: Item `Dict` of `Union[Dict[str, int], CNN, Tensor,
+        #  Linear]` has no attribute `parameters`.
         for param in TEST_OBJECTS[3].parameters():
             param.data.fill_(1.0)
         serial.register_safe_class(CNN)
 
         for reference in TEST_OBJECTS:
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
             for src in range(self.world_size):
+                # pyre-fixme[16]: `TestCommunicator` has no attribute `rank`.
                 test_obj = reference if self.rank == src else None
                 test_obj = comm.get().broadcast_obj(test_obj, src)
                 if isinstance(reference, torch.nn.Module):
                     test_obj_params = list(test_obj.parameters())
                     reference_params = list(reference.parameters())
                     for i, param in enumerate(reference_params):
+                        # pyre-fixme[16]: `TestCommunicator` has no attribute
+                        #  `assertTrue`.
                         self.assertTrue(
                             test_obj_params[i].eq(param).all(), "broadcast_obj failed"
                         )
                 else:
+                    # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
                     self.assertEqual(test_obj, reference, "broadcast_obj failed")
 
         # Test that the restricted loader will raise an error for code injection
@@ -280,6 +350,8 @@ class TestCommunicator:
                     dist.broadcast(size, src, group=comm.get().main_group)
                     dist.broadcast(arr, src, group=comm.get().main_group)
                 else:
+                    # pyre-fixme[16]: `TestCommunicator` has no attribute
+                    #  `assertRaises`.
                     with self.assertRaises(ValueError):
                         test_obj = None
                         comm.get().broadcast_obj(test_obj, src)
@@ -287,6 +359,7 @@ class TestCommunicator:
     @unittest.skip("Skipping for now as it keeps timing out")  # FIXME
     def test_name(self) -> None:
         # Test default name is correct
+        # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
         self.assertEqual(comm.get().get_name(), f"rank{comm.get().get_rank()}")
 
         # Test name set / get
@@ -301,6 +374,7 @@ class TestCommunicator:
 
         # Test failure on bad input
         for improper_input in [0, None, ["name"], ("name",)]:
+            # pyre-fixme[16]: `TestCommunicator` has no attribute `assertRaises`.
             with self.assertRaises(AssertionError):
                 comm.get().set_name(improper_input)
 
@@ -379,6 +453,7 @@ class TestCommunicatorMultiProcess(TestCommunicator, MultiProcessTestCase):
 
         # Test verbosity False setting and no logging
         cfg.communicator.verbose = False
+        # pyre-fixme[61]: `size` is undefined, or not always defined.
         tensor = get_random_test_tensor(size=size, is_float=False)
         tensor = comm.get().broadcast(tensor, 0)
         self.assertEqual(comm.get().comm_rounds, 0)

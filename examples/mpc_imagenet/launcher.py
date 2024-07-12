@@ -27,6 +27,8 @@ import os
 from deeplearning.projects.crypten.examples.multiprocess_launcher import (
     MultiProcessLauncher,
 )
+
+# pyre-fixme[21]: Could not find module `mpc_imagenet`.
 from mpc_imagenet import run_experiment  # @manual
 
 
