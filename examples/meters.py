@@ -38,7 +38,6 @@ class AccuracyMeter:
         self.values = []
 
     def add(self, output, ground_truth):
-
         # compute predicted classes (ordered):
         _, prediction = output.topk(self.maxk, 1, True, True)
         prediction = prediction.t()

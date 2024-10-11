@@ -17,7 +17,6 @@ from .communicator import Communicator
 
 
 class InProcessCommunicator(Communicator):
-
     BYTES_PER_ELEMENT = 8
     tls = threading.local()
     mailbox = None

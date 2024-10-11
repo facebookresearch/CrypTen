@@ -178,7 +178,6 @@ def _to_crypten(onnx_model):
 
     # loop over all nodes:
     for node in onnx_model.graph.node:
-
         # get attributes and node type:
         attributes = {attr.name: _get_attribute_value(attr) for attr in node.attribute}
         crypten_class = _get_operator_class(node.op_type, attributes)
@@ -271,21 +270,21 @@ def _update_onnx_symbolic_registry():
         for version_key, version_val in sym_registry._registry.items():
             for function_key in version_val.keys():
                 if function_key == "softmax":
-                    sym_registry._registry[version_key][
-                        function_key
-                    ] = _onnx_crypten_softmax
+                    sym_registry._registry[version_key][function_key] = (
+                        _onnx_crypten_softmax
+                    )
                 if function_key == "log_softmax":
-                    sym_registry._registry[version_key][
-                        function_key
-                    ] = _onnx_crypten_logsoftmax
+                    sym_registry._registry[version_key][function_key] = (
+                        _onnx_crypten_logsoftmax
+                    )
                 if function_key == "dropout":
-                    sym_registry._registry[version_key][
-                        function_key
-                    ] = _onnx_crypten_dropout
+                    sym_registry._registry[version_key][function_key] = (
+                        _onnx_crypten_dropout
+                    )
                 if function_key == "feature_dropout":
-                    sym_registry._registry[version_key][
-                        function_key
-                    ] = _onnx_crypten_feature_dropout
+                    sym_registry._registry[version_key][function_key] = (
+                        _onnx_crypten_feature_dropout
+                    )
     else:
         # Update ONNX symbolic registry using torch.onnx.register_custom_op_symbolic
         torch.onnx.register_custom_op_symbolic(

@@ -153,7 +153,6 @@ def train(train_loader, model, criterion, optimizer, epoch, print_freq=10):
     end = time.time()
 
     for i, (input, target) in enumerate(train_loader):
-
         # compute output
         output = model(input)
         loss = criterion(output, target)

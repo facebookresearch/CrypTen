@@ -50,7 +50,6 @@ def online_learner(
 
         # initialization of model parameters:
         if idx == 0:
-
             # initialize accumulators for linear least squares:
             A_inv = torch.stack(
                 [

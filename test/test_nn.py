@@ -370,7 +370,6 @@ class TestNN:
 
         # loop over all modules:
         for module_name in module_args.keys():
-
             # create encrypted CrypTen module:
             encr_module = getattr(crypten.nn, module_name)(*module_args[module_name])
             encr_module.encrypt()
@@ -405,7 +404,6 @@ class TestNN:
 
             # some modules take additional inputs:
             if module_name in additional_inputs:
-
                 # base inputs:
                 if inputs is None:
                     inputs, encr_inputs = [], []
@@ -571,7 +569,6 @@ class TestNN:
                 # check value of parameters:
                 for key in ["weight", "bias"]:
                     if hasattr(module, key):  # if PyTorch model has key
-
                         # find that key in the crypten.nn.Graph:
                         if from_pytorch:
                             for encr_node in encr_module.modules():
@@ -639,7 +636,6 @@ class TestNN:
         # try different dimensionalities:
         for dim in range(1, 3):
             for compute_gradients in [True, False]:
-
                 # fixed attributes of convolution:
                 stride = tuple([1] * dim)
                 padding = tuple([0] * dim)
@@ -753,7 +749,6 @@ class TestNN:
                 torch.nn.parameter.Parameter,
                 crypten.cryptensor,
             ]:
-
                 # check creation of Parameter:
                 num_rows, num_cols = 5, 4
                 size = (num_rows, num_cols)
@@ -838,7 +833,6 @@ class TestNN:
         # try networks of different depth:
         for num_layers in range(1, 6):
             for compute_gradients in [True, False]:
-
                 # construct sequential container:
                 input_size = (3, 10)
                 output_size = (input_size[0], input_size[1] - num_layers)
@@ -900,7 +894,6 @@ class TestNN:
         """
         for compute_gradients in [True, False]:
             for num_inputs in [1, 2]:
-
                 # define test case:
                 input_size = (3, 10)
                 input = get_random_test_tensor(size=input_size, is_float=True)
@@ -1139,7 +1132,6 @@ class TestNN:
         # perform training iterations:
         for _ in range(10):
             for compute_gradients in [True, False]:
-
                 # get training sample:
                 input = get_random_test_tensor(
                     size=(batch_size, num_inputs), is_float=True
@@ -1275,7 +1267,6 @@ class TestNN:
         )
         for batchnorm_fn, size in batchnorm_fn_and_size:
             for is_training in (True, False):
-
                 # create random input tensor:
                 tensor = get_random_test_tensor(size=size, is_float=True)
                 tensor.requires_grad = True
@@ -1382,7 +1373,6 @@ class TestNN:
 
         # function running the actual test:
         def _run_test(_sample, _target):
-
             # forward pass fails when feeding encrypted input into unencrypted model:
             linear.zero_grad()
             if not linear.encrypted and not torch.is_tensor(_sample):
@@ -1467,7 +1457,6 @@ class TestNN:
         }
         for module_name, args in module_args.items():
             for encrypt in [False, True]:
-
                 # create module and get state dict:
                 module = getattr(crypten.nn, module_name)(*args)
                 if encrypt:
@@ -1498,7 +1487,6 @@ class TestNN:
         # tests for model that is sequence of modules:
         for num_layers in range(1, 6):
             for encrypt in [False, True]:
-
                 # some variables that we need:
                 input_size = (3, 10)
                 output_size = (input_size[0], input_size[1] - num_layers)
