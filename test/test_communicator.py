@@ -135,7 +135,6 @@ class TestCommunicator:
         result = comm.get().all_gather(tensor)
         # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
         self.assertEqual(
-            # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
             result,
             # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
             [torch.tensor([rank]) for rank in range(self.world_size)],
@@ -152,7 +151,6 @@ class TestCommunicator:
             tensor += 1
             # pyre-fixme[16]: `TestCommunicator` has no attribute `assertEqual`.
             self.assertEqual(
-                # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
                 result,
                 # pyre-fixme[16]: `TestCommunicator` has no attribute `world_size`.
                 [torch.tensor([rank]) for rank in range(self.world_size)],
