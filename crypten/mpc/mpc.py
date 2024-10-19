@@ -54,7 +54,7 @@ class MPCTensor(CrypTensor):
 
         # create the MPCTensor:
         tensor_type = ptype.to_tensor()
-        if tensor is []:
+        if tensor == []:
             self._tensor = torch.tensor([], device=device)
         else:
             self._tensor = tensor_type(tensor=tensor, device=device, *args, **kwargs)
