@@ -309,15 +309,22 @@ class TestMPC:
 
                 reference = tensor.float().div(scalar)
                 encrypted_tensor = MPCTensor(tensor)
-                encrypted_tensor = getattr(encrypted_tensor, function)(scalar)
+                encrypted_out = getattr(encrypted_tensor, function)(scalar)
                 self._check(encrypted_tensor, reference, "scalar division failed")
 
                 # multiply denominator by 10 to avoid dividing by small num
                 divisor = self._get_random_test_tensor(is_float=True, ex_zero=True) * 10
                 reference = tensor.div(divisor)
                 encrypted_tensor = MPCTensor(tensor)
-                encrypted_tensor = getattr(encrypted_tensor, function)(divisor)
-                self._check(encrypted_tensor, reference, "tensor division failed")
+                encrypted_out = getattr(encrypted_tensor, function)(divisor)
+                self._check(encrypted_out, reference, "tensor division failed")
+
+                # Test int to float division
+                tensor = torch.ones((10,))
+                reference = tensor.div(scalar)
+                encrypted_tensor = MPCTensor(tensor, precision=0)
+                encrypted_out = getattr(encrypted_tensor, function)(scalar)
+                self._check(encrypted_out, reference, "int tensor division failed")
 
     def test_mean(self):
         """Tests computing means of encrypted tensors."""
