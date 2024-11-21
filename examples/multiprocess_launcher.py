@@ -14,7 +14,6 @@ import crypten
 
 
 class MultiProcessLauncher:
-
     # run_process_fn will be run in subprocesses.
     def __init__(self, world_size, run_process_fn, fn_args=None):
         env = os.environ.copy()

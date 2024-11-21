@@ -470,7 +470,6 @@ class Module:
     def encrypt(self, mode=True, src=0):
         """Encrypts the model."""
         if mode != self.encrypted:
-
             # encrypt / decrypt parameters:
             self.encrypted = mode
             for name, param in self.named_parameters(recurse=False):
@@ -705,7 +704,6 @@ class Graph(Container):
             _mark_as_computed(input_name)
         node_to_compute = _find_computable_node()
         while node_to_compute is not None:
-
             # compute output of module:
             input = [values[name] for name in self._graph[node_to_compute]]
             if len(input) == 1:
@@ -726,8 +724,8 @@ class Graph(Container):
                 assert isinstance(
                     output, tuple
                 ), f"expected outputs {output_names} of {module} to be tuple, not {type(output)}"
-                assert len(output_names) == len(
-                    output
+                assert (
+                    len(output_names) == len(output)
                 ), f"expected {len(output_names)} outputs from {module}, received {len(output)}"
                 for node, value in zip(output_names, output):
                     values[node] = value
@@ -1381,7 +1379,6 @@ class Expand(Module):
     """
 
     def forward(self, x):
-
         # unpack inputs:
         input, shape = tuple(x)
         if torch.is_tensor(shape):
@@ -1966,7 +1963,6 @@ class Conv(Module):
         self.groups = groups
 
     def forward(self, x):
-
         # unpack inputs:
         if len(x) == 2:
             x, weight = x
@@ -2010,7 +2006,6 @@ class Conv(Module):
 
     @staticmethod
     def from_onnx(attributes=None):
-
         # check attribute inputs:
         if attributes is None:
             attributes = {}
@@ -2124,7 +2119,6 @@ class Conv1d(Module):
         groups=1,
         bias=True,
     ):
-
         # check inputs:
         super().__init__()
         assert isinstance(stride, int), "stride must be an integer"
@@ -2558,7 +2552,6 @@ class _Pool2d(Module):
 
     @staticmethod
     def from_onnx(pool_type, attributes=None):
-
         # check attributes:
         if attributes is None:
             attributes = {}
@@ -2887,7 +2880,6 @@ class _BatchNorm(Module):
 
     @staticmethod
     def from_onnx(parameters=None, attributes=None):
-
         # preprocess all attributes:
         if parameters is None:
             parameters = {}

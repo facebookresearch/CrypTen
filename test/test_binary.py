@@ -71,7 +71,6 @@ class TestBinary(MultiProcessTestCase):
             (5, 3, 32, 32),
         ]
         for size in sizes:
-
             # encryption and decryption without source:
             reference = get_random_test_tensor(size=size, is_float=False)
             encrypted_tensor = BinarySharedTensor(reference)

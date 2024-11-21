@@ -94,7 +94,6 @@ def train_encrypted(
             print(f"Epoch {epoch} in progress:")
 
         for j in range(0, num_samples, batch_size):
-
             # define the start and end of the training mini-batch
             start, end = j, min(j + batch_size, num_samples)
 

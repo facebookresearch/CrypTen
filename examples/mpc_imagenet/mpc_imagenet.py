@@ -79,7 +79,6 @@ def run_experiment(
     # loop over dataset:
     meter = AccuracyMeter()
     for idx, sample in enumerate(dataset):
-
         # preprocess sample:
         image, target = sample
         image = transform(image)

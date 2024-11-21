@@ -380,7 +380,6 @@ def build_learner(args, bandits, download_mnist):
             logging.info("Loading clusters from file...")
             clusters = torch.load(clusters_file)
         else:
-
             # load data and allocate clusters:
             context, _ = load_data(
                 split=args.mnist_split, pca=pca, download_mnist_func=download_mnist
