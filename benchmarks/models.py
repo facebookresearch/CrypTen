@@ -8,7 +8,6 @@
 Contains models used for benchmarking
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 

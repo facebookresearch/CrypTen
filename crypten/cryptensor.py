@@ -78,16 +78,12 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             if name in CrypTensor.__CRYPTENSOR_TYPES__:
                 raise ValueError(
                     "Cannot register duplicate CrypTensor type: \
-                    tensor type {} already exists.".format(
-                        name
-                    )
+                    tensor type {} already exists.".format(name)
                 )
             if not issubclass(cls, CrypTensor):
                 raise ValueError(
                     "Registered tensor ({}: {}) must extend \
-                    CrypTensor".format(
-                        name, cls.__name__
-                    )
+                    CrypTensor".format(name, cls.__name__)
                 )
             CrypTensor.__CRYPTENSOR_TYPES__[name] = cls
             return cls
@@ -222,7 +218,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         """
         if self.requires_grad:
             with CrypTensor.no_grad():  # disable autograd for backward pass
-
                 # in initial backward call, identify all required nodes:
                 if top_node:
                     self._identify_required_grads()
@@ -302,7 +297,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
             )
 
     def _get_forward_function_no_ctx(self, grad_fn):
-
         # determine if self is a dummy object (the case for staticmethods):
         is_dummy = getattr(self, "__IS_DUMMY__", False)
 
@@ -320,7 +314,6 @@ class CrypTensor(object, metaclass=CrypTensorMetaclass):
         return autograd_forward_no_ctx
 
     def _get_autograd_forward_function(self, name, grad_fn, in_place):
-
         # determine if self is a dummy object (the case for staticmethods):
         is_dummy = getattr(self, "__IS_DUMMY__", False)
 

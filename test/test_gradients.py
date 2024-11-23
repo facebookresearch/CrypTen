@@ -259,7 +259,6 @@ class TestGradients:
                 # Check dim 0 if tensor is 0-dimensional
                 dims = 1 if tensor.dim() == 0 else tensor.dim()
                 for dim in range(dims):
-
                     # check when keepdim is not provided as a kwarg
                     if method is None:
                         self._check_forward_backward(reduction, tensor, dim=dim)
@@ -826,7 +825,6 @@ class TestGradients:
         torch.autograd.set_detect_anomaly(True)
         for size in sizes:
             for is_training in (False, True):
-
                 # sample input data, weight, and bias:
                 tensor = get_random_test_tensor(size=size, is_float=True)
                 encrypted_input = crypten.cryptensor(tensor)

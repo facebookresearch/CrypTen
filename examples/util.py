@@ -69,7 +69,6 @@ def kmeans(data, K, max_iter=100):
     clusters = data[perm[:K], :]
     assignments = None
     for iter in range(max_iter):
-
         # compute assignments, and stop if converged:
         prev_assignments = assignments
         assignments = kmeans_inference(data, clusters)

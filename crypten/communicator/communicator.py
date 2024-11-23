@@ -162,7 +162,6 @@ def _logging(func):
 
     @wraps(func)
     def logging_wrapper(self, *args, **kwargs):
-
         # TODO: Replace this
         # - hacks the inputs into some of the functions for world_size 1:
         world_size = self.get_world_size()

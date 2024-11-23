@@ -16,7 +16,6 @@ from .binary import BinarySharedTensor
 
 
 def _A2B(arithmetic_tensor):
-
     # first try memory-inefficient implementation that takes O(log P) rounds:
     try:
         binary_tensor = BinarySharedTensor.stack(

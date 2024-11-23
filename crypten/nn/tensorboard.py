@@ -50,7 +50,6 @@ def graph(model):
 
     # loop all graph connections:
     for output_name, input_names in model._graph.items():
-
         # get parameters and type of module:
         module = modules[output_name]
         op = str(type(module))

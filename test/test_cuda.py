@@ -237,7 +237,6 @@ class TestCUDA(TestMPC):
                 padding,
                 stride,
             ) in itertools.product(*[v for _, v in kwargs.items()]):
-
                 # sample input:
                 input_size = (batches, in_channels, *image_size)
                 input = get_random_test_tensor(size=input_size, is_float=False)

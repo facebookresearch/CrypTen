@@ -309,7 +309,6 @@ class TTPServer:
         return result
 
     def additive(self, size0, size1, op, *args, **kwargs):
-
         # Add all shares of `a` and `b` to get plaintext `a` and `b`
         a = self._get_additive_PRSS(size0)
         b = self._get_additive_PRSS(size1)

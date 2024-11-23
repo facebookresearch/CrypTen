@@ -10,7 +10,6 @@ Profiler with snakeviz for probing inference / training call stack
 Run via Jupyter
 """
 
-
 from benchmark import ModelBenchmarks
 
 
