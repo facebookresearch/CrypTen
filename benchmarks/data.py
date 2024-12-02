@@ -14,8 +14,8 @@ from pathlib import Path
 import PIL
 import torch
 import torch.nn.functional as F
-from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
+from scikit-learn.datasets import make_classification
+from scikit-learn.model_selection import train_test_split
 from torchvision import transforms
 
 
