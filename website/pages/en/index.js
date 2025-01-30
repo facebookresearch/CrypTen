@@ -143,7 +143,7 @@ class Index extends React.Component {
                         '\n # CrypTen\n '+
                         'x_enc = crypten.cryptensor([1, 2, 3])\n '+
                         'y_enc = crypten.cryptensor([4, 5, 6])\n '+
-                        'z_enc = x_enc + y_enc```',
+                        'z_enc = x_enc + y_enc',
               title: 'CrypTensors'
             },
           ]}
