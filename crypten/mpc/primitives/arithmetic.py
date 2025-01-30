@@ -317,7 +317,7 @@ class ArithmeticSharedTensor:
             self.share *= scale_factor
         else:
             scale_factor = self.encoder.scale // new_encoder.scale
-            self = self.div_(scale_factor)
+            self = self._truncate_(scale=scale_factor)
         self.encoder = new_encoder
         return self
 
@@ -390,12 +390,12 @@ class ArithmeticSharedTensor:
         if not additive_func:
             if public:  # scale by self.encoder.scale
                 if self.encoder.scale > 1:
-                    return result.div_(result.encoder.scale)
+                    return result._truncate_()
                 else:
                     result.encoder = self.encoder
             else:  # scale by larger of self.encoder.scale and y.encoder.scale
                 if self.encoder.scale > 1 and y.encoder.scale > 1:
-                    return result.div_(result.encoder.scale)
+                    return result._truncate_()
                 elif self.encoder.scale > 1:
                     result.encoder = self.encoder
                 else:
@@ -443,6 +443,19 @@ class ArithmeticSharedTensor:
             result.share = torch.broadcast_tensors(result.share, y)[0].clone()
         return result.div_(y)
 
+    def _truncate_(self, scale=None):
+        """Rescales the result of a multiplication by dividing the input by the input scale"""
+        if scale is None:
+            scale = self.encoder._scale
+
+        # Truncate protocol for dividing by public integers:
+        if comm.get().get_world_size() > 2:
+            protocol = globals()[cfg.mpc.protocol]
+            self.share = protocol.truncate(self, scale).share
+        else:
+            self.share = self.share.div_(scale, rounding_mode="trunc")
+        return self
+
     def div_(self, y):
         """Divide two tensors element-wise"""
         # TODO: Add test coverage for this code path (next 4 lines)
@@ -458,12 +471,13 @@ class ArithmeticSharedTensor:
                 tolerance = 1.0
                 tensor = self.get_plain_text()
 
-            # Truncate protocol for dividing by public integers:
-            if comm.get().get_world_size() > 2:
-                protocol = globals()[cfg.mpc.protocol]
-                protocol.truncate(self, y)
-            else:
-                self.share = self.share.div_(y, rounding_mode="trunc")
+            # Re-encode if input has low precision
+            encoder = FixedPointEncoder()
+            if self.encoder._scale < encoder._scale:
+                self.encode_(encoder)
+
+            # Use truncate protocol for dividing by public integers:
+            self._truncate_(scale=y)
 
             # Validate
             if validate:
@@ -596,7 +610,8 @@ class ArithmeticSharedTensor:
 
     def square_(self):
         protocol = globals()[cfg.mpc.protocol]
-        self.share = protocol.square(self).div_(self.encoder.scale).share
+        square = protocol.square(self)
+        self.share = square._truncate_(scale=self.encoder._scale).share
         return self
 
     def square(self):
