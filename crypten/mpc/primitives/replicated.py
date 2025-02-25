@@ -103,6 +103,8 @@ def square(x):
 
 
 def truncate(x, y):
+    print("WARNING: Probabilistic truncation leaks some information, see https://eprint.iacr.org/2024/1127 for discussion. ")
+    
     """Protocol to divide an ArithmeticSharedTensor `x` by a constant integer `y`
     using RSS (see ABY3 Figure 2: https://eprint.iacr.org/2018/403.pdf).
 

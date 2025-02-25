@@ -435,6 +435,7 @@ class ArithmeticSharedTensor:
         return self._arithmetic_function_(y, "mul")
 
     def div(self, y):
+        print("WARNING: Probabilistic truncation leaks some information, see https://eprint.iacr.org/2024/1127 for discussion. ")
         """Divide by a given tensor"""
         result = self.clone()
         if isinstance(y, CrypTensor):
@@ -444,6 +445,7 @@ class ArithmeticSharedTensor:
         return result.div_(y)
 
     def div_(self, y):
+        print("WARNING: Probabilistic truncation leaks some information, see https://eprint.iacr.org/2024/1127 for discussion. ")
         """Divide two tensors element-wise"""
         # TODO: Add test coverage for this code path (next 4 lines)
         if isinstance(y, float) and int(y) == y:
