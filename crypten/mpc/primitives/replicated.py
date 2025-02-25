@@ -63,6 +63,7 @@ def __replicated_secret_sharing_protocol(op, x, y, *args, **kwargs):
     z.share = getattr(torch, op)(x1, y1, *args, **kwargs)
     z.share += getattr(torch, op)(x1, y2, *args, **kwargs)
     z.share += getattr(torch, op)(x2, y1, *args, **kwargs)
+    z.share += z.PRZS(z.size(), device=z.device).share
 
     return z
 
